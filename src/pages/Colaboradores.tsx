@@ -763,136 +763,21 @@ export default function Colaboradores() {
 
             {/* ── SEÇÃO FUNÇÃO & CONTRATO ────────────────────────────────── */}
             {section === 'funcao' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-
-                {/* Chapa */}
-                <div style={{
-                  borderRadius: 8, border: '1px solid var(--border)',
-                  background: form.chapa ? 'rgba(59,130,246,0.05)' : 'var(--muted)',
-                  padding: '14px 16px',
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                }}>
-                  <div>
-                    <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--muted-foreground)', marginBottom: 4 }}>
-                      📋 Chapa (imutável)
-                    </div>
-                    {form.chapa ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: 22, color: 'var(--primary)', letterSpacing: '0.04em' }}>
-                          {form.chapa}
-                        </span>
-                        <CheckCircle2 size={16} color="#22c55e" />
-                      </div>
-                    ) : (
-                      <span style={{ fontSize: 13, color: 'var(--muted-foreground)' }}>
-                        {gerando ? '⏳ Gerando…' : 'Selecione a função para gerar automaticamente'}
-                      </span>
-                    )}
-                  </div>
-                  {form.chapa && editId && form.funcao_id === funcaoOriginal && (
-                    <span style={{ fontSize: 11, color: 'var(--muted-foreground)', fontStyle: 'italic' }}>Gerada em {form.chapa.slice(-7, -4).replace(/(\d{2})(\d{2})/, '$1/$2')}</span>
-                  )}
-                </div>
-
-                {/* Alerta troca de função */}
-                {trocandoFuncao && form.funcao_id !== funcaoOriginal && funcaoOriginal !== '' && (
-                  <div style={{ borderRadius: 8, border: '1px solid #f59e0b', background: 'rgba(245,158,11,0.08)', padding: '14px 16px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-                      <AlertTriangle size={16} color="#f59e0b" />
-                      <span style={{ fontSize: 13, fontWeight: 700, color: '#92400e' }}>Troca de Função — Registro Obrigatório</span>
-                    </div>
-                    <p style={{ fontSize: 12, color: '#92400e', marginBottom: 10, lineHeight: 1.5 }}>
-                      A chapa atual <strong>{chapaOriginal}</strong> será arquivada. Uma nova chapa será gerada para a função selecionada.
-                      Lançamentos anteriores <strong>não serão afetados</strong>.
-                    </p>
-                    <Field label="Motivo da troca de função *">
-                      <Input
-                        value={motivoTroca}
-                        onChange={e => setMotivoTroca(e.target.value)}
-                        placeholder="Ex.: Promoção, reclassificação, mudança de cargo…"
-                        style={{ borderColor: '#f59e0b' }}
-                      />
-                    </Field>
-                  </div>
-                )}
-
-                <Sec title="Função">
-                  <Grid cols={2}>
-                    <Field label="Função *" span={2}>
-                      <Select value={form.funcao_id} onValueChange={handleFuncaoChange}>
-                        <SelectTrigger><SelectValue placeholder="Selecione a função" /></SelectTrigger>
-                        <SelectContent>
-                          {funcoes.map(f => (
-                            <SelectItem key={f.id} value={f.id}>
-                              {f.sigla ? `[${f.sigla}] ` : ''}{f.nome}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {!funcoes.length && (
-                        <p style={{ fontSize: 11, color: 'var(--muted-foreground)', marginTop: 4 }}>
-                          Nenhuma função ativa. <button onClick={() => { setModalOpen(false); setPageTab('funcoes') }} style={{ color: 'var(--primary)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', fontSize: 11 }}>Cadastre uma função</button>
-                        </p>
-                      )}
-                    </Field>
-
-                    <Field label="Tipo de contrato *">
-                      <Select value={form.tipo_contrato} onValueChange={v => set('tipo_contrato', v)}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="clt">CLT</SelectItem>
-                          <SelectItem value="autonomo">Autônomo / PJ</SelectItem>
-                          <SelectItem value="temporario">Temporário</SelectItem>
-                          <SelectItem value="aprendiz">Aprendiz</SelectItem>
-                          <SelectItem value="estagiario">Estagiário</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </Field>
-
-                    {/* Valor/hora conforme tipo */}
-                    {form.funcao_id && (() => {
-                      const fn = funcoes.find(f => f.id === form.funcao_id)
-                      if (!fn) return null
-                      const isPJ = form.tipo_contrato === 'autonomo'
-                      const vh = isPJ ? fn.valor_hora_autonomo : fn.valor_hora_clt
-                      if (vh == null) return null
-                      return (
-                        <div style={{ gridColumn: 'span 1', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
-                          <div style={{ padding: '8px 12px', borderRadius: 6, background: isPJ ? 'rgba(249,115,22,0.08)' : 'rgba(59,130,246,0.08)', border: `1px solid ${isPJ ? 'rgba(249,115,22,0.2)' : 'rgba(59,130,246,0.2)'}` }}>
-                            <div style={{ fontSize: 10, color: 'var(--muted-foreground)', marginBottom: 2 }}>Valor/hora tabelado</div>
-                            <div style={{ fontSize: 18, fontWeight: 700, color: isPJ ? '#ea580c' : '#2563eb' }}>{formatCurrency(vh)}<span style={{ fontSize: 11, fontWeight: 400, color: 'var(--muted-foreground)' }}>/h</span></div>
-                          </div>
-                        </div>
-                      )
-                    })()}
-
-                    <Field label="Obra">
-                      <Select value={form.obra_id} onValueChange={v => set('obra_id', v)}>
-                        <SelectTrigger><SelectValue placeholder="Selecione a obra" /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="">— Sem obra —</SelectItem>
-                          {obras.map(o => <SelectItem key={o.id} value={o.id}>{o.nome}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </Field>
-
-                    <Field label="Data de admissão">
-                      <Input type="date" value={form.data_admissao} onChange={e => set('data_admissao', e.target.value)} />
-                    </Field>
-                  </Grid>
-                </Sec>
-
-                <Sec title="CTPS">
-                  <Grid cols={2}>
-                    <Field label="Nº CTPS">
-                      <Input value={form.ctps_numero} onChange={e => set('ctps_numero', e.target.value)} placeholder="000000" />
-                    </Field>
-                    <Field label="Série CTPS">
-                      <Input value={form.ctps_serie} onChange={e => set('ctps_serie', e.target.value)} placeholder="000" />
-                    </Field>
-                  </Grid>
-                </Sec>
-              </div>
+              <FuncaoSection
+                form={form}
+                funcoes={funcoes}
+                obras={obras}
+                editId={editId}
+                funcaoOriginal={funcaoOriginal}
+                chapaOriginal={chapaOriginal}
+                gerando={gerando}
+                trocandoFuncao={trocandoFuncao}
+                motivoTroca={motivoTroca}
+                setMotivoTroca={setMotivoTroca}
+                onFuncaoChange={handleFuncaoChange}
+                onSet={set}
+                onGotoFuncoes={() => { setModalOpen(false); setPageTab('funcoes') }}
+              />
             )}
 
             {/* ── SEÇÃO BANCÁRIO / VT ────────────────────────────────────── */}
@@ -1033,6 +918,218 @@ export default function Colaboradores() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+    </div>
+  )
+}
+
+// ─── FuncaoSection — componente isolado para evitar crashes de render ─────────
+interface FuncaoSectionProps {
+  form: FormData
+  funcoes: Funcao[]
+  obras: Obra[]
+  editId: string | null
+  funcaoOriginal: string
+  chapaOriginal: string
+  gerando: boolean
+  trocandoFuncao: boolean
+  motivoTroca: string
+  setMotivoTroca: (v: string) => void
+  onFuncaoChange: (id: string) => void
+  onSet: (k: keyof FormData, v: string | boolean) => void
+  onGotoFuncoes: () => void
+}
+
+function FuncaoSection({
+  form, funcoes, obras, editId, funcaoOriginal, chapaOriginal,
+  gerando, trocandoFuncao, motivoTroca, setMotivoTroca,
+  onFuncaoChange, onSet, onGotoFuncoes,
+}: FuncaoSectionProps) {
+  // Calcula valor/hora fora do JSX — sem IIFE, sem risco de crash
+  const funcaoSelecionada = funcoes.find(f => f.id === form.funcao_id) ?? null
+  const isPJ = form.tipo_contrato === 'autonomo'
+  const valorHoraTabelado: number | null = funcaoSelecionada
+    ? (isPJ ? (funcaoSelecionada.valor_hora_autonomo ?? null) : (funcaoSelecionada.valor_hora_clt ?? null))
+    : null
+
+  const mostrarAlertaTroca = trocandoFuncao && !!form.funcao_id && form.funcao_id !== funcaoOriginal && funcaoOriginal !== ''
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+      {/* ── CHAPA ─────────────────────────────────────────────────────── */}
+      <div style={{
+        borderRadius: 8,
+        border: `1px solid ${form.chapa ? 'rgba(59,130,246,0.3)' : 'var(--border)'}`,
+        background: form.chapa ? 'rgba(59,130,246,0.05)' : 'var(--muted)',
+        padding: '14px 18px',
+        display: 'flex', alignItems: 'center', gap: 16,
+      }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--muted-foreground)', marginBottom: 6 }}>
+            📋 Chapa (identificador imutável)
+          </div>
+          {form.chapa ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: 24, color: 'var(--primary)', letterSpacing: '0.05em' }}>
+                {form.chapa}
+              </span>
+              <CheckCircle2 size={18} color="#22c55e" />
+            </div>
+          ) : (
+            <span style={{ fontSize: 13, color: 'var(--muted-foreground)' }}>
+              {gerando ? '⏳ Gerando número de chapa…' : '← Selecione a função para gerar automaticamente'}
+            </span>
+          )}
+        </div>
+        {form.chapa && (
+          <div style={{ fontSize: 11, color: 'var(--muted-foreground)', textAlign: 'right', lineHeight: 1.5 }}>
+            <div>{funcaoSelecionada?.nome ?? ''}</div>
+            <div style={{ fontWeight: 600 }}>{form.tipo_contrato?.toUpperCase()}</div>
+          </div>
+        )}
+      </div>
+
+      {/* ── ALERTA TROCA DE FUNÇÃO ────────────────────────────────────── */}
+      {mostrarAlertaTroca && (
+        <div style={{ borderRadius: 8, border: '1px solid #f59e0b', background: 'rgba(245,158,11,0.07)', padding: '14px 16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <AlertTriangle size={16} color="#f59e0b" />
+            <span style={{ fontSize: 13, fontWeight: 700, color: '#92400e' }}>
+              Troca de Função — Registro Jurídico Obrigatório
+            </span>
+          </div>
+          <p style={{ fontSize: 12, color: '#78350f', marginBottom: 10, lineHeight: 1.6 }}>
+            A chapa <strong style={{ fontFamily: 'monospace' }}>{chapaOriginal}</strong> será arquivada no histórico.
+            Uma nova chapa será gerada. Lançamentos já realizados <strong>não serão alterados</strong>.
+          </p>
+          <Field label="Motivo da troca *">
+            <Input
+              value={motivoTroca}
+              onChange={e => setMotivoTroca(e.target.value)}
+              placeholder="Ex.: Promoção, reclassificação, mudança de cargo…"
+              style={{ borderColor: '#f59e0b' }}
+            />
+          </Field>
+        </div>
+      )}
+
+      {/* ── FUNÇÃO & TIPO ─────────────────────────────────────────────── */}
+      <Sec title="Função">
+        <Grid cols={2}>
+
+          {/* Select função — value nunca é string vazia (usa undefined) */}
+          <Field label="Função *" span={2}>
+            <Select
+              value={form.funcao_id || undefined}
+              onValueChange={onFuncaoChange}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione a função…" />
+              </SelectTrigger>
+              <SelectContent>
+                {funcoes.length === 0 && (
+                  <div style={{ padding: '8px 12px', fontSize: 12, color: 'var(--muted-foreground)' }}>
+                    Nenhuma função ativa.
+                  </div>
+                )}
+                {funcoes.map(f => (
+                  <SelectItem key={f.id} value={f.id}>
+                    {f.sigla ? `[${f.sigla}]  ` : ''}{f.nome}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {funcoes.length === 0 && (
+              <button
+                onClick={onGotoFuncoes}
+                style={{ marginTop: 4, fontSize: 11, color: 'var(--primary)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', textAlign: 'left' }}
+              >
+                → Cadastre uma função primeiro
+              </button>
+            )}
+          </Field>
+
+          {/* Tipo de contrato — value sempre tem default 'clt', nunca vazio */}
+          <Field label="Tipo de contrato *">
+            <Select
+              value={form.tipo_contrato || 'clt'}
+              onValueChange={v => onSet('tipo_contrato', v)}
+            >
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="clt">CLT</SelectItem>
+                <SelectItem value="autonomo">Autônomo / PJ</SelectItem>
+                <SelectItem value="temporario">Temporário</SelectItem>
+                <SelectItem value="aprendiz">Aprendiz</SelectItem>
+                <SelectItem value="estagiario">Estagiário</SelectItem>
+              </SelectContent>
+            </Select>
+          </Field>
+
+          {/* Card de valor/hora — computed acima, sem IIFE */}
+          {valorHoraTabelado !== null ? (
+            <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
+              <div style={{
+                padding: '10px 14px', borderRadius: 8,
+                background: isPJ ? 'rgba(249,115,22,0.08)' : 'rgba(59,130,246,0.08)',
+                border: `1px solid ${isPJ ? 'rgba(249,115,22,0.25)' : 'rgba(59,130,246,0.25)'}`,
+              }}>
+                <div style={{ fontSize: 10, color: 'var(--muted-foreground)', marginBottom: 4 }}>
+                  Valor/hora tabelado ({isPJ ? 'Autônomo' : 'CLT'})
+                </div>
+                <div style={{ fontSize: 20, fontWeight: 800, color: isPJ ? '#ea580c' : '#2563eb' }}>
+                  {formatCurrency(valorHoraTabelado)}
+                  <span style={{ fontSize: 12, fontWeight: 400, color: 'var(--muted-foreground)' }}>/h</span>
+                </div>
+                <div style={{ fontSize: 10, color: 'var(--muted-foreground)', marginTop: 2 }}>
+                  ≈ {formatCurrency(valorHoraTabelado * 220)}/mês (220h)
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div /> /* placeholder para manter o grid 2 colunas */
+          )}
+
+          {/* Obra — sem SelectItem com value="" */}
+          <Field label="Obra" span={2}>
+            <Select
+              value={form.obra_id || undefined}
+              onValueChange={v => onSet('obra_id', v)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="— Sem obra vinculada —" />
+              </SelectTrigger>
+              <SelectContent>
+                {obras.map(o => (
+                  <SelectItem key={o.id} value={o.id}>{o.nome}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+
+          <Field label="Data de admissão">
+            <Input
+              type="date"
+              value={form.data_admissao}
+              onChange={e => onSet('data_admissao', e.target.value)}
+            />
+          </Field>
+
+        </Grid>
+      </Sec>
+
+      {/* ── CTPS ──────────────────────────────────────────────────────── */}
+      <Sec title="CTPS">
+        <Grid cols={2}>
+          <Field label="Nº CTPS">
+            <Input value={form.ctps_numero} onChange={e => onSet('ctps_numero', e.target.value)} placeholder="000000" />
+          </Field>
+          <Field label="Série CTPS">
+            <Input value={form.ctps_serie} onChange={e => onSet('ctps_serie', e.target.value)} placeholder="000" />
+          </Field>
+        </Grid>
+      </Sec>
+
     </div>
   )
 }
