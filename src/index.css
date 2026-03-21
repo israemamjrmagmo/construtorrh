@@ -1,0 +1,209 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap");
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+==========================================================================
+【AI HANDOVER NOTE】
+1. DESIGN PHILOSOPHY:
+   - Professional Enterprise Dashboard: Sistema corporativo brasileiro para gestão de RH na construção civil
+   - Neo-minimalism with Information Density: Interface limpa mas rica em dados, inspirada em Gupy e Totvs RH
+   - Bento/Modular surfaces: Cards organizados com métricas numéricas, tabelas paginadas, formulários modais
+   - Trustworthy & Compliant: Visual profissional que transmite confiabilidade para gestão trabalhista e conformidade legal
+
+2. TYPOGRAPHY:
+   - Sans (Inter): Escolhida por sua legibilidade excepcional em dashboards densos, suporte completo a português (acentos), e aparência profissional neutra ideal para sistemas corporativos brasileiros. Peso 400 para corpo, 500-600 para labels, 700 para títulos de seção.
+   - Mono (JetBrains Mono): Para exibição de CPF, PIS, CTPS, chapa de colaborador, códigos de obra, e dados tabulares que exigem alinhamento preciso. Essencial para números de documentos brasileiros.
+
+3. COLOR SYSTEM:
+   - Brand Primary (Azul Corporativo): Hue 220° - azul-escuro profissional (#1e3a5f inspirado) mapeado para --primary, usado na sidebar fixa e elementos de navegação principal. Transmite confiança, estabilidade e seriedade necessárias para gestão de RH.
+   - Accent (Laranja Construção): Hue 25° (#f97316 inspirado) - cor característica do setor de construção civil, usada para CTAs, badges de status ativo, e destaques de ações importantes. Energia e ação.
+   - Semantic Colors: Success (verde) para conformidade/aprovações, Warning (amarelo-laranja) para pendências/vencimentos de documentos, Destructive (vermelho) para acidentes de trabalho e não-conformidades críticas.
+   - Sidebar: Azul escuro saturado (--sidebar) com foreground claro, criando contraste forte para navegação sempre visível.
+
+4. USAGE GUIDE:
+   - Layout: Dashboard full-width com sidebar fixa à esquerda (260px), área de conteúdo com padding generoso para cards de métricas no topo, seguido de tabelas e listas.
+   - Cards: Fundo branco (--card) com border sutil, sombra leve, contendo indicadores numéricos grandes (colaboradores ativos, obras em andamento, EPIs a vencer).
+   - Tables: Usar --muted para linhas alternadas (zebra striping), --border para divisores, hover state com --accent/10 para feedback.
+   - Forms: Modais com backdrop blur leve, inputs com --input border, focus ring em --ring (laranja accent).
+   - Status badges: Usar --success para "Ativo/Conforme", --warning para "Pendente/A Vencer", --destructive para "Inativo/Vencido".
+   - Densidade: Espaçamento compacto mas respirável (gap-4 para cards, gap-2 para form fields), permitindo visualização de muitos dados sem scroll excessivo.
+   - Acessibilidade: Garantir contraste WCAG AA em todos os textos sobre fundos coloridos, especialmente na sidebar azul escura.
+==========================================================================
+*/
+
+:root {
+  /* Typography */
+  --font-sans: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: JetBrains Mono, 'Courier New', monospace;
+  
+  /* Radius */
+  --radius: 0.5rem;
+
+  /* Core UI Tokens */
+  --background: oklch(0.99 0.002 220);
+  --foreground: oklch(0.15 0.01 220);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.15 0.01 220);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.15 0.01 220);
+  --primary: oklch(0.32 0.08 220);
+  --primary-foreground: oklch(0.98 0.005 220);
+  --secondary: oklch(0.94 0.01 220);
+  --secondary-foreground: oklch(0.2 0.015 220);
+  --muted: oklch(0.96 0.005 220);
+  --muted-foreground: oklch(0.48 0.01 220);
+  --accent: oklch(0.62 0.18 25);
+  --accent-foreground: oklch(0.99 0.005 25);
+  --destructive: oklch(0.55 0.22 15);
+  --destructive-foreground: oklch(0.99 0.005 15);
+  --border: oklch(0.89 0.005 220);
+  --input: oklch(0.89 0.005 220);
+  --ring: oklch(0.62 0.18 25);
+  
+  /* Chart Tokens */
+  --chart-1: oklch(0.62 0.18 25);
+  --chart-2: oklch(0.32 0.08 220);
+  --chart-3: oklch(0.55 0.18 150);
+  --chart-4: oklch(0.65 0.16 45);
+  --chart-5: oklch(0.48 0.12 280);
+  
+  /* Sidebar Tokens */
+  --sidebar: oklch(0.28 0.09 220);
+  --sidebar-foreground: oklch(0.95 0.01 220);
+  --sidebar-primary: oklch(0.62 0.18 25);
+  --sidebar-primary-foreground: oklch(0.99 0.005 25);
+  --sidebar-accent: oklch(0.38 0.1 220);
+  --sidebar-accent-foreground: oklch(0.98 0.005 220);
+  --sidebar-border: oklch(0.35 0.08 220);
+  --sidebar-ring: oklch(0.62 0.18 25);
+}
+
+.dark {
+  --background: oklch(0.12 0.015 220);
+  --foreground: oklch(0.92 0.01 220);
+  --card: oklch(0.16 0.018 220);
+  --card-foreground: oklch(0.92 0.01 220);
+  --popover: oklch(0.14 0.016 220);
+  --popover-foreground: oklch(0.92 0.01 220);
+  --primary: oklch(0.48 0.12 220);
+  --primary-foreground: oklch(0.98 0.005 220);
+  --secondary: oklch(0.22 0.02 220);
+  --secondary-foreground: oklch(0.88 0.01 220);
+  --muted: oklch(0.2 0.018 220);
+  --muted-foreground: oklch(0.58 0.012 220);
+  --accent: oklch(0.68 0.2 25);
+  --accent-foreground: oklch(0.12 0.015 25);
+  --destructive: oklch(0.62 0.24 15);
+  --destructive-foreground: oklch(0.98 0.005 15);
+  --border: oklch(0.26 0.02 220);
+  --input: oklch(0.26 0.02 220);
+  --ring: oklch(0.68 0.2 25);
+  
+  /* Chart Tokens */
+  --chart-1: oklch(0.68 0.2 25);
+  --chart-2: oklch(0.58 0.14 220);
+  --chart-3: oklch(0.62 0.2 150);
+  --chart-4: oklch(0.72 0.18 45);
+  --chart-5: oklch(0.62 0.16 280);
+  
+  /* Sidebar Tokens */
+  --sidebar: oklch(0.18 0.02 220);
+  --sidebar-foreground: oklch(0.9 0.012 220);
+  --sidebar-primary: oklch(0.68 0.2 25);
+  --sidebar-primary-foreground: oklch(0.12 0.015 25);
+  --sidebar-accent: oklch(0.28 0.025 220);
+  --sidebar-accent-foreground: oklch(0.95 0.01 220);
+  --sidebar-border: oklch(0.24 0.022 220);
+  --sidebar-ring: oklch(0.68 0.2 25);
+}
+
+@theme inline {
+  /* Shadcn Core Mapping */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* Charts Mapping */
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  /* Sidebar Mapping */
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /* Typography */
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+
+  /* Radius */
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  html {
+    @apply scroll-smooth antialiased;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans min-h-screen;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-semibold tracking-tight;
+  }
+
+  code, pre {
+    @apply font-mono;
+  }
+
+  ::selection {
+    @apply bg-primary/20 text-primary;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-muted-foreground/20 rounded-full hover:bg-muted-foreground/40;
+  }
+}
