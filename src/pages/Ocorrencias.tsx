@@ -77,16 +77,16 @@ type Atestado = {
   data_inicio: string
   data_fim: string | null
   dias_afastamento: number | null
-  tipo_afastamento: string
+  tipo_afastamento: string | null
   cid: string | null
   medico: string | null
   crm: string | null
   acidente_id: string | null
   data_retorno: string | null
   observacoes: string | null
-  status: string
+  status: string | null
   colaboradores: { id: string; nome: string; chapa: string } | null
-  acidentes: { id: string; data_ocorrencia: string; tipo_acidente: string } | null
+  acidentes?: { id: string; data_ocorrencia: string; tipo_acidente: string | null } | null
 }
 
 type Acidente = {
@@ -307,7 +307,7 @@ export default function Ocorrencias() {
     setLoadingAtestados(true)
     const { data, error } = await supabase
       .from('atestados')
-      .select('*, colaboradores(id, nome, chapa), acidentes(id, data_ocorrencia, tipo_acidente)')
+      .select('*, colaboradores(id, nome, chapa)')
       .order('data_inicio', { ascending: false })
     if (error) {
       toast.error('Erro ao carregar atestados')
@@ -418,9 +418,7 @@ export default function Ocorrencias() {
       medico: atestadoForm.medico || null,
       crm: atestadoForm.crm || null,
       acidente_id: atestadoForm.acidente_id || null,
-      data_retorno: atestadoForm.data_retorno || null,
       observacoes: atestadoForm.observacoes || null,
-      status: atestadoForm.status || 'ativo',
     }
 
     let error: unknown
