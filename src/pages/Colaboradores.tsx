@@ -39,6 +39,20 @@ type HistoricoChapa = {
   funcoes?: { nome: string; sigla: string | null }
 }
 
+interface VtTrecho {
+  id: string
+  nome_linha: string
+  tipo_veiculo: string
+  valor: string
+  tem_integracao: boolean
+}
+
+function novoTrecho(): VtTrecho {
+  return { id: crypto.randomUUID(), nome_linha: '', tipo_veiculo: 'onibus', valor: '', tem_integracao: false }
+}
+
+type VtModalidade = 'nenhum' | 'gasolina' | 'transporte' | 'misto'
+
 type FormData = {
   nome: string; chapa: string; cpf: string; rg: string; pis_nit: string
   data_nascimento: string; genero: string; estado_civil: string
@@ -46,8 +60,14 @@ type FormData = {
   estado: string; cep: string; funcao_id: string; obra_id: string
   tipo_contrato: string; data_admissao: string
   ctps_numero: string; ctps_serie: string
-  banco: string; agencia: string; conta: string; tipo_conta: string; pix_chave: string
-  vale_transporte: boolean; vt_tipo: string; vt_trechos_ida: string; vt_trechos_volta: string
+  // Bancário
+  banco: string; agencia: string; conta: string; tipo_conta: string
+  pix_tipo: string; pix_chave: string
+  // VT
+  vt_modalidade: VtModalidade
+  vt_gasolina_valor_dia: string
+  vt_trechos_ida: VtTrecho[]
+  vt_trechos_volta: VtTrecho[]
   status: string; observacoes: string
 }
 
@@ -56,16 +76,19 @@ const EMPTY: FormData = {
   genero: '', estado_civil: '', telefone: '', email: '', endereco: '',
   cidade: '', estado: '', cep: '', funcao_id: '', obra_id: '',
   tipo_contrato: 'clt', data_admissao: '', ctps_numero: '', ctps_serie: '',
-  banco: '', agencia: '', conta: '', tipo_conta: '', pix_chave: '',
-  vale_transporte: false, vt_tipo: '', vt_trechos_ida: '1', vt_trechos_volta: '1',
+  banco: '', agencia: '', conta: '', tipo_conta: '',
+  pix_tipo: '', pix_chave: '',
+  vt_modalidade: 'nenhum', vt_gasolina_valor_dia: '',
+  vt_trechos_ida: [], vt_trechos_volta: [],
   status: 'ativo', observacoes: '',
 }
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
-async function gerarChapa(sigla: string): Promise<string> {
-  const now = new Date()
-  const yy = String(now.getFullYear()).slice(2)
-  const mm = String(now.getMonth() + 1).padStart(2, '0')
+async function gerarChapa(sigla: string, dataAdmissao?: string): Promise<string> {
+  // Usa a data de admissão do colaborador; fallback para hoje
+  const base = dataAdmissao ? new Date(dataAdmissao + 'T12:00:00') : new Date()
+  const yy = String(base.getFullYear()).slice(-2)
+  const mm = String(base.getMonth() + 1).padStart(2, '0')
   const prefix = `${sigla.toUpperCase()}${yy}${mm}-`
 
   // Busca chapas existentes no prefix (ativas + históricas)
@@ -399,7 +422,7 @@ export default function Colaboradores() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editId, setEditId]       = useState<string | null>(null)
   const [form, setForm]           = useState<FormData>(EMPTY)
-  const [section, setSection]     = useState<'pessoal' | 'funcao' | 'bancario'>('pessoal')
+  const [section, setSection]     = useState<'pessoal' | 'funcao' | 'bancario' | 'vt'>('pessoal')
   const [saving, setSaving]       = useState(false)
 
   // chapa
@@ -448,6 +471,22 @@ export default function Colaboradores() {
   // ── helpers form ──────────────────────────────────────────────────────────
   const set = (k: keyof FormData, v: string | boolean) => setForm(p => ({ ...p, [k]: v }))
 
+  // Quando a data de admissão muda e já tem função selecionada → regenera chapa
+  const handleDataAdmissao = async (data: string) => {
+    if (!editId && form.funcao_id && data) {
+      const fn = funcoes.find(f => f.id === form.funcao_id)
+      if (fn?.sigla) {
+        setGerando(true)
+        const nova = await gerarChapa(fn.sigla, data)
+        setChapaGerada(nova)
+        setForm(p => ({ ...p, data_admissao: data, chapa: nova }))
+        setGerando(false)
+        return
+      }
+    }
+    set('data_admissao', data)
+  }
+
   const handleFuncaoChange = async (funcaoId: string) => {
     const fn = funcoes.find(f => f.id === funcaoId)
     if (!fn) { set('funcao_id', ''); return }
@@ -468,7 +507,7 @@ export default function Colaboradores() {
     } else if (!estaEditando && fn.sigla) {
       // Criar: gera chapa automaticamente
       setGerando(true)
-      const nova = await gerarChapa(fn.sigla)
+      const nova = await gerarChapa(fn.sigla, form.data_admissao || undefined)
       setChapaGerada(nova)
       setForm(p => ({ ...p, funcao_id: funcaoId, chapa: nova }))
       setGerando(false)
@@ -507,10 +546,16 @@ export default function Colaboradores() {
       tipo_contrato: c.tipo_contrato ?? 'clt', data_admissao: c.data_admissao ?? '',
       ctps_numero: c.ctps_numero ?? '', ctps_serie: c.ctps_serie ?? '',
       banco: c.banco ?? '', agencia: c.agencia ?? '', conta: c.conta ?? '',
-      tipo_conta: c.tipo_conta ?? '', pix_chave: c.pix_chave ?? '',
-      vale_transporte: c.vale_transporte ?? false,
-      vt_tipo: c.vt_tipo ?? '', vt_trechos_ida: String(c.vt_trechos_ida ?? 1),
-      vt_trechos_volta: String(c.vt_trechos_volta ?? 1),
+      tipo_conta: c.tipo_conta ?? '', pix_tipo: (c as any).pix_tipo ?? '', pix_chave: c.pix_chave ?? '',
+      vt_modalidade: (() => {
+        const vd = (c as any).vt_dados as any
+        if (!c.vale_transporte) return 'nenhum'
+        if (vd?.modalidade) return vd.modalidade
+        return 'transporte'
+      })() as VtModalidade,
+      vt_gasolina_valor_dia: String((c as any).vt_dados?.gasolina_valor_dia ?? ''),
+      vt_trechos_ida: ((c as any).vt_dados?.trechos_ida ?? []) as VtTrecho[],
+      vt_trechos_volta: ((c as any).vt_dados?.trechos_volta ?? []) as VtTrecho[],
       status: c.status ?? 'ativo', observacoes: c.observacoes ?? '',
     })
     setModalOpen(true)
@@ -559,12 +604,20 @@ export default function Colaboradores() {
       conta: form.conta || null,
       tipo_conta: form.tipo_conta || null,
       pix_chave: form.pix_chave || null,
-      vale_transporte: form.vale_transporte,
-      vt_tipo: form.vt_tipo || null,
-      vt_trechos_ida: form.vt_trechos_ida ? parseInt(form.vt_trechos_ida) : null,
-      vt_trechos_volta: form.vt_trechos_volta ? parseInt(form.vt_trechos_volta) : null,
+      vale_transporte: form.vt_modalidade !== 'nenhum',
       status: form.status as Colaborador['status'],
       observacoes: form.observacoes || null,
+    }
+    // Campos JSONB/extras via cast (não tipados na interface Colaborador)
+    const payloadFull: any = {
+      ...payload,
+      pix_tipo: form.pix_tipo || null,
+      vt_dados: form.vt_modalidade === 'nenhum' ? null : {
+        modalidade: form.vt_modalidade,
+        gasolina_valor_dia: form.vt_gasolina_valor_dia ? parseFloat(form.vt_gasolina_valor_dia) : null,
+        trechos_ida: form.vt_trechos_ida,
+        trechos_volta: form.vt_trechos_volta,
+      },
     }
 
     // Se mudou função → registra histórico ANTES de atualizar
@@ -581,8 +634,8 @@ export default function Colaboradores() {
     }
 
     const { error } = editId
-      ? await supabase.from('colaboradores').update(payload).eq('id', editId)
-      : await supabase.from('colaboradores').insert(payload)
+      ? await supabase.from('colaboradores').update(payloadFull).eq('id', editId)
+      : await supabase.from('colaboradores').insert(payloadFull)
 
     setSaving(false)
     if (error) { toast.error(error.message); return }
@@ -720,8 +773,8 @@ export default function Colaboradores() {
 
           {/* abas do modal */}
           <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--border)', margin: '12px 24px 0', flexShrink: 0 }}>
-            {(['pessoal', 'funcao', 'bancario'] as const).map(s => {
-              const labels: Record<string, string> = { pessoal: 'Dados Pessoais', funcao: 'Função & Contrato', bancario: 'Bancário / VT' }
+            {(['pessoal', 'funcao', 'bancario', 'vt'] as const).map(s => {
+              const labels: Record<string, string> = { pessoal: 'Dados Pessoais', funcao: 'Função & Contrato', bancario: 'Dados Bancários', vt: 'Vale Transporte' }
               return (
                 <button key={s} onClick={() => setSection(s)} style={{
                   padding: '8px 16px', fontSize: 13, fontWeight: 500, border: 'none', background: 'none', cursor: 'pointer',
@@ -841,26 +894,21 @@ export default function Colaboradores() {
                 setMotivoTroca={setMotivoTroca}
                 onFuncaoChange={handleFuncaoChange}
                 onSet={set}
+                onDataAdmissao={handleDataAdmissao}
                 onGotoFuncoes={() => { setModalOpen(false); setPageTab('funcoes') }}
               />
             )}
 
-            {/* ── SEÇÃO BANCÁRIO / VT ────────────────────────────────────── */}
+            {/* ── SEÇÃO DADOS BANCÁRIOS ─────────────────────────────────── */}
             {section === 'bancario' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                <Sec title="Dados Bancários">
+                <Sec title="Conta Bancária">
                   <Grid cols={2}>
                     <Field label="Banco">
-                      <Input value={form.banco} onChange={e => set('banco', e.target.value)} placeholder="Banco do Brasil" />
-                    </Field>
-                    <Field label="Agência">
-                      <Input value={form.agencia} onChange={e => set('agencia', maskAgencia(e.target.value))} placeholder="0000-0" inputMode="numeric" style={{ fontFamily: 'monospace' }} />
-                    </Field>
-                    <Field label="Conta">
-                      <Input value={form.conta} onChange={e => set('conta', maskConta(e.target.value))} placeholder="00000000-0" inputMode="numeric" style={{ fontFamily: 'monospace' }} />
+                      <Input value={form.banco} onChange={e => set('banco', e.target.value)} placeholder="Ex.: Banco do Brasil, Caixa, Nubank…" />
                     </Field>
                     <Field label="Tipo de conta">
-                      <Select value={form.tipo_conta} onValueChange={v => set('tipo_conta', v)}>
+                      <Select value={form.tipo_conta || undefined} onValueChange={v => set('tipo_conta', v)}>
                         <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="corrente">Corrente</SelectItem>
@@ -869,42 +917,73 @@ export default function Colaboradores() {
                         </SelectContent>
                       </Select>
                     </Field>
-                    <Field label="Chave PIX" span={2}>
-                      <Input value={form.pix_chave} onChange={e => set('pix_chave', e.target.value)} placeholder="CPF, e-mail, telefone ou chave aleatória" />
+                    <Field label="Agência">
+                      <Input value={form.agencia} onChange={e => set('agencia', maskAgencia(e.target.value))} placeholder="0000-0" inputMode="numeric" style={{ fontFamily: 'monospace' }} />
+                    </Field>
+                    <Field label="Conta">
+                      <Input value={form.conta} onChange={e => set('conta', maskConta(e.target.value))} placeholder="00000000-0" inputMode="numeric" style={{ fontFamily: 'monospace' }} />
                     </Field>
                   </Grid>
                 </Sec>
 
-                <Sec title="Vale Transporte">
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-                    <button type="button" onClick={() => set('vale_transporte', !form.vale_transporte)}
-                      style={{ position: 'relative', display: 'inline-flex', width: 44, height: 24, borderRadius: 12, border: 'none', cursor: 'pointer', background: form.vale_transporte ? 'var(--primary)' : 'rgba(0,0,0,0.15)', transition: 'background 150ms', flexShrink: 0 }}>
-                      <span style={{ position: 'absolute', top: 3, left: form.vale_transporte ? 22 : 3, width: 18, height: 18, borderRadius: '50%', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.2)', transition: 'left 150ms' }} />
-                    </button>
-                    <span style={{ fontSize: 13 }}>{form.vale_transporte ? 'Recebe Vale Transporte' : 'Não recebe Vale Transporte'}</span>
+                <Sec title="Chave PIX">
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {/* Botões de tipo PIX */}
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      {[
+                        { v: 'cpf',            label: '🪪 CPF',           hint: 'Usa o CPF do colaborador' },
+                        { v: 'telefone',        label: '📱 Celular',       hint: 'Usa o telefone do colaborador' },
+                        { v: 'email',           label: '✉️ E-mail',        hint: 'Usa o e-mail do colaborador' },
+                        { v: 'chave_aleatoria', label: '🔑 Chave aleatória', hint: 'Inserir manualmente' },
+                      ].map(t => (
+                        <button key={t.v} type="button"
+                          title={t.hint}
+                          onClick={() => {
+                            let chave = ''
+                            if (t.v === 'cpf')      chave = form.cpf
+                            if (t.v === 'telefone') chave = form.telefone
+                            if (t.v === 'email')    chave = form.email
+                            setForm(p => ({ ...p, pix_tipo: t.v, pix_chave: chave }))
+                          }}
+                          style={{
+                            padding: '6px 14px', borderRadius: 20, fontSize: 12, fontWeight: 500, cursor: 'pointer',
+                            border: `1px solid ${form.pix_tipo === t.v ? 'var(--primary)' : 'var(--border)'}`,
+                            background: form.pix_tipo === t.v ? 'rgba(var(--primary-rgb),0.08)' : 'transparent',
+                            color: form.pix_tipo === t.v ? 'var(--primary)' : 'var(--foreground)',
+                          }}>
+                          {t.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {form.pix_tipo && (
+                      <div>
+                        <Input
+                          value={form.pix_chave}
+                          onChange={e => setForm(p => ({ ...p, pix_chave: e.target.value }))}
+                          placeholder={
+                            form.pix_tipo === 'cpf' ? '000.000.000-00' :
+                            form.pix_tipo === 'telefone' ? '(00) 00000-0000' :
+                            form.pix_tipo === 'email' ? 'email@exemplo.com' : 'Cole a chave aleatória aqui'
+                          }
+                          readOnly={form.pix_tipo !== 'chave_aleatoria'}
+                          style={{ fontFamily: 'monospace', background: form.pix_tipo !== 'chave_aleatoria' ? 'var(--muted)' : undefined }}
+                        />
+                        {form.pix_tipo !== 'chave_aleatoria' && (
+                          <div style={{ fontSize: 10, color: 'var(--muted-foreground)', marginTop: 4 }}>
+                            🔒 Preenchido automaticamente com os dados do colaborador
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
-                  {form.vale_transporte && (
-                    <Grid cols={2}>
-                      <Field label="Tipo de VT">
-                        <Select value={form.vt_tipo} onValueChange={v => set('vt_tipo', v)}>
-                          <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="cartao">Cartão</SelectItem>
-                            <SelectItem value="bilhete_unico">Bilhete Único</SelectItem>
-                            <SelectItem value="dinheiro">Dinheiro</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </Field>
-                      <Field label="Trechos ida">
-                        <Input type="number" min="0" max="10" value={form.vt_trechos_ida} onChange={e => set('vt_trechos_ida', e.target.value)} />
-                      </Field>
-                      <Field label="Trechos volta">
-                        <Input type="number" min="0" max="10" value={form.vt_trechos_volta} onChange={e => set('vt_trechos_volta', e.target.value)} />
-                      </Field>
-                    </Grid>
-                  )}
                 </Sec>
               </div>
+            )}
+
+            {/* ── SEÇÃO VALE TRANSPORTE ─────────────────────────────────── */}
+            {section === 'vt' && (
+              <VTSection form={form} setForm={setForm} />
             )}
           </div>
 
@@ -987,6 +1066,258 @@ export default function Colaboradores() {
   )
 }
 
+
+// ─── VTSection — Vale Transporte ─────────────────────────────────────────────
+interface VTSectionProps {
+  form: FormData
+  setForm: React.Dispatch<React.SetStateAction<FormData>>
+}
+
+const VEICULOS = [
+  { v: 'onibus',  label: '🚌 Ônibus' },
+  { v: 'metro',   label: '🚇 Metrô' },
+  { v: 'trem',    label: '🚆 Trem' },
+  { v: 'brt',     label: '🚍 BRT' },
+  { v: 'outro',   label: '🚐 Outro' },
+]
+
+function TrechoRow({
+  trecho, onChange, onRemove,
+}: {
+  trecho: VtTrecho
+  onChange: (t: VtTrecho) => void
+  onRemove: () => void
+}) {
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px 90px 48px 32px', gap: 8, alignItems: 'end' }}>
+      <Field label="Linha / Nome">
+        <Input
+          value={trecho.nome_linha}
+          onChange={e => onChange({ ...trecho, nome_linha: e.target.value })}
+          placeholder="Ex.: Linha 1 Verde, BRT Expresso…"
+        />
+      </Field>
+      <Field label="Veículo">
+        <Select value={trecho.tipo_veiculo} onValueChange={v => onChange({ ...trecho, tipo_veiculo: v })}>
+          <SelectTrigger style={{ fontSize: 12 }}><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {VEICULOS.map(v => <SelectItem key={v.v} value={v.v}>{v.label}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </Field>
+      <Field label="Valor">
+        <div style={{ position: 'relative' }}>
+          <span style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 11, color: 'var(--muted-foreground)' }}>R$</span>
+          <Input
+            type="number" step="0.01" min="0"
+            value={trecho.valor}
+            onChange={e => onChange({ ...trecho, valor: e.target.value })}
+            placeholder="0,00"
+            style={{ paddingLeft: 28 }}
+          />
+        </div>
+      </Field>
+      <Field label="Integ.">
+        <button type="button"
+          onClick={() => onChange({ ...trecho, tem_integracao: !trecho.tem_integracao })}
+          title={trecho.tem_integracao ? 'Com integração' : 'Sem integração'}
+          style={{
+            width: 42, height: 36, borderRadius: 6, border: `1px solid ${trecho.tem_integracao ? '#0891b2' : 'var(--border)'}`,
+            background: trecho.tem_integracao ? 'rgba(8,145,178,0.1)' : 'transparent',
+            cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+          {trecho.tem_integracao ? '🔗' : '—'}
+        </button>
+      </Field>
+      <div style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: 2 }}>
+        <button type="button" onClick={onRemove}
+          style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 4, border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--destructive)' }}>
+          <span style={{ fontSize: 16, lineHeight: 1 }}>×</span>
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function calcTotal(trechos: VtTrecho[]): number {
+  return trechos.reduce((s, t) => s + (parseFloat(t.valor) || 0), 0)
+}
+
+function VTSection({ form, setForm }: VTSectionProps) {
+  const mod = form.vt_modalidade
+
+  const setMod = (m: VtModalidade) => setForm(p => ({ ...p, vt_modalidade: m }))
+
+  const addTrecho = (dir: 'ida' | 'volta') =>
+    setForm(p => ({
+      ...p,
+      [dir === 'ida' ? 'vt_trechos_ida' : 'vt_trechos_volta']: [
+        ...(dir === 'ida' ? p.vt_trechos_ida : p.vt_trechos_volta),
+        novoTrecho(),
+      ],
+    }))
+
+  const updTrecho = (dir: 'ida' | 'volta', idx: number, t: VtTrecho) =>
+    setForm(p => {
+      const arr = dir === 'ida' ? [...p.vt_trechos_ida] : [...p.vt_trechos_volta]
+      arr[idx] = t
+      return { ...p, [dir === 'ida' ? 'vt_trechos_ida' : 'vt_trechos_volta']: arr }
+    })
+
+  const remTrecho = (dir: 'ida' | 'volta', idx: number) =>
+    setForm(p => {
+      const arr = (dir === 'ida' ? p.vt_trechos_ida : p.vt_trechos_volta).filter((_, i) => i !== idx)
+      return { ...p, [dir === 'ida' ? 'vt_trechos_ida' : 'vt_trechos_volta']: arr }
+    })
+
+  const totalIda    = calcTotal(form.vt_trechos_ida)
+  const totalVolta  = calcTotal(form.vt_trechos_volta)
+  const totalDiario = totalIda + totalVolta
+  const totalMensal = totalDiario * 22 // ~22 dias úteis
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+      {/* Seletor de modalidade */}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {([
+          { v: 'nenhum',     label: '🚫 Não recebe',             cor: '#6b7280' },
+          { v: 'gasolina',   label: '⛽ Aux. Gasolina',          cor: '#f59e0b' },
+          { v: 'transporte', label: '🚌 Transporte Público',     cor: '#3b82f6' },
+          { v: 'misto',      label: '⛽+🚌 Gasolina + Transporte', cor: '#8b5cf6' },
+        ] as { v: VtModalidade; label: string; cor: string }[]).map(opt => (
+          <button key={opt.v} type="button" onClick={() => setMod(opt.v)}
+            style={{
+              padding: '7px 14px', borderRadius: 20, fontSize: 12, fontWeight: 500, cursor: 'pointer',
+              border: `1px solid ${mod === opt.v ? opt.cor : 'var(--border)'}`,
+              background: mod === opt.v ? opt.cor + '18' : 'transparent',
+              color: mod === opt.v ? opt.cor : 'var(--foreground)',
+            }}>
+            {opt.label}
+          </button>
+        ))}
+      </div>
+
+      {/* GASOLINA */}
+      {(mod === 'gasolina' || mod === 'misto') && (
+        <Sec title="⛽ Auxílio Gasolina">
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <Field label="Valor por dia de trajeto (R$)">
+              <div style={{ position: 'relative' }}>
+                <span style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 11, color: 'var(--muted-foreground)' }}>R$</span>
+                <Input
+                  type="number" step="0.01" min="0"
+                  value={form.vt_gasolina_valor_dia}
+                  onChange={e => setForm(p => ({ ...p, vt_gasolina_valor_dia: e.target.value }))}
+                  placeholder="0,00"
+                  style={{ paddingLeft: 28 }}
+                />
+              </div>
+            </Field>
+            {form.vt_gasolina_valor_dia && (
+              <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', paddingBottom: 2 }}>
+                <div style={{ padding: '8px 12px', borderRadius: 6, background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)', fontSize: 12 }}>
+                  <span style={{ color: 'var(--muted-foreground)' }}>≈ Mensal (22 dias): </span>
+                  <strong style={{ color: '#d97706' }}>
+                    R$ {(parseFloat(form.vt_gasolina_valor_dia) * 22).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  </strong>
+                </div>
+              </div>
+            )}
+          </div>
+        </Sec>
+      )}
+
+      {/* TRANSPORTE PÚBLICO */}
+      {(mod === 'transporte' || mod === 'misto') && (
+        <>
+          {/* TRECHOS IDA */}
+          <Sec title="🟢 Trechos — Ida">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {form.vt_trechos_ida.length === 0 && (
+                <div style={{ fontSize: 12, color: 'var(--muted-foreground)', fontStyle: 'italic' }}>Nenhum trecho adicionado.</div>
+              )}
+              {form.vt_trechos_ida.map((t, i) => (
+                <TrechoRow key={t.id} trecho={t}
+                  onChange={nt => updTrecho('ida', i, nt)}
+                  onRemove={() => remTrecho('ida', i)} />
+              ))}
+              <button type="button" onClick={() => addTrecho('ida')}
+                style={{ alignSelf: 'flex-start', marginTop: 4, padding: '5px 12px', borderRadius: 6, border: '1px dashed var(--border)', background: 'transparent', cursor: 'pointer', fontSize: 12, color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                + Adicionar trecho de ida
+              </button>
+              {form.vt_trechos_ida.length > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8, borderTop: '1px solid var(--border)', paddingTop: 8, marginTop: 4 }}>
+                  <span style={{ fontSize: 12, color: 'var(--muted-foreground)' }}>Total ida:</span>
+                  <span style={{ fontWeight: 700, color: '#22c55e', fontSize: 14 }}>
+                    R$ {totalIda.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+              )}
+            </div>
+          </Sec>
+
+          {/* TRECHOS VOLTA */}
+          <Sec title="🔴 Trechos — Volta">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {form.vt_trechos_volta.length === 0 && (
+                <div style={{ fontSize: 12, color: 'var(--muted-foreground)', fontStyle: 'italic' }}>Nenhum trecho adicionado.</div>
+              )}
+              {form.vt_trechos_volta.map((t, i) => (
+                <TrechoRow key={t.id} trecho={t}
+                  onChange={nt => updTrecho('volta', i, nt)}
+                  onRemove={() => remTrecho('volta', i)} />
+              ))}
+              <button type="button" onClick={() => addTrecho('volta')}
+                style={{ alignSelf: 'flex-start', marginTop: 4, padding: '5px 12px', borderRadius: 6, border: '1px dashed var(--border)', background: 'transparent', cursor: 'pointer', fontSize: 12, color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                + Adicionar trecho de volta
+              </button>
+              {form.vt_trechos_volta.length > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8, borderTop: '1px solid var(--border)', paddingTop: 8, marginTop: 4 }}>
+                  <span style={{ fontSize: 12, color: 'var(--muted-foreground)' }}>Total volta:</span>
+                  <span style={{ fontWeight: 700, color: '#f87171', fontSize: 14 }}>
+                    R$ {totalVolta.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+              )}
+            </div>
+          </Sec>
+        </>
+      )}
+
+      {/* RESUMO TOTAL */}
+      {(mod === 'transporte' || mod === 'misto') && (form.vt_trechos_ida.length > 0 || form.vt_trechos_volta.length > 0) && (
+        <div style={{ borderRadius: 8, border: '1px solid var(--border)', background: 'var(--muted)', padding: '12px 16px' }}>
+          <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--muted-foreground)', marginBottom: 10 }}>
+            Resumo de custos (transporte)
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+            {[
+              { label: 'Total Ida', value: totalIda, cor: '#22c55e' },
+              { label: 'Total Volta', value: totalVolta, cor: '#f87171' },
+              { label: 'Total Diário', value: totalDiario, cor: 'var(--foreground)' },
+            ].map(item => (
+              <div key={item.label} style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: 10, color: 'var(--muted-foreground)', marginBottom: 4 }}>{item.label}</div>
+                <div style={{ fontWeight: 700, fontSize: 16, color: item.cor }}>
+                  R$ {item.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div style={{ borderTop: '1px solid var(--border)', marginTop: 12, paddingTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: 12, color: 'var(--muted-foreground)' }}>Total mensal estimado (22 dias úteis):</span>
+            <span style={{ fontWeight: 800, fontSize: 18, color: 'var(--primary)' }}>
+              R$ {totalMensal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+            </span>
+          </div>
+        </div>
+      )}
+
+    </div>
+  )
+}
+
 // ─── FuncaoSection — componente isolado para evitar crashes de render ─────────
 interface FuncaoSectionProps {
   form: FormData
@@ -1001,13 +1332,14 @@ interface FuncaoSectionProps {
   setMotivoTroca: (v: string) => void
   onFuncaoChange: (id: string) => void
   onSet: (k: keyof FormData, v: string | boolean) => void
+  onDataAdmissao: (data: string) => void
   onGotoFuncoes: () => void
 }
 
 function FuncaoSection({
   form, funcoes, obras, editId, funcaoOriginal, chapaOriginal,
   gerando, trocandoFuncao, motivoTroca, setMotivoTroca,
-  onFuncaoChange, onSet, onGotoFuncoes,
+  onFuncaoChange, onSet, onDataAdmissao, onGotoFuncoes,
 }: FuncaoSectionProps) {
   // Calcula valor/hora fora do JSX — sem IIFE, sem risco de crash
   const funcaoSelecionada = funcoes.find(f => f.id === form.funcao_id) ?? null
@@ -1199,7 +1531,7 @@ function FuncaoSection({
             <Input
               type="date"
               value={form.data_admissao}
-              onChange={e => onSet('data_admissao', e.target.value)}
+              onChange={e => onDataAdmissao(e.target.value)}
             />
           </Field>
 
