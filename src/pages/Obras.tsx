@@ -19,8 +19,11 @@ import {
 } from '@/components/ui/select'
 import {
   Building2, Plus, Search, Pencil, Trash2, MapPin, User2,
-  Calendar, Users, X,
+  Calendar, Users, X, ChevronRight,
 } from 'lucide-react'
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from '@/components/ui/table'
 
 // ─── tipos ────────────────────────────────────────────────────────────────────
 type ObraWithCount = Obra & { colaboradores_count?: number }
@@ -43,6 +46,14 @@ const STATUS_BORDER: Record<string, string> = {
   concluida:    'border-l-emerald-500',
   pausada:      'border-l-yellow-500',
   cancelada:    'border-l-red-500',
+}
+
+const STATUS_BORDER_COLOR: Record<string, string> = {
+  planejamento: '#94a3b8',
+  em_andamento: '#3b82f6',
+  concluida: '#22c55e',
+  pausada: '#f59e0b',
+  cancelada: '#ef4444',
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -220,80 +231,98 @@ export default function Obras() {
         </Select>
       </div>
 
-      {/* Grid de cards */}
+      {/* Tabela de obras */}
       {loading ? (
-        <LoadingSkeleton rows={4} />
+        <LoadingSkeleton rows={6} />
       ) : filtered.length === 0 ? (
         <EmptyState icon={<Building2 size={32} />} title="Nenhuma obra encontrada" description="Cadastre a primeira obra ou ajuste os filtros." />
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-          {filtered.map(o => (
-            <div
-              key={o.id}
-              className={cn(
-                'bg-card rounded-lg border border-border border-l-4 p-5 flex flex-col gap-3 hover:shadow-md transition-shadow',
-                STATUS_BORDER[o.status] ?? 'border-l-border',
-              )}
-            >
-              {/* cabeçalho do card */}
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-semibold text-foreground truncate">{o.nome}</h3>
-                  {o.codigo && (
-                    <p className="text-xs text-muted-foreground font-mono mt-0.5">#{o.codigo}</p>
-                  )}
-                </div>
-                <BadgeStatus status={o.status} />
-              </div>
-
-              {/* infos */}
-              <div className="space-y-1.5 text-sm text-muted-foreground">
-                {o.cliente && (
-                  <div className="flex items-center gap-1.5">
-                    <Building2 size={13} className="shrink-0" />
-                    <span className="truncate">{o.cliente}</span>
-                  </div>
-                )}
-                {o.responsavel && (
-                  <div className="flex items-center gap-1.5">
-                    <User2 size={13} className="shrink-0" />
-                    <span className="truncate">{o.responsavel}</span>
-                  </div>
-                )}
-                {(o.cidade || o.estado) && (
-                  <div className="flex items-center gap-1.5">
-                    <MapPin size={13} className="shrink-0" />
-                    <span className="truncate">{[o.cidade, o.estado].filter(Boolean).join(' — ')}</span>
-                  </div>
-                )}
-                {(o.data_inicio || o.data_previsao_fim) && (
-                  <div className="flex items-center gap-1.5">
-                    <Calendar size={13} className="shrink-0" />
-                    <span>
-                      {formatDate(o.data_inicio)}
-                      {o.data_previsao_fim && ` → ${formatDate(o.data_previsao_fim)}`}
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              {/* rodapé */}
-              <div className="flex items-center justify-between pt-2 border-t border-border mt-auto">
-                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <Users size={13} />
-                  <span>{o.colaboradores_count ?? 0} colaborador{(o.colaboradores_count ?? 0) !== 1 ? 'es' : ''}</span>
-                </div>
-                <div className="flex gap-1">
-                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(o)}>
-                    <Pencil size={13} />
-                  </Button>
-                  <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => setDeleteId(o.id)}>
-                    <Trash2 size={13} />
-                  </Button>
-                </div>
-              </div>
-            </div>
-          ))}
+        <div style={{ borderRadius: 8, border: '1px solid var(--border)', overflow: 'hidden' }}>
+          <Table>
+            <TableHeader>
+              <TableRow style={{ background: 'var(--muted)' }}>
+                <TableHead style={{ fontWeight: 700, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Obra</TableHead>
+                <TableHead style={{ fontWeight: 700, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Cliente / Responsável</TableHead>
+                <TableHead style={{ fontWeight: 700, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Localização</TableHead>
+                <TableHead style={{ fontWeight: 700, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Período</TableHead>
+                <TableHead style={{ fontWeight: 700, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'center' }}>Colaboradores</TableHead>
+                <TableHead style={{ fontWeight: 700, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'center' }}>Status</TableHead>
+                <TableHead style={{ width: 80 }} />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filtered.map(o => (
+                <TableRow key={o.id} style={{ cursor: 'default' }} className="hover:bg-muted/40">
+                  {/* Obra */}
+                  <TableCell style={{ paddingTop: 12, paddingBottom: 12 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div style={{
+                        width: 4, height: 36, borderRadius: 2, flexShrink: 0,
+                        background: STATUS_BORDER_COLOR[o.status] ?? '#e2e8f0',
+                      }} />
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: 14 }}>{o.nome}</div>
+                        {o.codigo && (
+                          <div style={{ fontSize: 11, fontFamily: 'monospace', color: 'var(--muted-foreground)', marginTop: 2 }}>#{o.codigo}</div>
+                        )}
+                      </div>
+                    </div>
+                  </TableCell>
+                  {/* Cliente / Responsável */}
+                  <TableCell>
+                    {o.cliente && <div style={{ fontSize: 13 }}>{o.cliente}</div>}
+                    {o.responsavel && <div style={{ fontSize: 11, color: 'var(--muted-foreground)', marginTop: 2 }}>{o.responsavel}</div>}
+                    {!o.cliente && !o.responsavel && <span style={{ color: 'var(--muted-foreground)', fontSize: 12 }}>—</span>}
+                  </TableCell>
+                  {/* Localização */}
+                  <TableCell>
+                    {(o.cidade || o.estado) ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13 }}>
+                        <MapPin size={12} style={{ color: 'var(--muted-foreground)', flexShrink: 0 }} />
+                        <span>{[o.cidade, o.estado].filter(Boolean).join(' — ')}</span>
+                      </div>
+                    ) : <span style={{ color: 'var(--muted-foreground)', fontSize: 12 }}>—</span>}
+                  </TableCell>
+                  {/* Período */}
+                  <TableCell style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
+                    {o.data_inicio ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <span>{formatDate(o.data_inicio)}</span>
+                        {o.data_previsao_fim && (
+                          <>
+                            <ChevronRight size={10} style={{ color: 'var(--muted-foreground)' }} />
+                            <span style={{ color: 'var(--muted-foreground)' }}>{formatDate(o.data_previsao_fim)}</span>
+                          </>
+                        )}
+                      </div>
+                    ) : <span style={{ color: 'var(--muted-foreground)' }}>—</span>}
+                  </TableCell>
+                  {/* Colaboradores */}
+                  <TableCell style={{ textAlign: 'center' }}>
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                      <Users size={13} style={{ color: 'var(--muted-foreground)' }} />
+                      <span style={{ fontWeight: 600, fontSize: 14 }}>{o.colaboradores_count ?? 0}</span>
+                    </div>
+                  </TableCell>
+                  {/* Status */}
+                  <TableCell style={{ textAlign: 'center' }}>
+                    <BadgeStatus status={o.status} />
+                  </TableCell>
+                  {/* Ações */}
+                  <TableCell>
+                    <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
+                      <Button variant="ghost" size="icon" style={{ width: 30, height: 30 }} onClick={() => openEdit(o)}>
+                        <Pencil size={13} />
+                      </Button>
+                      <Button variant="ghost" size="icon" style={{ width: 30, height: 30, color: 'var(--destructive)' }} onClick={() => setDeleteId(o.id)}>
+                        <Trash2 size={13} />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </div>
       )}
 

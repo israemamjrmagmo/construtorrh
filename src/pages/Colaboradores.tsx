@@ -83,6 +83,8 @@ type FormData = {
   // VT
   vt_modalidade: VtModalidade
   vt_gasolina_valor_dia: string
+  vt_cartao_tipo: string
+  vt_cartao_numero: string
   vt_trechos_ida: VtTrecho[]
   vt_trechos_volta: VtTrecho[]
   status: string; observacoes: string
@@ -96,6 +98,7 @@ const EMPTY: FormData = {
   banco: '', agencia: '', conta: '', tipo_conta: '',
   pix_tipo: '', pix_chave: '',
   vt_modalidade: 'nenhum', vt_gasolina_valor_dia: '',
+  vt_cartao_tipo: '', vt_cartao_numero: '',
   vt_trechos_ida: [], vt_trechos_volta: [],
   status: 'ativo', observacoes: '',
 }
@@ -608,6 +611,8 @@ export default function Colaboradores() {
         return 'transporte'
       })() as VtModalidade,
       vt_gasolina_valor_dia: String((c as any).vt_dados?.gasolina_valor_dia ?? ''),
+      vt_cartao_tipo: (c as any).vt_dados?.cartao_tipo ?? '',
+      vt_cartao_numero: (c as any).vt_dados?.cartao_numero ?? '',
       vt_trechos_ida: ((c as any).vt_dados?.trechos_ida ?? []) as VtTrecho[],
       vt_trechos_volta: ((c as any).vt_dados?.trechos_volta ?? []) as VtTrecho[],
       status: c.status ?? 'ativo', observacoes: c.observacoes ?? '',
@@ -691,6 +696,8 @@ export default function Colaboradores() {
       vt_dados: form.vt_modalidade === 'nenhum' ? null : {
         modalidade: form.vt_modalidade,
         gasolina_valor_dia: form.vt_gasolina_valor_dia ? parseFloat(form.vt_gasolina_valor_dia) : null,
+        cartao_tipo: form.vt_cartao_tipo || null,
+        cartao_numero: form.vt_cartao_numero || null,
         trechos_ida: form.vt_trechos_ida,
         trechos_volta: form.vt_trechos_volta,
       },
@@ -1117,7 +1124,7 @@ export default function Colaboradores() {
 
       {/* ═══════════ MODAL HISTÓRICO DE CHAPAS ═══════════════════════════════ */}
       <Dialog open={histModal} onOpenChange={setHistModal}>
-        <DialogContent style={{ maxWidth: 540 }}>
+        <DialogContent style={{ maxWidth: 560 }}>
           <DialogHeader>
             <DialogTitle style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <History size={16} color="var(--primary)" />
@@ -1125,43 +1132,129 @@ export default function Colaboradores() {
             </DialogTitle>
           </DialogHeader>
 
-          {/* chapa atual */}
-          {histColabId && (() => {
-            const colab = rows.find(r => r.id === histColabId)
-            if (!colab) return null
+          {/* Linha do tempo: ativa + anteriores */}
+          {(() => {
+            const colab = histColabId ? rows.find(r => r.id === histColabId) : null
+            const total = 1 + histRows.length
             return (
-              <div style={{ padding: '10px 14px', borderRadius: 8, border: '1px solid var(--primary)', background: 'rgba(59,130,246,0.05)', marginBottom: 8 }}>
-                <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: 'var(--primary)', letterSpacing: '0.07em', marginBottom: 4 }}>Chapa atual (ativa)</div>
-                <div style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: 20, color: 'var(--primary)' }}>{colab.chapa ?? '—'}</div>
-                <div style={{ fontSize: 12, color: 'var(--muted-foreground)', marginTop: 2 }}>{(colab.funcoes as any)?.nome ?? '—'} · {colab.tipo_contrato?.toUpperCase()}</div>
+              <div style={{ padding: '4px 0' }}>
+                <div style={{ fontSize: 11, color: 'var(--muted-foreground)', marginBottom: 12 }}>
+                  {total} registro{total !== 1 ? 's' : ''} no histórico · ordenado do mais recente ao mais antigo
+                </div>
+
+                {/* Linha do tempo */}
+                <div style={{ position: 'relative', paddingLeft: 28 }}>
+                  {/* Trilha vertical */}
+                  <div style={{ position: 'absolute', left: 10, top: 18, bottom: 18, width: 2, background: 'var(--border)', borderRadius: 1 }} />
+
+                  {/* Chapa ATIVA */}
+                  {colab && (
+                    <div style={{ position: 'relative', marginBottom: 16 }}>
+                      {/* Ponto */}
+                      <div style={{
+                        position: 'absolute', left: -28, top: 14,
+                        width: 18, height: 18, borderRadius: '50%',
+                        background: 'var(--primary)', border: '3px solid var(--background)',
+                        boxShadow: '0 0 0 2px var(--primary)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }} />
+                      <div style={{
+                        borderRadius: 8, padding: '12px 14px',
+                        border: '2px solid var(--primary)',
+                        background: 'rgba(59,130,246,0.04)',
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                          <span style={{
+                            fontFamily: 'monospace', fontWeight: 800, fontSize: 22,
+                            color: 'var(--primary)', letterSpacing: '0.04em',
+                          }}>
+                            {colab.chapa ?? '—'}
+                          </span>
+                          <span style={{
+                            fontSize: 10, padding: '2px 8px', borderRadius: 10, fontWeight: 700,
+                            background: 'rgba(34,197,94,0.1)', color: '#16a34a',
+                          }}>
+                            ● ATIVA
+                          </span>
+                        </div>
+                        <div style={{ fontSize: 12, color: 'var(--foreground)', fontWeight: 500 }}>
+                          {(colab.funcoes as any)?.nome ?? '—'}
+                        </div>
+                        <div style={{ display: 'flex', gap: 12, marginTop: 4 }}>
+                          <span style={{ fontSize: 11, color: 'var(--muted-foreground)' }}>
+                            {colab.tipo_contrato?.toUpperCase()}
+                          </span>
+                          {colab.data_admissao && (
+                            <span style={{ fontSize: 11, color: 'var(--muted-foreground)' }}>
+                              desde {formatDate(colab.data_admissao)}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Histórico */}
+                  {histLoading ? (
+                    <div style={{ textAlign: 'center', padding: '20px 0', color: 'var(--muted-foreground)', fontSize: 13 }}>
+                      Carregando histórico…
+                    </div>
+                  ) : histRows.length === 0 ? (
+                    <div style={{ paddingLeft: 4, fontSize: 12, color: 'var(--muted-foreground)', fontStyle: 'italic', padding: '8px 0' }}>
+                      Nenhuma troca de função registrada.
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxHeight: 340, overflowY: 'auto' }}>
+                      {histRows.map((h, idx) => (
+                        <div key={h.id} style={{ position: 'relative' }}>
+                          {/* Ponto cinza */}
+                          <div style={{
+                            position: 'absolute', left: -28, top: 14,
+                            width: 14, height: 14, borderRadius: '50%',
+                            background: idx === 0 ? '#64748b' : '#cbd5e1',
+                            border: '2px solid var(--background)',
+                          }} />
+                          <div style={{
+                            borderRadius: 8, padding: '10px 14px',
+                            border: '1px solid var(--border)',
+                            background: 'var(--muted)',
+                            opacity: idx > 1 ? 0.75 : 1,
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                              <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 16, color: 'var(--foreground)' }}>
+                                {h.chapa}
+                              </span>
+                              <span style={{ fontSize: 11, color: 'var(--muted-foreground)', whiteSpace: 'nowrap' }}>
+                                {formatDate(h.data_inicio)} → {h.data_fim ? formatDate(h.data_fim) : '—'}
+                              </span>
+                            </div>
+                            <div style={{ fontSize: 12, color: 'var(--foreground)' }}>
+                              {(h.funcoes as any)?.nome ?? '—'}
+                            </div>
+                            <div style={{ display: 'flex', gap: 12, marginTop: 3 }}>
+                              <span style={{ fontSize: 11, color: 'var(--muted-foreground)' }}>
+                                {h.tipo_contrato?.toUpperCase()}
+                              </span>
+                            </div>
+                            {h.motivo_troca && (
+                              <div style={{
+                                fontSize: 11, color: 'var(--muted-foreground)',
+                                marginTop: 6, padding: '4px 8px',
+                                borderRadius: 4, background: 'rgba(0,0,0,0.04)',
+                                fontStyle: 'italic',
+                              }}>
+                                📝 {h.motivo_troca}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             )
           })()}
-
-          {histLoading ? (
-            <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--muted-foreground)', fontSize: 13 }}>Carregando histórico…</div>
-          ) : histRows.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--muted-foreground)', fontSize: 13 }}>
-              Nenhuma troca de função registrada ainda.
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 320, overflowY: 'auto' }}>
-              {histRows.map(h => (
-                <div key={h.id} style={{ padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--muted)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                    <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 14, color: 'var(--foreground)' }}>{h.chapa}</span>
-                    <span style={{ fontSize: 11, color: 'var(--muted-foreground)' }}>
-                      {formatDate(h.data_inicio)} → {h.data_fim ? formatDate(h.data_fim) : 'atual'}
-                    </span>
-                  </div>
-                  <div style={{ fontSize: 12, color: 'var(--muted-foreground)' }}>{(h.funcoes as any)?.nome ?? '—'} · {h.tipo_contrato?.toUpperCase()}</div>
-                  {h.motivo_troca && (
-                    <div style={{ fontSize: 11, color: 'var(--muted-foreground)', marginTop: 4, fontStyle: 'italic' }}>📝 {h.motivo_troca}</div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
         </DialogContent>
       </Dialog>
 
@@ -1262,7 +1355,20 @@ function calcTotal(trechos: VtTrecho[]): number {
 function VTSection({ form, setForm }: VTSectionProps) {
   const mod = form.vt_modalidade
 
-  const setMod = (m: VtModalidade) => setForm(p => ({ ...p, vt_modalidade: m }))
+  const setMod = (m: VtModalidade) => setForm(p => {
+    // Ao trocar modalidade, limpa os dados da anterior para evitar divergências
+    const base: Partial<FormData> = { vt_modalidade: m }
+    if (m !== 'gasolina' && m !== 'misto') {
+      base.vt_gasolina_valor_dia = ''
+    }
+    if (m !== 'transporte' && m !== 'misto') {
+      base.vt_cartao_tipo = ''
+      base.vt_cartao_numero = ''
+      base.vt_trechos_ida = []
+      base.vt_trechos_volta = []
+    }
+    return { ...p, ...base }
+  })
 
   const addTrecho = (dir: 'ida' | 'volta') =>
     setForm(p => ({
@@ -1345,6 +1451,42 @@ function VTSection({ form, setForm }: VTSectionProps) {
       )}
 
       {/* TRANSPORTE PÚBLICO */}
+      {/* TIPO E NÚMERO DO CARTÃO */}
+      {(mod === 'transporte' || mod === 'misto') && (
+        <Sec title="💳 Cartão de Transporte">
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <Field label="Tipo de cartão *">
+              <Select
+                value={form.vt_cartao_tipo || undefined}
+                onValueChange={v => setForm(p => ({ ...p, vt_cartao_tipo: v }))}
+              >
+                <SelectTrigger style={{ borderColor: !form.vt_cartao_tipo ? '#f59e0b' : undefined }}>
+                  <SelectValue placeholder="Selecione o cartão…" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cartao_top">🟡 Cartão TOP (Vale-Transporte)</SelectItem>
+                  <SelectItem value="bilhete_unico">🔵 Bilhete Único (SPTrans)</SelectItem>
+                  <SelectItem value="sptrans">🟢 Vale-Transporte SPTrans</SelectItem>
+                  <SelectItem value="cartao_cidadao">🟣 Cartão Cidadão</SelectItem>
+                  <SelectItem value="comum">⚪ Cartão Comum</SelectItem>
+                </SelectContent>
+              </Select>
+              {!form.vt_cartao_tipo && (
+                <div style={{ fontSize: 10, color: '#f59e0b', marginTop: 2 }}>⚠️ Obrigatório para transporte público</div>
+              )}
+            </Field>
+            <Field label="Número do cartão">
+              <Input
+                value={form.vt_cartao_numero}
+                onChange={e => setForm(p => ({ ...p, vt_cartao_numero: e.target.value }))}
+                placeholder="Ex.: 0000 0000 0000 0000"
+                style={{ fontFamily: 'monospace', letterSpacing: '0.05em' }}
+              />
+            </Field>
+          </div>
+        </Sec>
+      )}
+
       {(mod === 'transporte' || mod === 'misto') && (
         <>
           {/* TRECHOS IDA */}
