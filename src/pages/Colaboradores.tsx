@@ -423,7 +423,7 @@ export default function Colaboradores() {
     setLoading(true)
     const [{ data: cols }, { data: fns }, { data: obs }] = await Promise.all([
       supabase.from('colaboradores')
-        .select('*, funcoes(id,nome,sigla,valor_hora_clt,valor_hora_autonomo), obras(id,nome,codigo)')
+        .select('*, funcoes(id,nome,sigla,valor_hora_clt,valor_hora_autonomo,contratos_valores), obras(id,nome,codigo)')
         .order('nome'),
       supabase.from('funcoes').select('*').eq('ativo', true).order('nome'),
       supabase.from('obras').select('*').order('nome'),
@@ -1007,6 +1007,15 @@ function FuncaoSection({
 }: FuncaoSectionProps) {
   // Calcula valor/hora fora do JSX — sem IIFE, sem risco de crash
   const funcaoSelecionada = funcoes.find(f => f.id === form.funcao_id) ?? null
+
+  // Tipos de contrato válidos para a função selecionada (ativo=true em contratos_valores)
+  const tiposContratoAtivos: typeof TIPOS_CONTRATO = (() => {
+    if (!funcaoSelecionada) return TIPOS_CONTRATO // sem função: mostra todos
+    const cv = (funcaoSelecionada as any).contratos_valores as Record<string, { ativo: boolean; valor_hora: number | null }> | null
+    if (!cv || Object.keys(cv).length === 0) return TIPOS_CONTRATO // função antiga sem JSONB: mostra todos
+    return TIPOS_CONTRATO.filter(t => cv[t.value]?.ativo === true)
+  })()
+
   const isPJ = form.tipo_contrato === 'autonomo'
   const valorHoraTabelado: number | null = funcaoSelecionada
     ? (isPJ ? (funcaoSelecionada.valor_hora_autonomo ?? null) : (funcaoSelecionada.valor_hora_clt ?? null))
@@ -1110,21 +1119,35 @@ function FuncaoSection({
             )}
           </Field>
 
-          {/* Tipo de contrato — value sempre tem default 'clt', nunca vazio */}
+          {/* Tipo de contrato — apenas tipos ativos na função selecionada */}
           <Field label="Tipo de contrato *">
-            <Select
-              value={form.tipo_contrato || 'clt'}
-              onValueChange={v => onSet('tipo_contrato', v)}
-            >
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="clt">CLT</SelectItem>
-                <SelectItem value="autonomo">Autônomo / PJ</SelectItem>
-                <SelectItem value="temporario">Temporário</SelectItem>
-                <SelectItem value="aprendiz">Aprendiz</SelectItem>
-                <SelectItem value="estagiario">Estagiário</SelectItem>
-              </SelectContent>
-            </Select>
+            {tiposContratoAtivos.length === 0 ? (
+              <div style={{ padding: '8px 12px', borderRadius: 6, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', fontSize: 12, color: '#dc2626' }}>
+                ⚠️ Nenhum tipo de contrato ativo nesta função. Edite a função primeiro.
+              </div>
+            ) : (
+              <Select
+                value={
+                  // garante que o valor atual é válido para essa função; se não, usa o primeiro disponível
+                  tiposContratoAtivos.find(t => t.value === form.tipo_contrato)
+                    ? (form.tipo_contrato || undefined)
+                    : tiposContratoAtivos[0].value
+                }
+                onValueChange={v => onSet('tipo_contrato', v)}
+              >
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {tiposContratoAtivos.map(t => (
+                    <SelectItem key={t.value} value={t.value}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: t.cor, display: 'inline-block', flexShrink: 0 }} />
+                        {t.label}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </Field>
 
           {/* Card de valor/hora — computed acima, sem IIFE */}
