@@ -21,7 +21,6 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   Users, Plus, Search, Pencil, Trash2, X,
 } from 'lucide-react'
@@ -360,23 +359,22 @@ export default function Colaboradores() {
 
       {/* Modal Criar/Editar */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent className="max-w-3xl p-0 gap-0 overflow-hidden">
-          <DialogHeader className="px-6 pt-6 pb-3">
+        <DialogContent className="max-w-3xl p-0 gap-0 flex flex-col" style={{ maxHeight: '92vh' }}>
+          <DialogHeader className="px-6 pt-5 pb-3 flex-shrink-0 border-b border-border">
             <DialogTitle className="text-lg">
               {editId ? 'Editar Colaborador' : 'Novo Colaborador'}
             </DialogTitle>
           </DialogHeader>
 
-          <Tabs defaultValue="pessoal" className="flex-1">
-            <TabsList className="mx-6 mb-1">
+          <Tabs defaultValue="pessoal" className="flex flex-col flex-1 min-h-0">
+            <TabsList className="mx-6 mt-3 mb-0 flex-shrink-0 w-auto justify-start">
               <TabsTrigger value="pessoal">Dados Pessoais</TabsTrigger>
               <TabsTrigger value="contrato">Contrato</TabsTrigger>
               <TabsTrigger value="bancario">Bancário / VT</TabsTrigger>
             </TabsList>
 
-            <ScrollArea className="h-[70vh]">
               {/* ── TAB DADOS PESSOAIS ─────────────────────────────────────── */}
-              <TabsContent value="pessoal" className="px-6 pb-4 mt-0 space-y-4">
+              <TabsContent value="pessoal" className="flex-1 overflow-y-auto px-6 py-4 mt-0 space-y-4 data-[state=inactive]:hidden">
                 <SectionTitle>Identificação</SectionTitle>
                 <div className="grid grid-cols-2 gap-3">
                   <FieldGroup label="Nome completo *" span={2}>
@@ -463,7 +461,7 @@ export default function Colaboradores() {
               </TabsContent>
 
               {/* ── TAB CONTRATO ───────────────────────────────────────────── */}
-              <TabsContent value="contrato" className="px-6 pb-4 mt-0 space-y-4">
+              <TabsContent value="contrato" className="flex-1 overflow-y-auto px-6 py-4 mt-0 space-y-4 data-[state=inactive]:hidden">
                 <SectionTitle>Vínculo</SectionTitle>
                 <div className="grid grid-cols-2 gap-3">
                   <FieldGroup label="Função">
@@ -528,7 +526,7 @@ export default function Colaboradores() {
               </TabsContent>
 
               {/* ── TAB BANCÁRIO / VT ─────────────────────────────────────── */}
-              <TabsContent value="bancario" className="px-6 pb-4 mt-0 space-y-4">
+              <TabsContent value="bancario" className="flex-1 overflow-y-auto px-6 py-4 mt-0 space-y-4 data-[state=inactive]:hidden">
                 <SectionTitle>Dados Bancários</SectionTitle>
                 <div className="grid grid-cols-2 gap-3">
                   <FieldGroup label="Banco">
@@ -597,7 +595,6 @@ export default function Colaboradores() {
                   )}
                 </div>
               </TabsContent>
-            </ScrollArea>
           </Tabs>
 
           <DialogFooter className="px-6 py-4 border-t border-border bg-muted/30">
