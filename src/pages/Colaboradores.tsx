@@ -754,13 +754,12 @@ export default function Colaboradores() {
                     <Field label="Data de nascimento">
                       <Input type="date" value={form.data_nascimento} onChange={e => set('data_nascimento', e.target.value)} />
                     </Field>
-                    <Field label="Gênero">
+                    <Field label="Sexo">
                       <Select value={form.genero} onValueChange={v => set('genero', v)}>
                         <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="M">Masculino</SelectItem>
                           <SelectItem value="F">Feminino</SelectItem>
-                          <SelectItem value="outro">Outro</SelectItem>
                         </SelectContent>
                       </Select>
                     </Field>
