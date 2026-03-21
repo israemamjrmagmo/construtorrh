@@ -208,7 +208,7 @@ export default function Relatorios() {
       else if (rel.id === 'acidentes') {
         let query = supabase
           .from('acidentes')
-          .select('id, data_acidente, gravidade, tipo, com_afastamento, dias_afastamento, colaboradores(nome), obras(nome)')
+          .select('id, data_acidente, gravidade, tipo, colaboradores(nome), obras(nome)')
           .order('data_acidente', { ascending: false })
         if (filtroDataInicio) query = query.gte('data_acidente', filtroDataInicio)
         if (filtroDataFim) query = query.lte('data_acidente', filtroDataFim)
@@ -217,7 +217,6 @@ export default function Relatorios() {
         if (error) throw error
         type AcRow = {
           id: string; data_acidente: string; gravidade: string | null; tipo: string | null
-          com_afastamento: boolean; dias_afastamento: number
           colaboradores: { nome: string }[] | { nome: string } | null
           obras: { nome: string }[] | { nome: string } | null
         }
@@ -228,8 +227,8 @@ export default function Relatorios() {
           obra: (Array.isArray(r.obras) ? r.obras[0]?.nome : (r.obras as { nome: string } | null)?.nome) ?? '—',
           gravidade: r.gravidade ?? '—',
           tipo: r.tipo ?? '—',
-          com_afastamento: r.com_afastamento,
-          dias_afastamento: r.dias_afastamento,
+          com_afastamento: false,
+          dias_afastamento: 0,
         })))
       }
 

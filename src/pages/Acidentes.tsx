@@ -60,8 +60,7 @@ type FormData = {
   gravidade: Acidente['gravidade'] | ''
   descricao: string
   local_acidente: string
-  com_afastamento: boolean
-  dias_afastamento: string
+
   cat_emitida: boolean
   status: Acidente['status']
   observacoes: string
@@ -76,8 +75,7 @@ const EMPTY_FORM: FormData = {
   gravidade: '',
   descricao: '',
   local_acidente: '',
-  com_afastamento: false,
-  dias_afastamento: '0',
+
   cat_emitida: false,
   status: 'em_investigacao',
   observacoes: '',
@@ -195,8 +193,7 @@ export default function Acidentes() {
       gravidade: a.gravidade ?? '',
       descricao: a.descricao,
       local_acidente: a.local_acidente ?? '',
-      com_afastamento: a.com_afastamento,
-      dias_afastamento: String(a.dias_afastamento),
+
       cat_emitida: a.cat_emitida,
       status: a.status,
       observacoes: a.observacoes ?? '',
@@ -226,8 +223,7 @@ export default function Acidentes() {
       gravidade: (form.gravidade as Acidente['gravidade']) || null,
       descricao: form.descricao,
       local_acidente: form.local_acidente || null,
-      com_afastamento: form.com_afastamento,
-      dias_afastamento: form.com_afastamento ? Number(form.dias_afastamento) : 0,
+
       cat_emitida: form.cat_emitida,
       status: form.status,
       observacoes: form.observacoes || null,
@@ -361,13 +357,7 @@ export default function Acidentes() {
                   <TableCell className="text-sm">{a.tipo ? TIPO_LABELS[a.tipo] : '—'}</TableCell>
                   <TableCell><GravBadge gravidade={a.gravidade} /></TableCell>
                   <TableCell className="text-center">
-                    {a.com_afastamento ? (
-                      <span className="text-sm font-medium text-orange-600">
-                        {a.dias_afastamento}d
-                      </span>
-                    ) : (
-                      <span className="text-muted-foreground text-xs">Não</span>
-                    )}
+                    <span className="text-muted-foreground text-xs">—</span>
                   </TableCell>
                   <TableCell className="text-center">
                     <Badge variant={a.cat_emitida ? 'default' : 'outline'} className="text-xs">
@@ -515,27 +505,7 @@ export default function Acidentes() {
               />
             </div>
 
-            {/* afastamento switch */}
-            <div className="col-span-2 flex items-center gap-3">
-              <Switch
-                checked={form.com_afastamento}
-                onCheckedChange={(v) => setF('com_afastamento', v)}
-              />
-              <Label className="cursor-pointer">Com afastamento</Label>
-            </div>
 
-            {/* dias afastamento */}
-            {form.com_afastamento && (
-              <div className="space-y-1.5">
-                <Label>Dias de Afastamento</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  value={form.dias_afastamento}
-                  onChange={(e) => setF('dias_afastamento', e.target.value)}
-                />
-              </div>
-            )}
 
             {/* CAT switch */}
             <div className="flex items-center gap-3">
