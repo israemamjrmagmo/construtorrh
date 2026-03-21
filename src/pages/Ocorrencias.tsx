@@ -76,18 +76,19 @@ const ACID_EMPTY: AcidenteForm = {
 type Advertencia = {
   id: string; colaborador_id: string; data_advertencia: string
   tipo: string; motivo: string; descricao: string | null
-  assinada: boolean | null; observacoes: string | null
+  assinada: boolean | null; dias_suspensao: number | null; observacoes: string | null
   documento_url: string | null; documento_nome: string | null
   colaboradores: { id: string; nome: string; chapa: string } | null
 }
 type AdvertenciaForm = {
   colaborador_id: string; data_advertencia: string; tipo: string
-  motivo: string; descricao: string; assinada: boolean; observacoes: string
+  motivo: string; descricao: string; assinada: boolean
+  dias_suspensao: string; observacoes: string
   documento_url: string; documento_nome: string
 }
 const ADV_EMPTY: AdvertenciaForm = {
   colaborador_id: '', data_advertencia: '', tipo: 'escrita', motivo: '',
-  descricao: '', assinada: false, observacoes: '',
+  descricao: '', assinada: false, dias_suspensao: '', observacoes: '',
   documento_url: '', documento_nome: '',
 }
 
@@ -273,12 +274,20 @@ export default function Ocorrencias() {
 
   const fetchAcidentes = useCallback(async () => {
     setLoadingAcid(true)
-    const { data, error } = await supabase
+    // Tenta com colunas de documento; se falhar (coluna não existe no banco), tenta sem
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let res: any = await supabase
       .from('acidentes')
       .select('id, colaborador_id, obra_id, data_acidente, hora_acidente, tipo, gravidade, descricao, local_acidente, cat_emitida, status, observacoes, documento_url, documento_nome, colaboradores(id, nome, chapa), obras(id, nome)')
       .order('data_acidente', { ascending: false })
-    if (error) toast.error('Erro acidentes: ' + error.message)
-    else setAcidentes((data as unknown as Acidente[]) ?? [])
+    if (res.error && res.error.message.includes('documento_')) {
+      res = await supabase
+        .from('acidentes')
+        .select('id, colaborador_id, obra_id, data_acidente, hora_acidente, tipo, gravidade, descricao, local_acidente, cat_emitida, status, observacoes, colaboradores(id, nome, chapa), obras(id, nome)')
+        .order('data_acidente', { ascending: false })
+    }
+    if (res.error) toast.error('Erro acidentes: ' + res.error.message)
+    else setAcidentes((res.data as unknown as Acidente[]) ?? [])
     setLoadingAcid(false)
   }, [])
 
@@ -286,7 +295,7 @@ export default function Ocorrencias() {
     setLoadingAdv(true)
     const { data, error } = await supabase
       .from('advertencias')
-      .select('id, colaborador_id, data_advertencia, tipo, motivo, descricao, assinada, observacoes, documento_url, documento_nome, colaboradores(id, nome, chapa)')
+      .select('id, colaborador_id, data_advertencia, tipo, motivo, descricao, assinada, dias_suspensao, observacoes, documento_url, documento_nome, colaboradores(id, nome, chapa)')
       .order('data_advertencia', { ascending: false })
     if (error) toast.error('Erro advertências: ' + error.message)
     else setAdvertencias((data as unknown as Advertencia[]) ?? [])
@@ -409,7 +418,9 @@ export default function Ocorrencias() {
     setAdvForm({
       colaborador_id: a.colaborador_id ?? '', data_advertencia: a.data_advertencia ?? '',
       tipo: a.tipo ?? 'escrita', motivo: a.motivo ?? '', descricao: a.descricao ?? '',
-      assinada: a.assinada ?? false, observacoes: a.observacoes ?? '',
+      assinada: a.assinada ?? false,
+      dias_suspensao: a.dias_suspensao != null ? String(a.dias_suspensao) : '',
+      observacoes: a.observacoes ?? '',
       documento_url: a.documento_url ?? '', documento_nome: a.documento_nome ?? '',
     })
     setAdvOpen(true)
@@ -423,7 +434,9 @@ export default function Ocorrencias() {
     const payload: Record<string, unknown> = {
       colaborador_id: advForm.colaborador_id, data_advertencia: advForm.data_advertencia,
       tipo: advForm.tipo, motivo: advForm.motivo, descricao: advForm.descricao || null,
-      assinada: advForm.assinada, observacoes: advForm.observacoes || null,
+      assinada: advForm.assinada,
+      dias_suspensao: (advForm.tipo === 'suspensao' && advForm.dias_suspensao) ? Number(advForm.dias_suspensao) : null,
+      observacoes: advForm.observacoes || null,
       documento_url: advForm.documento_url, documento_nome: advForm.documento_nome,
     }
     const res = advEditId
@@ -623,6 +636,7 @@ export default function Ocorrencias() {
                 <TableRow>
                   <TableHead>Colaborador</TableHead><TableHead>Data</TableHead>
                   <TableHead>Tipo</TableHead><TableHead>Motivo</TableHead>
+                  <TableHead>Suspensão / Retorno</TableHead>
                   <TableHead>Assinada</TableHead><TableHead>Documento</TableHead>
                   <TableHead style={{ textAlign: 'right' }}>Ações</TableHead>
                 </TableRow>
@@ -638,6 +652,20 @@ export default function Ocorrencias() {
                     <TableCell><AdvTipoBadge tipo={a.tipo} /></TableCell>
                     <TableCell style={{ fontSize: 13, maxWidth: 180 }}>
                       <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.motivo}</div>
+                    </TableCell>
+                    <TableCell>
+                      {a.tipo === 'suspensao' && a.dias_suspensao
+                        ? (() => {
+                            const fim    = calcDataFim(a.data_advertencia, String(a.dias_suspensao))
+                            const retorno = fim ? new Date(new Date(fim).getTime() + 86400000).toISOString().split('T')[0] : null
+                            return (
+                              <div>
+                                <div style={{ fontSize: 12, fontWeight: 700, color: '#dc2626' }}>{a.dias_suspensao}d · até {fim ? formatDate(fim) : '—'}</div>
+                                {retorno && <div style={{ fontSize: 11, color: '#16a34a', fontWeight: 600 }}>Retorno: {formatDate(retorno)}</div>}
+                              </div>
+                            )
+                          })()
+                        : <span style={{ color: '#d1d5db', fontSize: 12 }}>—</span>}
                     </TableCell>
                     <TableCell>
                       {a.assinada
@@ -841,6 +869,32 @@ export default function Ocorrencias() {
                 <SelectContent>{MOTIVOS_ADVERTENCIA.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}</SelectContent>
               </Select>
             </div>
+
+            {/* Suspensão: dias + data de retorno */}
+            {advForm.tipo === 'suspensao' && (
+              <>
+                <div style={fRow}>
+                  <Label>Dias de suspensão</Label>
+                  <Input
+                    type="number" min="1"
+                    value={advForm.dias_suspensao}
+                    onChange={e => setAdvForm(p => ({ ...p, dias_suspensao: e.target.value }))}
+                    placeholder="Ex: 3"
+                  />
+                </div>
+                {calcDataFim(advForm.data_advertencia, advForm.dias_suspensao) && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderRadius: 8, background: '#fef2f2', border: '1px solid #fecaca' }}>
+                    <span style={{ fontSize: 13, color: '#dc2626', fontWeight: 600 }}>
+                      🔴 Suspenso até: {formatDate(calcDataFim(advForm.data_advertencia, advForm.dias_suspensao)!)}
+                    </span>
+                    <span style={{ fontSize: 11, color: '#9ca3af' }}>
+                      (retorno em {formatDate(new Date(new Date(calcDataFim(advForm.data_advertencia, advForm.dias_suspensao)!).getTime() + 86400000).toISOString().split('T')[0])})
+                    </span>
+                  </div>
+                )}
+              </>
+            )}
+
             <div style={fRow}><Label>Descrição detalhada</Label><Textarea value={advForm.descricao} onChange={e => setAdvForm(p => ({ ...p, descricao: e.target.value }))} rows={3} /></div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <input type="checkbox" id="assinada" checked={advForm.assinada} onChange={e => setAdvForm(p => ({ ...p, assinada: e.target.checked }))} />
