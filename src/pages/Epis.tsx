@@ -809,7 +809,7 @@ export default function Epis() {
           📋 Solicitações de EPI
         </button>
         <button style={tabStyle(aba === 'comprovantes')} onClick={() => setAba('comprovantes')}>
-          📎 Comprovantes
+          📋 Docs / Entregas
         </button>
       </div>
 
@@ -1710,10 +1710,25 @@ export default function Epis() {
               ⏳ Carregando comprovantes…
             </div>
           ) : colabsComEpis.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '48px 0', color: 'var(--muted-foreground)' }}>
-              <div style={{ fontSize: 36, marginBottom: 10 }}>🦺</div>
-              <div style={{ fontSize: 14, fontWeight: 500 }}>Nenhum EPI registrado ainda</div>
-              <div style={{ fontSize: 12, marginTop: 6 }}>Vincule EPIs aos colaboradores primeiro.</div>
+            <div style={{ textAlign: 'center', padding: '48px 24px', color: 'var(--muted-foreground)', maxWidth: 480, margin: '0 auto' }}>
+              <div style={{ fontSize: 48, marginBottom: 14 }}>🦺</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--foreground)', marginBottom: 8 }}>Nenhum EPI registrado ainda</div>
+              <div style={{ fontSize: 13, lineHeight: 1.6, marginBottom: 20 }}>
+                Para cadastrar documentos de entrega de EPI de um colaborador, siga os passos:
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, textAlign: 'left' }}>
+                {[
+                  { n: '1', icon: '📦', txt: 'Cadastre o EPI no Catálogo (aba "Catálogo de EPIs")' },
+                  { n: '2', icon: '🔗', txt: 'Vincule o EPI à função do colaborador (aba "EPIs por Função")' },
+                  { n: '3', icon: '👤', txt: 'O sistema vincula automaticamente ao colaborador ao salvar' },
+                  { n: '4', icon: '📋', txt: 'Volte aqui, clique no colaborador e use "📎 Anexar" para enviar o comprovante assinado' },
+                ].map(s => (
+                  <div key={s.n} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--background)' }}>
+                    <div style={{ width: 24, height: 24, borderRadius: '50%', background: 'var(--primary)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, flexShrink: 0 }}>{s.n}</div>
+                    <div style={{ fontSize: 12 }}><span style={{ fontSize: 14 }}>{s.icon}</span> {s.txt}</div>
+                  </div>
+                ))}
+              </div>
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
