@@ -114,6 +114,7 @@ export interface EpiCatalogo {
   numero_ca: string | null       // Certificado de Aprovação
   ca_validade: string | null     // data de validade do CA
   unidade: string | null         // unidade, par, jogo, conjunto
+  vida_util_meses: number | null // vida útil em meses
   requer_tamanho: boolean
   requer_numero: boolean         // número de calçado
   descricao: string | null
