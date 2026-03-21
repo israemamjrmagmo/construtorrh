@@ -20,193 +20,465 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
-  Users, Plus, Search, Pencil, Trash2, X,
+  Users, Plus, Search, Pencil, Trash2, History,
+  Briefcase, Tag, Clock, AlertTriangle, CheckCircle2,
 } from 'lucide-react'
+import { toast } from 'sonner'
 
-// ─── tipos locais ─────────────────────────────────────────────────────────────
-type ColaboradorRow = Colaborador & { funcoes?: Funcao; obras?: Obra }
+// ─── tipos ────────────────────────────────────────────────────────────────────
+type ColaboradorRow = Colaborador & {
+  funcoes?: Pick<Funcao, 'id' | 'nome' | 'sigla' | 'valor_hora_clt' | 'valor_hora_autonomo'>
+  obras?: Pick<Obra, 'id' | 'nome' | 'codigo'>
+}
+
+type HistoricoChapa = {
+  id: string; chapa: string; funcao_id: string | null; tipo_contrato: string | null
+  data_inicio: string; data_fim: string | null; motivo_troca: string | null
+  funcoes?: { nome: string; sigla: string | null }
+}
 
 type FormData = {
   nome: string; chapa: string; cpf: string; rg: string; pis_nit: string
   data_nascimento: string; genero: string; estado_civil: string
   telefone: string; email: string; endereco: string; cidade: string
   estado: string; cep: string; funcao_id: string; obra_id: string
-  salario: string; tipo_contrato: string; data_admissao: string
-  ctps_numero: string; ctps_serie: string; banco: string; agencia: string
-  conta: string; tipo_conta: string; pix_chave: string
-  vale_transporte: boolean; vt_tipo: string; vt_trechos_ida: string
-  vt_trechos_volta: string; status: string; observacoes: string
+  tipo_contrato: string; data_admissao: string
+  ctps_numero: string; ctps_serie: string
+  banco: string; agencia: string; conta: string; tipo_conta: string; pix_chave: string
+  vale_transporte: boolean; vt_tipo: string; vt_trechos_ida: string; vt_trechos_volta: string
+  status: string; observacoes: string
 }
 
-const EMPTY_FORM: FormData = {
+const EMPTY: FormData = {
   nome: '', chapa: '', cpf: '', rg: '', pis_nit: '', data_nascimento: '',
   genero: '', estado_civil: '', telefone: '', email: '', endereco: '',
-  cidade: '', estado: '', cep: '', funcao_id: '', obra_id: '', salario: '',
+  cidade: '', estado: '', cep: '', funcao_id: '', obra_id: '',
   tipo_contrato: 'clt', data_admissao: '', ctps_numero: '', ctps_serie: '',
   banco: '', agencia: '', conta: '', tipo_conta: '', pix_chave: '',
   vale_transporte: false, vt_tipo: '', vt_trechos_ida: '1', vt_trechos_volta: '1',
   status: 'ativo', observacoes: '',
 }
 
-// ─── toast simples ─────────────────────────────────────────────────────────────
-function useToast() {
-  const [msg, setMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null)
-  const show = useCallback((text: string, type: 'success' | 'error' = 'success') => {
-    setMsg({ text, type })
-    setTimeout(() => setMsg(null), 3500)
-  }, [])
-  return { msg, show }
+// ─── helpers ─────────────────────────────────────────────────────────────────
+async function gerarChapa(sigla: string): Promise<string> {
+  const now = new Date()
+  const yy = String(now.getFullYear()).slice(2)
+  const mm = String(now.getMonth() + 1).padStart(2, '0')
+  const prefix = `${sigla.toUpperCase()}${yy}${mm}-`
+
+  // Busca chapas existentes no prefix (ativas + históricas)
+  const [{ data: ativos }, { data: hist }] = await Promise.all([
+    supabase.from('colaboradores').select('chapa').like('chapa', `${prefix}%`),
+    supabase.from('historico_chapa').select('chapa').like('chapa', `${prefix}%`),
+  ])
+
+  let max = 0
+  ;[...(ativos ?? []), ...(hist ?? [])].forEach(r => {
+    if (r.chapa) {
+      const n = parseInt(r.chapa.split('-')[1] ?? '0', 10)
+      if (!isNaN(n) && n > max) max = n
+    }
+  })
+
+  return `${prefix}${String(max + 1).padStart(3, '0')}`
 }
 
-// ─── componente principal ─────────────────────────────────────────────────────
-export default function Colaboradores() {
-  const { msg, show } = useToast()
+// ─── FUNCOES INLINE ───────────────────────────────────────────────────────────
+type FuncaoForm = {
+  nome: string; sigla: string; descricao: string; cbo: string
+  valor_hora_clt: string; valor_hora_autonomo: string; ativo: boolean
+}
+const EMPTY_FN: FuncaoForm = {
+  nome: '', sigla: '', descricao: '', cbo: '',
+  valor_hora_clt: '', valor_hora_autonomo: '', ativo: true,
+}
 
-  const [rows, setRows] = useState<ColaboradorRow[]>([])
-  const [funcoes, setFuncoes] = useState<Funcao[]>([])
-  const [obras, setObras] = useState<Obra[]>([])
+function autoSigla(nome: string) {
+  return nome.trim().split(/\s+/).map(w => w[0] ?? '').join('').toUpperCase().slice(0, 4)
+}
+
+function FuncoesTab() {
+  const [rows, setRows] = useState<Funcao[]>([])
   const [loading, setLoading] = useState(true)
-
   const [search, setSearch] = useState('')
-  const [filterStatus, setFilterStatus] = useState<string>('todos')
-  const [filterObra, setFilterObra] = useState<string>('todas')
+  const [modal, setModal] = useState(false)
+  const [editId, setEditId] = useState<string | null>(null)
+  const [form, setForm] = useState<FuncaoForm>(EMPTY_FN)
+  const [saving, setSaving] = useState(false)
+  const [deleteId, setDeleteId] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    const { data } = await supabase.from('funcoes').select('*').order('nome')
+    if (data) setRows(data as Funcao[])
+    setLoading(false)
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  const filtered = rows.filter(f =>
+    !search || f.nome.toLowerCase().includes(search.toLowerCase()) ||
+    (f.sigla ?? '').toLowerCase().includes(search.toLowerCase())
+  )
+
+  const setF = (k: keyof FuncaoForm, v: string | boolean) => setForm(p => ({ ...p, [k]: v }))
+
+  const openNew = () => { setEditId(null); setForm(EMPTY_FN); setModal(true) }
+  const openEdit = (f: Funcao) => {
+    setEditId(f.id)
+    setForm({
+      nome: f.nome, sigla: f.sigla ?? '', descricao: f.descricao ?? '', cbo: f.cbo ?? '',
+      valor_hora_clt: f.valor_hora_clt != null ? String(f.valor_hora_clt) : '',
+      valor_hora_autonomo: f.valor_hora_autonomo != null ? String(f.valor_hora_autonomo) : '',
+      ativo: f.ativo,
+    })
+    setModal(true)
+  }
+
+  const handleNome = (nome: string) => {
+    setForm(p => ({
+      ...p, nome,
+      sigla: (!p.sigla || p.sigla === autoSigla(p.nome)) ? autoSigla(nome) : p.sigla,
+    }))
+  }
+
+  const save = async () => {
+    if (!form.nome.trim()) { toast.error('Nome obrigatório'); return }
+    if (!form.sigla.trim()) { toast.error('Sigla obrigatória'); return }
+    setSaving(true)
+    const payload = {
+      nome: form.nome.trim(),
+      sigla: form.sigla.toUpperCase(),
+      descricao: form.descricao || null,
+      cbo: form.cbo || null,
+      valor_hora_clt: form.valor_hora_clt ? parseFloat(form.valor_hora_clt) : null,
+      valor_hora_autonomo: form.valor_hora_autonomo ? parseFloat(form.valor_hora_autonomo) : null,
+      ativo: form.ativo,
+    }
+    const { error } = editId
+      ? await supabase.from('funcoes').update(payload).eq('id', editId)
+      : await supabase.from('funcoes').insert(payload)
+    setSaving(false)
+    if (error) { toast.error(error.message); return }
+    toast.success(editId ? 'Função atualizada!' : 'Função criada!')
+    setModal(false); load()
+  }
+
+  const del = async () => {
+    if (!deleteId) return
+    const { error } = await supabase.from('funcoes').delete().eq('id', deleteId)
+    setDeleteId(null)
+    if (error) { toast.error(error.message); return }
+    toast.success('Função excluída!'); load()
+  }
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+        <div style={{ position: 'relative', width: 280 }}>
+          <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted-foreground)' }} />
+          <Input style={{ paddingLeft: 32 }} placeholder="Buscar por nome ou sigla…" value={search} onChange={e => setSearch(e.target.value)} />
+        </div>
+        <Button onClick={openNew} size="sm" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <Plus size={14} /> Nova Função
+        </Button>
+      </div>
+
+      {loading ? <LoadingSkeleton rows={4} /> : filtered.length === 0 ? (
+        <EmptyState icon={<Briefcase size={28} />} title="Nenhuma função cadastrada" description="Crie a primeira função para vincular aos colaboradores." action={<Button size="sm" onClick={openNew}><Plus size={13} /> Nova Função</Button>} />
+      ) : (
+        <div style={{ borderRadius: 8, border: '1px solid var(--border)', overflow: 'hidden' }}>
+          <Table>
+            <TableHeader>
+              <TableRow style={{ background: 'var(--muted)' }}>
+                <TableHead>Função</TableHead>
+                <TableHead style={{ width: 80 }}>Sigla</TableHead>
+                <TableHead style={{ width: 100 }}>CBO</TableHead>
+                <TableHead>Valor/h CLT</TableHead>
+                <TableHead>Valor/h Autônomo</TableHead>
+                <TableHead style={{ width: 80 }}>Status</TableHead>
+                <TableHead style={{ width: 80, textAlign: 'right' }}>Ações</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filtered.map(f => (
+                <TableRow key={f.id}>
+                  <TableCell>
+                    <div style={{ fontWeight: 500 }}>{f.nome}</div>
+                    {f.descricao && <div style={{ fontSize: 11, color: 'var(--muted-foreground)', marginTop: 2 }}>{f.descricao}</div>}
+                  </TableCell>
+                  <TableCell>
+                    {f.sigla ? (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 4, background: 'rgba(59,130,246,0.1)', color: '#3b82f6', fontSize: 11, fontWeight: 700, fontFamily: 'monospace' }}>
+                        <Tag size={9} />{f.sigla}
+                      </span>
+                    ) : '—'}
+                  </TableCell>
+                  <TableCell style={{ fontFamily: 'monospace', fontSize: 12, color: 'var(--muted-foreground)' }}>{f.cbo ?? '—'}</TableCell>
+                  <TableCell>
+                    {f.valor_hora_clt != null
+                      ? <span style={{ color: '#2563eb', fontWeight: 600, fontSize: 13 }}>{formatCurrency(f.valor_hora_clt)}<span style={{ fontSize: 10, fontWeight: 400, color: 'var(--muted-foreground)' }}>/h</span></span>
+                      : <span style={{ color: 'var(--muted-foreground)', fontSize: 12 }}>—</span>}
+                  </TableCell>
+                  <TableCell>
+                    {f.valor_hora_autonomo != null
+                      ? <span style={{ color: '#ea580c', fontWeight: 600, fontSize: 13 }}>{formatCurrency(f.valor_hora_autonomo)}<span style={{ fontSize: 10, fontWeight: 400, color: 'var(--muted-foreground)' }}>/h</span></span>
+                      : <span style={{ color: 'var(--muted-foreground)', fontSize: 12 }}>—</span>}
+                  </TableCell>
+                  <TableCell>
+                    <span style={{
+                      display: 'inline-block', padding: '2px 8px', borderRadius: 20, fontSize: 11, fontWeight: 600,
+                      background: f.ativo ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',
+                      color: f.ativo ? '#059669' : '#dc2626',
+                    }}>{f.ativo ? 'Ativo' : 'Inativo'}</span>
+                  </TableCell>
+                  <TableCell style={{ textAlign: 'right' }}>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 4 }}>
+                      <Button variant="ghost" size="icon" style={{ width: 30, height: 30 }} onClick={() => openEdit(f)}><Pencil size={13} /></Button>
+                      <Button variant="ghost" size="icon" style={{ width: 30, height: 30, color: 'var(--destructive)' }} onClick={() => setDeleteId(f.id)}><Trash2 size={13} /></Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+
+      {/* modal função */}
+      <Dialog open={modal} onOpenChange={setModal}>
+        <DialogContent style={{ maxWidth: 520 }}>
+          <DialogHeader>
+            <DialogTitle style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Briefcase size={16} color="var(--primary)" />
+              {editId ? 'Editar Função' : 'Nova Função'}
+            </DialogTitle>
+          </DialogHeader>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '4px 0' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12 }}>
+              <Field label="Nome da Função *">
+                <Input value={form.nome} onChange={e => handleNome(e.target.value)} placeholder="Ex.: Pedreiro, Eletricista…" />
+              </Field>
+              <Field label={<>Sigla * <span style={{ fontSize: 10, fontWeight: 400 }}>(chapa)</span></>}>
+                <Input value={form.sigla} onChange={e => setF('sigla', e.target.value.toUpperCase().slice(0, 6))} placeholder="PED" style={{ fontFamily: 'monospace', fontWeight: 700, width: 90 }} maxLength={6} />
+              </Field>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <Field label="CBO">
+                <Input value={form.cbo} onChange={e => setF('cbo', e.target.value)} placeholder="7152-10" style={{ fontFamily: 'monospace' }} />
+              </Field>
+              <Field label="Descrição">
+                <Input value={form.descricao} onChange={e => setF('descricao', e.target.value)} placeholder="Atribuições…" />
+              </Field>
+            </div>
+
+            <div style={{ borderRadius: 8, border: '1px solid var(--border)', background: 'var(--muted)', padding: '12px 14px' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--muted-foreground)', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Clock size={11} /> Valor por Hora
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <Field label={<><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#3b82f6', marginRight: 4 }} />CLT / Temporário (R$/h)</>}>
+                  <Input type="number" step="0.01" min="0" value={form.valor_hora_clt} onChange={e => setF('valor_hora_clt', e.target.value)} placeholder="0,00" />
+                  {form.valor_hora_clt && <div style={{ fontSize: 10, color: 'var(--muted-foreground)', marginTop: 3 }}>≈ {formatCurrency(parseFloat(form.valor_hora_clt) * 220)}/mês (220h)</div>}
+                </Field>
+                <Field label={<><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#f97316', marginRight: 4 }} />Autônomo / PJ (R$/h)</>}>
+                  <Input type="number" step="0.01" min="0" value={form.valor_hora_autonomo} onChange={e => setF('valor_hora_autonomo', e.target.value)} placeholder="0,00" />
+                  {form.valor_hora_autonomo && <div style={{ fontSize: 10, color: 'var(--muted-foreground)', marginTop: 3 }}>≈ {formatCurrency(parseFloat(form.valor_hora_autonomo) * 220)}/mês (220h)</div>}
+                </Field>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <button type="button" onClick={() => setF('ativo', !form.ativo)}
+                style={{ position: 'relative', display: 'inline-flex', width: 44, height: 24, borderRadius: 12, border: 'none', cursor: 'pointer', background: form.ativo ? 'var(--primary)' : 'rgba(0,0,0,0.15)', transition: 'background 150ms', flexShrink: 0 }}>
+                <span style={{ position: 'absolute', top: 3, left: form.ativo ? 22 : 3, width: 18, height: 18, borderRadius: '50%', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.2)', transition: 'left 150ms' }} />
+              </button>
+              <span style={{ fontSize: 13, color: 'var(--foreground)', cursor: 'pointer' }} onClick={() => setF('ativo', !form.ativo)}>
+                {form.ativo ? 'Função ativa' : 'Função inativa'}
+              </span>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setModal(false)} disabled={saving}>Cancelar</Button>
+            <Button onClick={save} disabled={saving}>{saving ? 'Salvando…' : editId ? 'Salvar' : 'Criar função'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={!!deleteId} onOpenChange={o => !o && setDeleteId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir função?</AlertDialogTitle>
+            <AlertDialogDescription>Colaboradores vinculados perderão o vínculo com esta função.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={del} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Excluir</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  )
+}
+
+// ─── COMPONENTE PRINCIPAL ─────────────────────────────────────────────────────
+export default function Colaboradores() {
+  const [pageTab, setPageTab] = useState<'colaboradores' | 'funcoes'>('colaboradores')
+
+  const [rows, setRows]     = useState<ColaboradorRow[]>([])
+  const [funcoes, setFuncoes] = useState<Funcao[]>([])
+  const [obras, setObras]   = useState<Obra[]>([])
+  const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
+  const [filterStatus, setFilterStatus] = useState('todos')
 
   const [modalOpen, setModalOpen] = useState(false)
-  const [editId, setEditId] = useState<string | null>(null)
-  const [form, setForm] = useState<FormData>(EMPTY_FORM)
-  const [saving, setSaving] = useState(false)
+  const [editId, setEditId]       = useState<string | null>(null)
+  const [form, setForm]           = useState<FormData>(EMPTY)
+  const [section, setSection]     = useState<'pessoal' | 'funcao' | 'bancario'>('pessoal')
+  const [saving, setSaving]       = useState(false)
 
+  // chapa
+  const [chapaGerada, setChapaGerada]     = useState('')
+  const [gerando, setGerando]             = useState(false)
+  const [funcaoOriginal, setFuncaoOriginal] = useState('')  // id antes da edição
+  const [chapaOriginal, setChapaOriginal]   = useState('')  // chapa antes da edição
+  const [motivoTroca, setMotivoTroca]       = useState('')
+  const [trocandoFuncao, setTrocandoFuncao] = useState(false)
+
+  // histórico chapa
+  const [histModal, setHistModal]     = useState(false)
+  const [histColabId, setHistColabId] = useState<string | null>(null)
+  const [histRows, setHistRows]       = useState<HistoricoChapa[]>([])
+  const [histLoading, setHistLoading] = useState(false)
+
+  // delete
   const [deleteId, setDeleteId] = useState<string | null>(null)
-  const [deleting, setDeleting] = useState(false)
 
   // ── fetch ─────────────────────────────────────────────────────────────────
   const fetchData = useCallback(async () => {
     setLoading(true)
     const [{ data: cols }, { data: fns }, { data: obs }] = await Promise.all([
-      supabase
-        .from('colaboradores')
-        .select('*, funcoes(id, nome, cbo, sigla, valor_hora_clt, valor_hora_autonomo, ativo), obras(id, nome, codigo, status, ativo)')
+      supabase.from('colaboradores')
+        .select('*, funcoes(id,nome,sigla,valor_hora_clt,valor_hora_autonomo), obras(id,nome,codigo)')
         .order('nome'),
       supabase.from('funcoes').select('*').eq('ativo', true).order('nome'),
       supabase.from('obras').select('*').order('nome'),
     ])
     if (cols) setRows(cols as ColaboradorRow[])
-    if (fns) setFuncoes(fns as Funcao[])
-    if (obs) setObras(obs as Obra[])
+    if (fns)  setFuncoes(fns as Funcao[])
+    if (obs)  setObras(obs as Obra[])
     setLoading(false)
   }, [])
 
   useEffect(() => { fetchData() }, [fetchData])
 
-  // ── filtro ────────────────────────────────────────────────────────────────
+  // ── filtros ───────────────────────────────────────────────────────────────
   const filtered = rows.filter(c => {
     const q = search.toLowerCase()
-    const matchSearch =
-      !q ||
-      c.nome.toLowerCase().includes(q) ||
-      (c.chapa ?? '').toLowerCase().includes(q) ||
-      (c.cpf ?? '').replace(/\D/g, '').includes(q.replace(/\D/g, ''))
-    const matchStatus = filterStatus === 'todos' || c.status === filterStatus
-    const matchObra = filterObra === 'todas' || c.obra_id === filterObra
-    return matchSearch && matchStatus && matchObra
+    const matchQ = !q || c.nome.toLowerCase().includes(q) || (c.chapa ?? '').toLowerCase().includes(q) || (c.cpf ?? '').includes(q)
+    const matchS = filterStatus === 'todos' || c.status === filterStatus
+    return matchQ && matchS
   })
 
-  // ── modal ─────────────────────────────────────────────────────────────────
+  // ── helpers form ──────────────────────────────────────────────────────────
+  const set = (k: keyof FormData, v: string | boolean) => setForm(p => ({ ...p, [k]: v }))
+
+  const handleFuncaoChange = async (funcaoId: string) => {
+    const fn = funcoes.find(f => f.id === funcaoId)
+    if (!fn) { set('funcao_id', ''); return }
+
+    // Auto-preenche valor/hora conforme tipo de contrato atual
+    const vhClt = fn.valor_hora_clt != null ? String(fn.valor_hora_clt) : ''
+    const vhAuto = fn.valor_hora_autonomo != null ? String(fn.valor_hora_autonomo) : ''
+    const valorHora = form.tipo_contrato === 'pj' || form.tipo_contrato === 'autonomo' ? vhAuto : vhClt
+
+    setForm(p => ({ ...p, funcao_id: funcaoId }))
+
+    // Se está criando (sem chapa ainda) ou trocando de função em edição
+    const estaEditando = !!editId
+    const mudouFuncao  = estaEditando && funcaoId !== funcaoOriginal && funcaoOriginal !== ''
+
+    if (mudouFuncao) {
+      setTrocandoFuncao(true)
+    } else if (!estaEditando && fn.sigla) {
+      // Criar: gera chapa automaticamente
+      setGerando(true)
+      const nova = await gerarChapa(fn.sigla)
+      setChapaGerada(nova)
+      setForm(p => ({ ...p, funcao_id: funcaoId, chapa: nova }))
+      setGerando(false)
+    }
+  }
+
+  // ── abrir modal criar ────────────────────────────────────────────────────
   const openNew = () => {
     setEditId(null)
-    setForm(EMPTY_FORM)
+    setForm(EMPTY)
+    setChapaGerada('')
+    setFuncaoOriginal('')
+    setChapaOriginal('')
+    setMotivoTroca('')
+    setTrocandoFuncao(false)
+    setSection('pessoal')
     setModalOpen(true)
   }
 
+  // ── abrir modal editar ───────────────────────────────────────────────────
   const openEdit = (c: ColaboradorRow) => {
     setEditId(c.id)
+    setFuncaoOriginal(c.funcao_id ?? '')
+    setChapaOriginal(c.chapa ?? '')
+    setChapaGerada(c.chapa ?? '')
+    setMotivoTroca('')
+    setTrocandoFuncao(false)
+    setSection('pessoal')
     setForm({
-      nome: c.nome,
-      chapa: c.chapa ?? '',
-      cpf: c.cpf ?? '',
-      rg: c.rg ?? '',
-      pis_nit: c.pis_nit ?? '',
-      data_nascimento: c.data_nascimento ?? '',
-      genero: c.genero ?? '',
-      estado_civil: c.estado_civil ?? '',
-      telefone: c.telefone ?? '',
-      email: c.email ?? '',
-      endereco: c.endereco ?? '',
-      cidade: c.cidade ?? '',
-      estado: c.estado ?? '',
-      cep: c.cep ?? '',
-      funcao_id: c.funcao_id ?? '',
-      obra_id: c.obra_id ?? '',
-      salario: c.salario != null ? String(c.salario) : '',
-      tipo_contrato: c.tipo_contrato ?? 'clt',
-      data_admissao: c.data_admissao ?? '',
-      ctps_numero: c.ctps_numero ?? '',
-      ctps_serie: c.ctps_serie ?? '',
-      banco: c.banco ?? '',
-      agencia: c.agencia ?? '',
-      conta: c.conta ?? '',
-      tipo_conta: c.tipo_conta ?? '',
-      pix_chave: c.pix_chave ?? '',
-      vale_transporte: c.vale_transporte,
-      vt_tipo: c.vt_tipo ?? '',
-      vt_trechos_ida: String(c.vt_trechos_ida),
-      vt_trechos_volta: String(c.vt_trechos_volta),
-      status: c.status,
-      observacoes: c.observacoes ?? '',
+      nome: c.nome, chapa: c.chapa ?? '', cpf: c.cpf ?? '', rg: c.rg ?? '',
+      pis_nit: c.pis_nit ?? '', data_nascimento: c.data_nascimento ?? '',
+      genero: c.genero ?? '', estado_civil: c.estado_civil ?? '',
+      telefone: c.telefone ?? '', email: c.email ?? '', endereco: c.endereco ?? '',
+      cidade: c.cidade ?? '', estado: c.estado ?? '', cep: c.cep ?? '',
+      funcao_id: c.funcao_id ?? '', obra_id: c.obra_id ?? '',
+      tipo_contrato: c.tipo_contrato ?? 'clt', data_admissao: c.data_admissao ?? '',
+      ctps_numero: c.ctps_numero ?? '', ctps_serie: c.ctps_serie ?? '',
+      banco: c.banco ?? '', agencia: c.agencia ?? '', conta: c.conta ?? '',
+      tipo_conta: c.tipo_conta ?? '', pix_chave: c.pix_chave ?? '',
+      vale_transporte: c.vale_transporte ?? false,
+      vt_tipo: c.vt_tipo ?? '', vt_trechos_ida: String(c.vt_trechos_ida ?? 1),
+      vt_trechos_volta: String(c.vt_trechos_volta ?? 1),
+      status: c.status ?? 'ativo', observacoes: c.observacoes ?? '',
     })
     setModalOpen(true)
   }
 
-  const set = (k: keyof FormData, v: string | boolean) =>
-    setForm(p => ({ ...p, [k]: v }))
-
-  // ── Auto-preenchimento valor/hora ao trocar função ou tipo de contrato ──────
-  const handleFuncaoChange = (funcaoId: string) => {
-    setForm(p => {
-      const fn = funcoes.find(f => f.id === funcaoId)
-      let valorHora = ''
-      if (fn) {
-        if (p.tipo_contrato === 'pj') {
-          valorHora = fn.valor_hora_autonomo != null ? String(fn.valor_hora_autonomo) : ''
-        } else {
-          valorHora = fn.valor_hora_clt != null ? String(fn.valor_hora_clt) : ''
-        }
-      }
-      return { ...p, funcao_id: funcaoId, salario: valorHora }
-    })
-  }
-
-  const handleTipoContratoChange = (tipo: string) => {
-    setForm(p => {
-      const fn = funcoes.find(f => f.id === p.funcao_id)
-      let valorHora = p.salario
-      if (fn) {
-        if (tipo === 'pj') {
-          valorHora = fn.valor_hora_autonomo != null ? String(fn.valor_hora_autonomo) : ''
-        } else {
-          valorHora = fn.valor_hora_clt != null ? String(fn.valor_hora_clt) : ''
-        }
-      }
-      return { ...p, tipo_contrato: tipo, salario: valorHora }
-    })
-  }
-
-  // ── save ──────────────────────────────────────────────────────────────────
+  // ── salvar ────────────────────────────────────────────────────────────────
   const handleSave = async () => {
-    if (!form.nome.trim()) { show('Nome é obrigatório', 'error'); return }
+    if (!form.nome.trim()) { toast.error('Nome é obrigatório'); setSection('pessoal'); return }
+    if (!form.funcao_id)   { toast.error('Selecione a função'); setSection('funcao'); return }
+    if (!form.chapa)       { toast.error('Chapa não gerada — selecione a função'); setSection('funcao'); return }
+
+    // Troca de função sem motivo
+    const mudouFuncao = editId && form.funcao_id !== funcaoOriginal && funcaoOriginal !== ''
+    if (mudouFuncao && !motivoTroca.trim()) {
+      toast.error('Informe o motivo da troca de função')
+      setTrocandoFuncao(true)
+      setSection('funcao')
+      return
+    }
+
     setSaving(true)
 
     const payload: Partial<Colaborador> = {
       nome: form.nome.trim(),
-      chapa: form.chapa || null,
+      chapa: form.chapa,
       cpf: form.cpf || null,
       rg: form.rg || null,
       pis_nit: form.pis_nit || null,
       data_nascimento: form.data_nascimento || null,
-      genero: form.genero || null,
-      estado_civil: form.estado_civil || null,
+      genero: form.genero as Colaborador['genero'] || null,
+      estado_civil: form.estado_civil as Colaborador['estado_civil'] || null,
       telefone: form.telefone || null,
       email: form.email || null,
       endereco: form.endereco || null,
@@ -215,8 +487,7 @@ export default function Colaboradores() {
       cep: form.cep || null,
       funcao_id: form.funcao_id || null,
       obra_id: form.obra_id || null,
-      salario: form.salario ? parseFloat(form.salario) : null,
-      tipo_contrato: (form.tipo_contrato as Colaborador['tipo_contrato']) || 'clt',
+      tipo_contrato: form.tipo_contrato as Colaborador['tipo_contrato'],
       data_admissao: form.data_admissao || null,
       ctps_numero: form.ctps_numero || null,
       ctps_serie: form.ctps_serie || null,
@@ -227,10 +498,23 @@ export default function Colaboradores() {
       pix_chave: form.pix_chave || null,
       vale_transporte: form.vale_transporte,
       vt_tipo: form.vt_tipo || null,
-      vt_trechos_ida: parseInt(form.vt_trechos_ida) || 1,
-      vt_trechos_volta: parseInt(form.vt_trechos_volta) || 1,
+      vt_trechos_ida: form.vt_trechos_ida ? parseInt(form.vt_trechos_ida) : null,
+      vt_trechos_volta: form.vt_trechos_volta ? parseInt(form.vt_trechos_volta) : null,
       status: form.status as Colaborador['status'],
       observacoes: form.observacoes || null,
+    }
+
+    // Se mudou função → registra histórico ANTES de atualizar
+    if (mudouFuncao && editId) {
+      await supabase.from('historico_chapa').insert({
+        colaborador_id: editId,
+        chapa: chapaOriginal,
+        funcao_id: funcaoOriginal || null,
+        tipo_contrato: rows.find(r => r.id === editId)?.tipo_contrato ?? null,
+        data_inicio: rows.find(r => r.id === editId)?.data_admissao ?? new Date().toISOString().split('T')[0],
+        data_fim: new Date().toISOString().split('T')[0],
+        motivo_troca: motivoTroca.trim(),
+      })
     }
 
     const { error } = editId
@@ -238,344 +522,420 @@ export default function Colaboradores() {
       : await supabase.from('colaboradores').insert(payload)
 
     setSaving(false)
-    if (error) { show(error.message, 'error'); return }
-    show(editId ? 'Colaborador atualizado!' : 'Colaborador criado!')
+    if (error) { toast.error(error.message); return }
+    toast.success(editId ? 'Colaborador atualizado!' : 'Colaborador criado!')
     setModalOpen(false)
     fetchData()
   }
 
-  // ── delete ────────────────────────────────────────────────────────────────
+  // ── deletar ───────────────────────────────────────────────────────────────
   const handleDelete = async () => {
     if (!deleteId) return
-    setDeleting(true)
     const { error } = await supabase.from('colaboradores').delete().eq('id', deleteId)
-    setDeleting(false)
     setDeleteId(null)
-    if (error) { show(error.message, 'error'); return }
-    show('Colaborador excluído!')
-    fetchData()
+    if (error) { toast.error(error.message); return }
+    toast.success('Colaborador excluído!'); fetchData()
   }
 
-  // ─── render ────────────────────────────────────────────────────────────────
+  // ── histórico chapa ───────────────────────────────────────────────────────
+  const openHist = async (colaboradorId: string) => {
+    setHistColabId(colaboradorId)
+    setHistLoading(true)
+    setHistModal(true)
+    const { data } = await supabase
+      .from('historico_chapa')
+      .select('*, funcoes(nome, sigla)')
+      .eq('colaborador_id', colaboradorId)
+      .order('data_inicio', { ascending: false })
+    if (data) setHistRows(data as HistoricoChapa[])
+    setHistLoading(false)
+  }
+
+  // ── render: abas da página ────────────────────────────────────────────────
   return (
-    <div className="p-6">
-      {/* Toast */}
-      {msg && (
-        <div className={cn(
-          'fixed top-4 right-4 z-[100] px-4 py-3 rounded-lg shadow-lg text-sm font-medium flex items-center gap-2',
-          msg.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white',
-        )}>
-          {msg.text}
-          <button onClick={() => {}} className="ml-2 opacity-70 hover:opacity-100"><X size={14} /></button>
-        </div>
-      )}
-
-      <PageHeader
-        title="Colaboradores"
-        subtitle={`${rows.length} colaborador${rows.length !== 1 ? 'es' : ''} cadastrado${rows.length !== 1 ? 's' : ''}`}
-        action={
-          <Button onClick={openNew} className="gap-2">
-            <Plus size={16} /> Novo Colaborador
-          </Button>
-        }
-      />
-
-      {/* Filtros */}
-      <div className="flex flex-wrap gap-3 mb-5">
-        <div className="relative flex-1 min-w-[220px]">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            className="pl-9"
-            placeholder="Buscar por nome, chapa ou CPF…"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-          />
-        </div>
-        <Select value={filterStatus} onValueChange={setFilterStatus}>
-          <SelectTrigger className="w-44"><SelectValue placeholder="Status" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="todos">Todos os status</SelectItem>
-            <SelectItem value="ativo">Ativo</SelectItem>
-            <SelectItem value="inativo">Inativo</SelectItem>
-            <SelectItem value="afastado">Afastado</SelectItem>
-            <SelectItem value="ferias">Férias</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={filterObra} onValueChange={setFilterObra}>
-          <SelectTrigger className="w-48"><SelectValue placeholder="Obra" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="todas">Todas as obras</SelectItem>
-            {obras.map(o => <SelectItem key={o.id} value={o.id}>{o.nome}</SelectItem>)}
-          </SelectContent>
-        </Select>
+    <div>
+      {/* Tabs de página */}
+      <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--border)', marginBottom: 24 }}>
+        {(['colaboradores', 'funcoes'] as const).map(t => (
+          <button key={t} onClick={() => setPageTab(t)} style={{
+            padding: '10px 20px', fontSize: 14, fontWeight: 600, border: 'none', background: 'none', cursor: 'pointer',
+            borderBottom: pageTab === t ? '2px solid var(--primary)' : '2px solid transparent',
+            color: pageTab === t ? 'var(--primary)' : 'var(--muted-foreground)',
+            marginBottom: -1, transition: 'color 120ms',
+          }}>
+            {t === 'colaboradores' ? '👷 Colaboradores' : '🏷️ Funções & Cargos'}
+          </button>
+        ))}
       </div>
 
-      {/* Tabela */}
-      {loading ? (
-        <LoadingSkeleton rows={6} />
-      ) : filtered.length === 0 ? (
-        <EmptyState icon={<Users size={32} />} title="Nenhum colaborador encontrado" description="Cadastre o primeiro colaborador ou ajuste os filtros." />
-      ) : (
-        <div className="rounded-lg border border-border bg-card overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-muted/50">
-                <TableHead>Chapa</TableHead>
-                <TableHead>Nome</TableHead>
-                <TableHead>CPF</TableHead>
-                <TableHead>Função</TableHead>
-                <TableHead>Obra</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Contrato</TableHead>
-                <TableHead className="text-right">Ações</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map(c => (
-                <TableRow key={c.id} className="hover:bg-muted/30 transition-colors">
-                  <TableCell className="font-mono text-sm text-muted-foreground">{c.chapa ?? '—'}</TableCell>
-                  <TableCell className="font-medium">{c.nome}</TableCell>
-                  <TableCell className="font-mono text-sm">{c.cpf ? formatCPF(c.cpf) : '—'}</TableCell>
-                  <TableCell className="text-sm">{c.funcoes?.nome ?? '—'}</TableCell>
-                  <TableCell className="text-sm">{c.obras?.nome ?? '—'}</TableCell>
-                  <TableCell><BadgeStatus status={c.status} /></TableCell>
-                  <TableCell className="text-sm capitalize">{c.tipo_contrato?.replace(/_/g, ' ')}</TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-1">
-                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(c)}>
-                        <Pencil size={14} />
-                      </Button>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => setDeleteId(c.id)}>
-                        <Trash2 size={14} />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+      {/* ── ABA FUNÇÕES ─────────────────────────────────────────────────── */}
+      {pageTab === 'funcoes' && <FuncoesTab />}
+
+      {/* ── ABA COLABORADORES ───────────────────────────────────────────── */}
+      {pageTab === 'colaboradores' && (
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+            <div style={{ display: 'flex', gap: 8, flex: 1, flexWrap: 'wrap' }}>
+              <div style={{ position: 'relative', width: 280 }}>
+                <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted-foreground)' }} />
+                <Input style={{ paddingLeft: 32 }} placeholder="Buscar por nome, chapa ou CPF…" value={search} onChange={e => setSearch(e.target.value)} />
+              </div>
+              <Select value={filterStatus} onValueChange={setFilterStatus}>
+                <SelectTrigger style={{ width: 150 }}><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos os status</SelectItem>
+                  <SelectItem value="ativo">Ativos</SelectItem>
+                  <SelectItem value="inativo">Inativos</SelectItem>
+                  <SelectItem value="afastado">Afastados</SelectItem>
+                  <SelectItem value="ferias">Férias</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <Button onClick={openNew} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Plus size={15} /> Novo Colaborador
+            </Button>
+          </div>
+
+          {loading ? <LoadingSkeleton rows={5} /> : filtered.length === 0 ? (
+            <EmptyState icon={<Users size={32} />} title="Nenhum colaborador encontrado" description="Cadastre o primeiro colaborador ou ajuste os filtros." action={<Button onClick={openNew} size="sm"><Plus size={13} /> Novo Colaborador</Button>} />
+          ) : (
+            <div style={{ borderRadius: 8, border: '1px solid var(--border)', overflow: 'hidden' }}>
+              <Table>
+                <TableHeader>
+                  <TableRow style={{ background: 'var(--muted)' }}>
+                    <TableHead style={{ width: 130 }}>Chapa</TableHead>
+                    <TableHead>Nome</TableHead>
+                    <TableHead>Função</TableHead>
+                    <TableHead style={{ width: 90 }}>Tipo</TableHead>
+                    <TableHead>Obra</TableHead>
+                    <TableHead style={{ width: 90 }}>Status</TableHead>
+                    <TableHead style={{ width: 100, textAlign: 'right' }}>Ações</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filtered.map(c => (
+                    <TableRow key={c.id} style={{ cursor: 'default' }}>
+                      <TableCell>
+                        <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 12, color: 'var(--primary)', background: 'rgba(59,130,246,0.08)', padding: '2px 8px', borderRadius: 4 }}>
+                          {c.chapa ?? '—'}
+                        </span>
+                      </TableCell>
+                      <TableCell style={{ fontWeight: 500 }}>{c.nome}</TableCell>
+                      <TableCell style={{ fontSize: 13 }}>{(c.funcoes as any)?.nome ?? '—'}</TableCell>
+                      <TableCell style={{ fontSize: 12, textTransform: 'capitalize' }}>{c.tipo_contrato?.replace(/_/g, ' ') ?? '—'}</TableCell>
+                      <TableCell style={{ fontSize: 13 }}>{(c.obras as any)?.nome ?? '—'}</TableCell>
+                      <TableCell><BadgeStatus status={c.status} /></TableCell>
+                      <TableCell style={{ textAlign: 'right' }}>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
+                          <Button variant="ghost" size="icon" style={{ width: 30, height: 30 }} title="Histórico de chapas" onClick={() => openHist(c.id)}><History size={13} /></Button>
+                          <Button variant="ghost" size="icon" style={{ width: 30, height: 30 }} onClick={() => openEdit(c)}><Pencil size={13} /></Button>
+                          <Button variant="ghost" size="icon" style={{ width: 30, height: 30, color: 'var(--destructive)' }} onClick={() => setDeleteId(c.id)}><Trash2 size={13} /></Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </>
       )}
 
-      {/* Modal Criar/Editar */}
-      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent className="max-w-3xl p-0 gap-0 flex flex-col" style={{ maxHeight: '92vh' }}>
-          <DialogHeader className="px-6 pt-5 pb-3 flex-shrink-0 border-b border-border">
-            <DialogTitle className="text-lg">
+      {/* ═══════════ MODAL COLABORADOR ═══════════════════════════════════════ */}
+      <Dialog open={modalOpen} onOpenChange={open => { if (!open) setModalOpen(false) }}>
+        <DialogContent style={{ maxWidth: 680, padding: 0, display: 'flex', flexDirection: 'column', maxHeight: '92vh', overflow: 'hidden' }}>
+
+          {/* cabeçalho */}
+          <DialogHeader style={{ padding: '18px 24px 0', flexShrink: 0 }}>
+            <DialogTitle style={{ fontSize: 16 }}>
               {editId ? 'Editar Colaborador' : 'Novo Colaborador'}
             </DialogTitle>
           </DialogHeader>
 
-          <Tabs defaultValue="pessoal" className="flex flex-col flex-1 min-h-0">
-            <TabsList className="mx-6 mt-3 mb-0 flex-shrink-0 w-auto justify-start">
-              <TabsTrigger value="pessoal">Dados Pessoais</TabsTrigger>
-              <TabsTrigger value="contrato">Contrato</TabsTrigger>
-              <TabsTrigger value="bancario">Bancário / VT</TabsTrigger>
-            </TabsList>
+          {/* abas do modal */}
+          <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--border)', margin: '12px 24px 0', flexShrink: 0 }}>
+            {(['pessoal', 'funcao', 'bancario'] as const).map(s => {
+              const labels: Record<string, string> = { pessoal: 'Dados Pessoais', funcao: 'Função & Contrato', bancario: 'Bancário / VT' }
+              return (
+                <button key={s} onClick={() => setSection(s)} style={{
+                  padding: '8px 16px', fontSize: 13, fontWeight: 500, border: 'none', background: 'none', cursor: 'pointer',
+                  borderBottom: section === s ? '2px solid var(--primary)' : '2px solid transparent',
+                  color: section === s ? 'var(--primary)' : 'var(--muted-foreground)',
+                  marginBottom: -1,
+                }}>
+                  {labels[s]}
+                </button>
+              )
+            })}
+          </div>
 
-              {/* ── TAB DADOS PESSOAIS ─────────────────────────────────────── */}
-              <TabsContent value="pessoal" className="flex-1 overflow-y-auto px-6 py-4 mt-0 space-y-4 data-[state=inactive]:hidden">
-                <SectionTitle>Identificação</SectionTitle>
-                <div className="grid grid-cols-2 gap-3">
-                  <FieldGroup label="Nome completo *" span={2}>
-                    <Input value={form.nome} onChange={e => set('nome', e.target.value)} placeholder="Nome completo" />
-                  </FieldGroup>
-                  <FieldGroup label="Chapa">
-                    <Input value={form.chapa} onChange={e => set('chapa', e.target.value)} placeholder="0001" />
-                  </FieldGroup>
-                  <FieldGroup label="CPF">
-                    <Input value={form.cpf} onChange={e => set('cpf', e.target.value)} placeholder="000.000.000-00" />
-                  </FieldGroup>
-                  <FieldGroup label="RG">
-                    <Input value={form.rg} onChange={e => set('rg', e.target.value)} placeholder="MG-00.000.000" />
-                  </FieldGroup>
-                  <FieldGroup label="PIS / NIT">
-                    <Input value={form.pis_nit} onChange={e => set('pis_nit', e.target.value)} placeholder="000.00000.00-0" />
-                  </FieldGroup>
-                  <FieldGroup label="Data de nascimento">
-                    <Input type="date" value={form.data_nascimento} onChange={e => set('data_nascimento', e.target.value)} />
-                  </FieldGroup>
-                  <FieldGroup label="Gênero">
-                    <Select value={form.genero} onValueChange={v => set('genero', v)}>
-                      <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="M">Masculino</SelectItem>
-                        <SelectItem value="F">Feminino</SelectItem>
-                        <SelectItem value="outro">Outro</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </FieldGroup>
-                  <FieldGroup label="Estado civil">
-                    <Select value={form.estado_civil} onValueChange={v => set('estado_civil', v)}>
-                      <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="solteiro">Solteiro(a)</SelectItem>
-                        <SelectItem value="casado">Casado(a)</SelectItem>
-                        <SelectItem value="divorciado">Divorciado(a)</SelectItem>
-                        <SelectItem value="viuvo">Viúvo(a)</SelectItem>
-                        <SelectItem value="uniao_estavel">União estável</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </FieldGroup>
-                  <FieldGroup label="Telefone">
-                    <Input value={form.telefone} onChange={e => set('telefone', e.target.value)} placeholder="(31) 99999-9999" />
-                  </FieldGroup>
-                  <FieldGroup label="E-mail">
-                    <Input type="email" value={form.email} onChange={e => set('email', e.target.value)} placeholder="email@exemplo.com" />
-                  </FieldGroup>
-                </div>
+          {/* conteúdo scrollável */}
+          <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
 
-                <SectionTitle>Endereço</SectionTitle>
-                <div className="grid grid-cols-2 gap-3">
-                  <FieldGroup label="Endereço" span={2}>
-                    <Input value={form.endereco} onChange={e => set('endereco', e.target.value)} placeholder="Rua, número, complemento" />
-                  </FieldGroup>
-                  <FieldGroup label="Cidade">
-                    <Input value={form.cidade} onChange={e => set('cidade', e.target.value)} placeholder="Belo Horizonte" />
-                  </FieldGroup>
-                  <FieldGroup label="Estado">
-                    <Input value={form.estado} onChange={e => set('estado', e.target.value)} placeholder="MG" maxLength={2} />
-                  </FieldGroup>
-                  <FieldGroup label="CEP">
-                    <Input value={form.cep} onChange={e => set('cep', e.target.value)} placeholder="00000-000" />
-                  </FieldGroup>
-                </div>
+            {/* ── SEÇÃO DADOS PESSOAIS ───────────────────────────────────── */}
+            {section === 'pessoal' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <Sec title="Identificação">
+                  <Grid cols={2}>
+                    <Field label="Nome completo *" span={2}>
+                      <Input value={form.nome} onChange={e => set('nome', e.target.value)} placeholder="Nome completo" />
+                    </Field>
+                    <Field label="CPF">
+                      <Input value={form.cpf} onChange={e => set('cpf', e.target.value)} placeholder="000.000.000-00" />
+                    </Field>
+                    <Field label="RG">
+                      <Input value={form.rg} onChange={e => set('rg', e.target.value)} placeholder="MG-00.000.000" />
+                    </Field>
+                    <Field label="PIS / NIT">
+                      <Input value={form.pis_nit} onChange={e => set('pis_nit', e.target.value)} placeholder="000.00000.00-0" />
+                    </Field>
+                    <Field label="Data de nascimento">
+                      <Input type="date" value={form.data_nascimento} onChange={e => set('data_nascimento', e.target.value)} />
+                    </Field>
+                    <Field label="Gênero">
+                      <Select value={form.genero} onValueChange={v => set('genero', v)}>
+                        <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="M">Masculino</SelectItem>
+                          <SelectItem value="F">Feminino</SelectItem>
+                          <SelectItem value="outro">Outro</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                    <Field label="Estado civil">
+                      <Select value={form.estado_civil} onValueChange={v => set('estado_civil', v)}>
+                        <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="solteiro">Solteiro(a)</SelectItem>
+                          <SelectItem value="casado">Casado(a)</SelectItem>
+                          <SelectItem value="divorciado">Divorciado(a)</SelectItem>
+                          <SelectItem value="viuvo">Viúvo(a)</SelectItem>
+                          <SelectItem value="uniao_estavel">União estável</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                    <Field label="Telefone">
+                      <Input value={form.telefone} onChange={e => set('telefone', e.target.value)} placeholder="(31) 99999-9999" />
+                    </Field>
+                    <Field label="E-mail">
+                      <Input type="email" value={form.email} onChange={e => set('email', e.target.value)} placeholder="email@exemplo.com" />
+                    </Field>
+                  </Grid>
+                </Sec>
 
-                <SectionTitle>Status</SectionTitle>
-                <div className="grid grid-cols-2 gap-3">
-                  <FieldGroup label="Status do colaborador">
-                    <Select value={form.status} onValueChange={v => set('status', v)}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="ativo">Ativo</SelectItem>
-                        <SelectItem value="inativo">Inativo</SelectItem>
-                        <SelectItem value="afastado">Afastado</SelectItem>
-                        <SelectItem value="ferias">Férias</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </FieldGroup>
-                  <FieldGroup label="Observações" span={2}>
-                    <Textarea value={form.observacoes} onChange={e => set('observacoes', e.target.value)} rows={2} placeholder="Observações gerais…" />
-                  </FieldGroup>
-                </div>
-              </TabsContent>
+                <Sec title="Endereço">
+                  <Grid cols={2}>
+                    <Field label="Endereço" span={2}>
+                      <Input value={form.endereco} onChange={e => set('endereco', e.target.value)} placeholder="Rua, número, complemento" />
+                    </Field>
+                    <Field label="Cidade">
+                      <Input value={form.cidade} onChange={e => set('cidade', e.target.value)} placeholder="Belo Horizonte" />
+                    </Field>
+                    <Field label="Estado (UF)">
+                      <Input value={form.estado} onChange={e => set('estado', e.target.value)} placeholder="MG" maxLength={2} />
+                    </Field>
+                    <Field label="CEP">
+                      <Input value={form.cep} onChange={e => set('cep', e.target.value)} placeholder="00000-000" />
+                    </Field>
+                  </Grid>
+                </Sec>
 
-              {/* ── TAB CONTRATO ───────────────────────────────────────────── */}
-              <TabsContent value="contrato" className="flex-1 overflow-y-auto px-6 py-4 mt-0 space-y-4 data-[state=inactive]:hidden">
-                <SectionTitle>Vínculo</SectionTitle>
-                <div className="grid grid-cols-2 gap-3">
-                  <FieldGroup label="Função">
-                    <Select value={form.funcao_id} onValueChange={handleFuncaoChange}>
-                      <SelectTrigger><SelectValue placeholder="Selecione a função" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="">— Sem função —</SelectItem>
-                        {funcoes.map(f => <SelectItem key={f.id} value={f.id}>{f.nome}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                  </FieldGroup>
-                  <FieldGroup label="Obra">
-                    <Select value={form.obra_id} onValueChange={v => set('obra_id', v)}>
-                      <SelectTrigger><SelectValue placeholder="Selecione a obra" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="">— Sem obra —</SelectItem>
-                        {obras.map(o => <SelectItem key={o.id} value={o.id}>{o.nome}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                  </FieldGroup>
-                  <FieldGroup label="Tipo de contrato">
-                    <Select value={form.tipo_contrato} onValueChange={handleTipoContratoChange}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="clt">CLT</SelectItem>
-                        <SelectItem value="pj">PJ</SelectItem>
-                        <SelectItem value="temporario">Temporário</SelectItem>
-                        <SelectItem value="aprendiz">Aprendiz</SelectItem>
-                        <SelectItem value="estagiario">Estagiário</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </FieldGroup>
-                  <FieldGroup label={form.tipo_contrato === 'pj' ? 'Valor/Hora Autônomo (R$)' : 'Valor/Hora CLT (R$)'}>
-                    <Input
-                      type="number" step="0.01" min="0"
-                      value={form.salario}
-                      onChange={e => set('salario', e.target.value)}
-                      placeholder="0,00"
-                    />
-                    {form.funcao_id && funcoes.find(f => f.id === form.funcao_id) && (() => {
-                      const fn = funcoes.find(f => f.id === form.funcao_id)!
-                      const hint = form.tipo_contrato === 'pj'
-                        ? fn.valor_hora_autonomo != null ? `Tabela função: R$ ${fn.valor_hora_autonomo.toFixed(2)}/h` : null
-                        : fn.valor_hora_clt != null ? `Tabela função: R$ ${fn.valor_hora_clt.toFixed(2)}/h` : null
-                      return hint ? <p className="text-[10px] text-muted-foreground mt-1">{hint}</p> : null
-                    })()}
-                  </FieldGroup>
-                  <FieldGroup label="Data de admissão">
-                    <Input type="date" value={form.data_admissao} onChange={e => set('data_admissao', e.target.value)} />
-                  </FieldGroup>
-                </div>
+                <Sec title="Status">
+                  <Grid cols={2}>
+                    <Field label="Status">
+                      <Select value={form.status} onValueChange={v => set('status', v)}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="ativo">Ativo</SelectItem>
+                          <SelectItem value="inativo">Inativo</SelectItem>
+                          <SelectItem value="afastado">Afastado</SelectItem>
+                          <SelectItem value="ferias">Férias</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                    <Field label="Observações" span={2}>
+                      <Textarea value={form.observacoes} onChange={e => set('observacoes', e.target.value)} rows={2} placeholder="Observações gerais…" />
+                    </Field>
+                  </Grid>
+                </Sec>
+              </div>
+            )}
 
-                <SectionTitle>CTPS</SectionTitle>
-                <div className="grid grid-cols-2 gap-3">
-                  <FieldGroup label="Nº CTPS">
-                    <Input value={form.ctps_numero} onChange={e => set('ctps_numero', e.target.value)} placeholder="000000" />
-                  </FieldGroup>
-                  <FieldGroup label="Série CTPS">
-                    <Input value={form.ctps_serie} onChange={e => set('ctps_serie', e.target.value)} placeholder="000" />
-                  </FieldGroup>
-                </div>
-              </TabsContent>
+            {/* ── SEÇÃO FUNÇÃO & CONTRATO ────────────────────────────────── */}
+            {section === 'funcao' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-              {/* ── TAB BANCÁRIO / VT ─────────────────────────────────────── */}
-              <TabsContent value="bancario" className="flex-1 overflow-y-auto px-6 py-4 mt-0 space-y-4 data-[state=inactive]:hidden">
-                <SectionTitle>Dados Bancários</SectionTitle>
-                <div className="grid grid-cols-2 gap-3">
-                  <FieldGroup label="Banco">
-                    <Input value={form.banco} onChange={e => set('banco', e.target.value)} placeholder="Banco do Brasil" />
-                  </FieldGroup>
-                  <FieldGroup label="Agência">
-                    <Input value={form.agencia} onChange={e => set('agencia', e.target.value)} placeholder="0000" />
-                  </FieldGroup>
-                  <FieldGroup label="Conta">
-                    <Input value={form.conta} onChange={e => set('conta', e.target.value)} placeholder="00000-0" />
-                  </FieldGroup>
-                  <FieldGroup label="Tipo de conta">
-                    <Select value={form.tipo_conta} onValueChange={v => set('tipo_conta', v)}>
-                      <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="corrente">Corrente</SelectItem>
-                        <SelectItem value="poupanca">Poupança</SelectItem>
-                        <SelectItem value="salario">Conta Salário</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </FieldGroup>
-                  <FieldGroup label="Chave PIX" span={2}>
-                    <Input value={form.pix_chave} onChange={e => set('pix_chave', e.target.value)} placeholder="CPF, e-mail, telefone ou chave aleatória" />
-                  </FieldGroup>
-                </div>
-
-                <SectionTitle>Vale Transporte</SectionTitle>
-                <div className="grid grid-cols-2 gap-3">
-                  <FieldGroup label="Recebe VT?">
-                    <div className="flex items-center h-10 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => set('vale_transporte', !form.vale_transporte)}
-                        className={cn(
-                          'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
-                          form.vale_transporte ? 'bg-primary' : 'bg-muted-foreground/30',
-                        )}
-                      >
-                        <span className={cn(
-                          'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
-                          form.vale_transporte ? 'translate-x-6' : 'translate-x-1',
-                        )} />
-                      </button>
-                      <span className="text-sm text-muted-foreground">{form.vale_transporte ? 'Sim' : 'Não'}</span>
+                {/* Chapa */}
+                <div style={{
+                  borderRadius: 8, border: '1px solid var(--border)',
+                  background: form.chapa ? 'rgba(59,130,246,0.05)' : 'var(--muted)',
+                  padding: '14px 16px',
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                }}>
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--muted-foreground)', marginBottom: 4 }}>
+                      📋 Chapa (imutável)
                     </div>
-                  </FieldGroup>
+                    {form.chapa ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: 22, color: 'var(--primary)', letterSpacing: '0.04em' }}>
+                          {form.chapa}
+                        </span>
+                        <CheckCircle2 size={16} color="#22c55e" />
+                      </div>
+                    ) : (
+                      <span style={{ fontSize: 13, color: 'var(--muted-foreground)' }}>
+                        {gerando ? '⏳ Gerando…' : 'Selecione a função para gerar automaticamente'}
+                      </span>
+                    )}
+                  </div>
+                  {form.chapa && editId && form.funcao_id === funcaoOriginal && (
+                    <span style={{ fontSize: 11, color: 'var(--muted-foreground)', fontStyle: 'italic' }}>Gerada em {form.chapa.slice(-7, -4).replace(/(\d{2})(\d{2})/, '$1/$2')}</span>
+                  )}
+                </div>
+
+                {/* Alerta troca de função */}
+                {trocandoFuncao && form.funcao_id !== funcaoOriginal && funcaoOriginal !== '' && (
+                  <div style={{ borderRadius: 8, border: '1px solid #f59e0b', background: 'rgba(245,158,11,0.08)', padding: '14px 16px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                      <AlertTriangle size={16} color="#f59e0b" />
+                      <span style={{ fontSize: 13, fontWeight: 700, color: '#92400e' }}>Troca de Função — Registro Obrigatório</span>
+                    </div>
+                    <p style={{ fontSize: 12, color: '#92400e', marginBottom: 10, lineHeight: 1.5 }}>
+                      A chapa atual <strong>{chapaOriginal}</strong> será arquivada. Uma nova chapa será gerada para a função selecionada.
+                      Lançamentos anteriores <strong>não serão afetados</strong>.
+                    </p>
+                    <Field label="Motivo da troca de função *">
+                      <Input
+                        value={motivoTroca}
+                        onChange={e => setMotivoTroca(e.target.value)}
+                        placeholder="Ex.: Promoção, reclassificação, mudança de cargo…"
+                        style={{ borderColor: '#f59e0b' }}
+                      />
+                    </Field>
+                  </div>
+                )}
+
+                <Sec title="Função">
+                  <Grid cols={2}>
+                    <Field label="Função *" span={2}>
+                      <Select value={form.funcao_id} onValueChange={handleFuncaoChange}>
+                        <SelectTrigger><SelectValue placeholder="Selecione a função" /></SelectTrigger>
+                        <SelectContent>
+                          {funcoes.map(f => (
+                            <SelectItem key={f.id} value={f.id}>
+                              {f.sigla ? `[${f.sigla}] ` : ''}{f.nome}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {!funcoes.length && (
+                        <p style={{ fontSize: 11, color: 'var(--muted-foreground)', marginTop: 4 }}>
+                          Nenhuma função ativa. <button onClick={() => { setModalOpen(false); setPageTab('funcoes') }} style={{ color: 'var(--primary)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', fontSize: 11 }}>Cadastre uma função</button>
+                        </p>
+                      )}
+                    </Field>
+
+                    <Field label="Tipo de contrato *">
+                      <Select value={form.tipo_contrato} onValueChange={v => set('tipo_contrato', v)}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="clt">CLT</SelectItem>
+                          <SelectItem value="autonomo">Autônomo / PJ</SelectItem>
+                          <SelectItem value="temporario">Temporário</SelectItem>
+                          <SelectItem value="aprendiz">Aprendiz</SelectItem>
+                          <SelectItem value="estagiario">Estagiário</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </Field>
+
+                    {/* Valor/hora conforme tipo */}
+                    {form.funcao_id && (() => {
+                      const fn = funcoes.find(f => f.id === form.funcao_id)
+                      if (!fn) return null
+                      const isPJ = form.tipo_contrato === 'autonomo'
+                      const vh = isPJ ? fn.valor_hora_autonomo : fn.valor_hora_clt
+                      if (vh == null) return null
+                      return (
+                        <div style={{ gridColumn: 'span 1', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
+                          <div style={{ padding: '8px 12px', borderRadius: 6, background: isPJ ? 'rgba(249,115,22,0.08)' : 'rgba(59,130,246,0.08)', border: `1px solid ${isPJ ? 'rgba(249,115,22,0.2)' : 'rgba(59,130,246,0.2)'}` }}>
+                            <div style={{ fontSize: 10, color: 'var(--muted-foreground)', marginBottom: 2 }}>Valor/hora tabelado</div>
+                            <div style={{ fontSize: 18, fontWeight: 700, color: isPJ ? '#ea580c' : '#2563eb' }}>{formatCurrency(vh)}<span style={{ fontSize: 11, fontWeight: 400, color: 'var(--muted-foreground)' }}>/h</span></div>
+                          </div>
+                        </div>
+                      )
+                    })()}
+
+                    <Field label="Obra">
+                      <Select value={form.obra_id} onValueChange={v => set('obra_id', v)}>
+                        <SelectTrigger><SelectValue placeholder="Selecione a obra" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="">— Sem obra —</SelectItem>
+                          {obras.map(o => <SelectItem key={o.id} value={o.id}>{o.nome}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </Field>
+
+                    <Field label="Data de admissão">
+                      <Input type="date" value={form.data_admissao} onChange={e => set('data_admissao', e.target.value)} />
+                    </Field>
+                  </Grid>
+                </Sec>
+
+                <Sec title="CTPS">
+                  <Grid cols={2}>
+                    <Field label="Nº CTPS">
+                      <Input value={form.ctps_numero} onChange={e => set('ctps_numero', e.target.value)} placeholder="000000" />
+                    </Field>
+                    <Field label="Série CTPS">
+                      <Input value={form.ctps_serie} onChange={e => set('ctps_serie', e.target.value)} placeholder="000" />
+                    </Field>
+                  </Grid>
+                </Sec>
+              </div>
+            )}
+
+            {/* ── SEÇÃO BANCÁRIO / VT ────────────────────────────────────── */}
+            {section === 'bancario' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <Sec title="Dados Bancários">
+                  <Grid cols={2}>
+                    <Field label="Banco">
+                      <Input value={form.banco} onChange={e => set('banco', e.target.value)} placeholder="Banco do Brasil" />
+                    </Field>
+                    <Field label="Agência">
+                      <Input value={form.agencia} onChange={e => set('agencia', e.target.value)} placeholder="0000" />
+                    </Field>
+                    <Field label="Conta">
+                      <Input value={form.conta} onChange={e => set('conta', e.target.value)} placeholder="00000-0" />
+                    </Field>
+                    <Field label="Tipo de conta">
+                      <Select value={form.tipo_conta} onValueChange={v => set('tipo_conta', v)}>
+                        <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="corrente">Corrente</SelectItem>
+                          <SelectItem value="poupanca">Poupança</SelectItem>
+                          <SelectItem value="salario">Conta Salário</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                    <Field label="Chave PIX" span={2}>
+                      <Input value={form.pix_chave} onChange={e => set('pix_chave', e.target.value)} placeholder="CPF, e-mail, telefone ou chave aleatória" />
+                    </Field>
+                  </Grid>
+                </Sec>
+
+                <Sec title="Vale Transporte">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                    <button type="button" onClick={() => set('vale_transporte', !form.vale_transporte)}
+                      style={{ position: 'relative', display: 'inline-flex', width: 44, height: 24, borderRadius: 12, border: 'none', cursor: 'pointer', background: form.vale_transporte ? 'var(--primary)' : 'rgba(0,0,0,0.15)', transition: 'background 150ms', flexShrink: 0 }}>
+                      <span style={{ position: 'absolute', top: 3, left: form.vale_transporte ? 22 : 3, width: 18, height: 18, borderRadius: '50%', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.2)', transition: 'left 150ms' }} />
+                    </button>
+                    <span style={{ fontSize: 13 }}>{form.vale_transporte ? 'Recebe Vale Transporte' : 'Não recebe Vale Transporte'}</span>
+                  </div>
                   {form.vale_transporte && (
-                    <>
-                      <FieldGroup label="Tipo de VT">
+                    <Grid cols={2}>
+                      <Field label="Tipo de VT">
                         <Select value={form.vt_tipo} onValueChange={v => set('vt_tipo', v)}>
                           <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
                           <SelectContent>
@@ -584,42 +944,92 @@ export default function Colaboradores() {
                             <SelectItem value="dinheiro">Dinheiro</SelectItem>
                           </SelectContent>
                         </Select>
-                      </FieldGroup>
-                      <FieldGroup label="Trechos de ida">
+                      </Field>
+                      <Field label="Trechos ida">
                         <Input type="number" min="0" max="10" value={form.vt_trechos_ida} onChange={e => set('vt_trechos_ida', e.target.value)} />
-                      </FieldGroup>
-                      <FieldGroup label="Trechos de volta">
+                      </Field>
+                      <Field label="Trechos volta">
                         <Input type="number" min="0" max="10" value={form.vt_trechos_volta} onChange={e => set('vt_trechos_volta', e.target.value)} />
-                      </FieldGroup>
-                    </>
+                      </Field>
+                    </Grid>
                   )}
-                </div>
-              </TabsContent>
-          </Tabs>
+                </Sec>
+              </div>
+            )}
+          </div>
 
-          <DialogFooter className="px-6 py-4 border-t border-border bg-muted/30">
-            <Button variant="outline" onClick={() => setModalOpen(false)} disabled={saving}>Cancelar</Button>
-            <Button onClick={handleSave} disabled={saving}>
-              {saving ? 'Salvando…' : editId ? 'Salvar alterações' : 'Criar colaborador'}
-            </Button>
+          {/* rodapé */}
+          <DialogFooter style={{ padding: '14px 24px', borderTop: '1px solid var(--border)', background: 'var(--muted)', flexShrink: 0 }}>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', width: '100%' }}>
+              <Button variant="outline" onClick={() => setModalOpen(false)} disabled={saving}>Cancelar</Button>
+              <Button onClick={handleSave} disabled={saving || gerando}>
+                {saving ? 'Salvando…' : editId ? 'Salvar alterações' : 'Criar colaborador'}
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* AlertDialog de exclusão */}
-      <AlertDialog open={!!deleteId} onOpenChange={open => !open && setDeleteId(null)}>
+      {/* ═══════════ MODAL HISTÓRICO DE CHAPAS ═══════════════════════════════ */}
+      <Dialog open={histModal} onOpenChange={setHistModal}>
+        <DialogContent style={{ maxWidth: 540 }}>
+          <DialogHeader>
+            <DialogTitle style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <History size={16} color="var(--primary)" />
+              Histórico de Chapas
+            </DialogTitle>
+          </DialogHeader>
+
+          {/* chapa atual */}
+          {histColabId && (() => {
+            const colab = rows.find(r => r.id === histColabId)
+            if (!colab) return null
+            return (
+              <div style={{ padding: '10px 14px', borderRadius: 8, border: '1px solid var(--primary)', background: 'rgba(59,130,246,0.05)', marginBottom: 8 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: 'var(--primary)', letterSpacing: '0.07em', marginBottom: 4 }}>Chapa atual (ativa)</div>
+                <div style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: 20, color: 'var(--primary)' }}>{colab.chapa ?? '—'}</div>
+                <div style={{ fontSize: 12, color: 'var(--muted-foreground)', marginTop: 2 }}>{(colab.funcoes as any)?.nome ?? '—'} · {colab.tipo_contrato?.toUpperCase()}</div>
+              </div>
+            )
+          })()}
+
+          {histLoading ? (
+            <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--muted-foreground)', fontSize: 13 }}>Carregando histórico…</div>
+          ) : histRows.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--muted-foreground)', fontSize: 13 }}>
+              Nenhuma troca de função registrada ainda.
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 320, overflowY: 'auto' }}>
+              {histRows.map(h => (
+                <div key={h.id} style={{ padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--muted)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                    <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 14, color: 'var(--foreground)' }}>{h.chapa}</span>
+                    <span style={{ fontSize: 11, color: 'var(--muted-foreground)' }}>
+                      {formatDate(h.data_inicio)} → {h.data_fim ? formatDate(h.data_fim) : 'atual'}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--muted-foreground)' }}>{(h.funcoes as any)?.nome ?? '—'} · {h.tipo_contrato?.toUpperCase()}</div>
+                  {h.motivo_troca && (
+                    <div style={{ fontSize: 11, color: 'var(--muted-foreground)', marginTop: 4, fontStyle: 'italic' }}>📝 {h.motivo_troca}</div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* delete */}
+      <AlertDialog open={!!deleteId} onOpenChange={o => !o && setDeleteId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Excluir colaborador?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Esta ação é irreversível e removerá todos os dados do colaborador.
-            </AlertDialogDescription>
+            <AlertDialogDescription>Esta ação é irreversível e removerá todos os dados do colaborador.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} disabled={deleting} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              {deleting ? 'Excluindo…' : 'Excluir'}
-            </AlertDialogAction>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Excluir</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -627,23 +1037,30 @@ export default function Colaboradores() {
   )
 }
 
-// ─── subcomponentes auxiliares ────────────────────────────────────────────────
-function SectionTitle({ children }: { children: React.ReactNode }) {
+// ─── micro-componentes ────────────────────────────────────────────────────────
+function Sec({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground pt-2 border-b border-border pb-1">
+    <div>
+      <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--muted-foreground)', borderBottom: '1px solid var(--border)', paddingBottom: 4, marginBottom: 12 }}>
+        {title}
+      </div>
       {children}
-    </p>
+    </div>
   )
 }
 
-function FieldGroup({
-  label, children, span,
-}: {
-  label: string; children: React.ReactNode; span?: number
-}) {
+function Grid({ cols, children }: { cols: number; children: React.ReactNode }) {
   return (
-    <div className={cn('flex flex-col gap-1', span === 2 && 'col-span-2')}>
-      <Label className="text-xs text-muted-foreground">{label}</Label>
+    <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: 12 }}>
+      {children}
+    </div>
+  )
+}
+
+function Field({ label, children, span }: { label: React.ReactNode; children: React.ReactNode; span?: number }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, gridColumn: span ? `span ${span}` : undefined }}>
+      <Label style={{ fontSize: 11, color: 'var(--muted-foreground)', fontWeight: 500 }}>{label}</Label>
       {children}
     </div>
   )

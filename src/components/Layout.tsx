@@ -23,7 +23,6 @@ const NAV_GROUPS = [
     items: [
       { to: '/colaboradores',  label: 'Colaboradores',  icon: Users },
       { to: '/obras',          label: 'Obras',          icon: Building2 },
-      { to: '/funcoes',        label: 'Funções',         icon: Briefcase },
     ],
   },
   {
