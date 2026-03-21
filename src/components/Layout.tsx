@@ -5,7 +5,6 @@ import { useAuth } from '@/hooks/useAuth'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { Separator } from '@/components/ui/separator'
 import {
   LayoutDashboard, Users, Building2, Briefcase, Shield,
   AlertTriangle, FileText, Clock, DollarSign, Award,
@@ -13,7 +12,6 @@ import {
   HardHat, ChevronLeft, ChevronRight, FileWarning
 } from 'lucide-react'
 
-// ── Grupos de navegação ────────────────────────────────────────────────────────
 const NAV_GROUPS = [
   {
     label: 'Principal',
@@ -32,30 +30,33 @@ const NAV_GROUPS = [
   {
     label: 'Saúde & Segurança',
     items: [
-      { to: '/epis',       label: 'EPIs',        icon: Shield },
-      { to: '/acidentes',  label: 'Acidentes',   icon: AlertTriangle },
-      { to: '/atestados',  label: 'Atestados',   icon: FileWarning },
-      { to: '/documentos', label: 'Documentos',  icon: FileText },
+      { to: '/epis',       label: 'EPIs',       icon: Shield },
+      { to: '/acidentes',  label: 'Acidentes',  icon: AlertTriangle },
+      { to: '/atestados',  label: 'Atestados',  icon: FileWarning },
+      { to: '/documentos', label: 'Documentos', icon: FileText },
     ],
   },
   {
     label: 'Financeiro',
     items: [
-      { to: '/ponto',      label: 'Ponto',          icon: Clock },
-      { to: '/pagamentos', label: 'Pagamentos',      icon: DollarSign },
-      { to: '/premios',    label: 'Prêmios',         icon: Award },
-      { to: '/vt',         label: 'Vale Transporte', icon: Bus },
-      { to: '/provisoes',  label: 'Provisões FGTS',  icon: Calculator },
+      { to: '/ponto',      label: 'Ponto',           icon: Clock },
+      { to: '/pagamentos', label: 'Pagamentos',       icon: DollarSign },
+      { to: '/premios',    label: 'Prêmios',          icon: Award },
+      { to: '/vt',         label: 'Vale Transporte',  icon: Bus },
+      { to: '/provisoes',  label: 'Provisões FGTS',   icon: Calculator },
     ],
   },
   {
     label: 'Sistema',
     items: [
-      { to: '/relatorios',   label: 'Relatórios',   icon: BarChart3 },
+      { to: '/relatorios',    label: 'Relatórios',    icon: BarChart3 },
       { to: '/configuracoes', label: 'Configurações', icon: Settings },
     ],
   },
 ]
+
+const SIDEBAR_W = 224
+const SIDEBAR_W_COLLAPSED = 60
 
 interface LayoutProps { children: React.ReactNode }
 
@@ -74,59 +75,100 @@ export function Layout({ children }: LayoutProps) {
     ? user.email.split('@')[0].slice(0, 2).toUpperCase()
     : 'RH'
 
+  const sidebarWidth = collapsed ? SIDEBAR_W_COLLAPSED : SIDEBAR_W
+
   return (
     <TooltipProvider delayDuration={200}>
-      <div className="flex h-screen bg-background overflow-hidden">
+      <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: 'var(--background)' }}>
 
-        {/* ── Overlay mobile ── */}
+        {/* Overlay mobile */}
         {mobileOpen && (
           <div
-            className="fixed inset-0 z-40 bg-black/60 lg:hidden"
+            style={{ position: 'fixed', inset: 0, zIndex: 40, background: 'rgba(0,0,0,0.6)' }}
+            className="lg:hidden"
             onClick={() => setMobileOpen(false)}
           />
         )}
 
-        {/* ── SIDEBAR ─────────────────────────────────────────────────────────── */}
+        {/* ── SIDEBAR ────────────────────────────────────────────────────── */}
         <aside
+          style={{
+            width: sidebarWidth,
+            minWidth: sidebarWidth,
+            maxWidth: sidebarWidth,
+            display: 'flex',
+            flexDirection: 'column',
+            background: 'var(--sidebar)',
+            color: 'var(--sidebar-foreground)',
+            borderRight: '1px solid var(--sidebar-border)',
+            transition: 'width 200ms ease, min-width 200ms ease, max-width 200ms ease',
+            position: 'relative',
+            zIndex: 50,
+            flexShrink: 0,
+          }}
           className={cn(
-            'fixed lg:relative inset-y-0 left-0 z-50 flex flex-col',
-            'bg-sidebar text-sidebar-foreground',
-            'transition-[width] duration-200 ease-in-out',
-            'border-r border-sidebar-border',
-            collapsed ? 'w-[60px]' : 'w-[220px]',
-            mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
+            !mobileOpen && 'max-lg:!fixed max-lg:inset-y-0 max-lg:left-0',
+            !mobileOpen && 'max-lg:!-translate-x-full',
+            mobileOpen && 'max-lg:!fixed max-lg:inset-y-0 max-lg:left-0 max-lg:!translate-x-0',
           )}
         >
           {/* Logo */}
-          <div className={cn(
-            'flex items-center gap-2.5 h-14 border-b border-sidebar-border px-4 flex-shrink-0',
-            collapsed && 'justify-center px-0',
-          )}>
-            <div className="w-8 h-8 bg-sidebar-primary rounded-lg flex items-center justify-center flex-shrink-0">
-              <HardHat className="w-4 h-4 text-sidebar-primary-foreground" />
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            height: 56,
+            padding: collapsed ? '0' : '0 16px',
+            justifyContent: collapsed ? 'center' : 'flex-start',
+            borderBottom: '1px solid var(--sidebar-border)',
+            flexShrink: 0,
+            gap: 10,
+          }}>
+            <div style={{
+              width: 32, height: 32, minWidth: 32,
+              background: 'var(--sidebar-primary)',
+              borderRadius: 8,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <HardHat size={16} color="var(--sidebar-primary-foreground)" />
             </div>
             {!collapsed && (
-              <div className="min-w-0">
-                <p className="text-sm font-bold text-sidebar-foreground leading-tight">ConstrutorRH</p>
-                <p className="text-[10px] text-sidebar-foreground/40 leading-tight">Gestão de RH</p>
+              <div style={{ minWidth: 0 }}>
+                <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--sidebar-foreground)', lineHeight: 1.2, whiteSpace: 'nowrap' }}>
+                  ConstrutorRH
+                </p>
+                <p style={{ fontSize: 10, color: 'var(--sidebar-foreground)', opacity: 0.4, lineHeight: 1.2 }}>
+                  Gestão de RH
+                </p>
               </div>
             )}
           </div>
 
           {/* Navegação */}
-          <nav className="flex-1 overflow-y-auto overflow-x-hidden py-3 scroll-smooth">
+          <nav style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '8px 0' }}>
             {NAV_GROUPS.map((group, gi) => (
-              <div key={gi} className={cn('mb-1', !collapsed && 'mb-2')}>
-                {/* Label do grupo — só quando expandido */}
+              <div key={gi} style={{ marginBottom: 4 }}>
+                {/* Separador entre grupos quando collapsed */}
+                {collapsed && gi > 0 && (
+                  <div style={{ margin: '4px 12px', borderTop: '1px solid rgba(255,255,255,0.08)' }} />
+                )}
+
+                {/* Label do grupo */}
                 {!collapsed && (
-                  <p className="px-4 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-widest text-sidebar-foreground/35 select-none">
+                  <p style={{
+                    padding: '8px 16px 4px',
+                    fontSize: 10,
+                    fontWeight: 600,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.08em',
+                    color: 'var(--sidebar-foreground)',
+                    opacity: 0.35,
+                    userSelect: 'none',
+                  }}>
                     {group.label}
                   </p>
                 )}
-                {collapsed && gi > 0 && (
-                  <div className="mx-3 my-1 border-t border-sidebar-border/40" />
-                )}
 
+                {/* Itens */}
                 {group.items.map(({ to, label, icon: Icon }) => (
                   <Tooltip key={to}>
                     <TooltipTrigger asChild>
@@ -134,25 +176,74 @@ export function Layout({ children }: LayoutProps) {
                         to={to}
                         end={to === '/'}
                         onClick={() => setMobileOpen(false)}
-                        className={({ isActive }) =>
-                          cn(
-                            'flex items-center gap-2.5 mx-2 px-2 py-2 rounded-md text-[13px] font-medium',
-                            'transition-colors duration-100 select-none',
-                            collapsed && 'justify-center mx-1 px-0',
-                            isActive
-                              ? 'bg-sidebar-primary text-sidebar-primary-foreground'
-                              : 'text-sidebar-foreground/65 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
-                          )
-                        }
+                        style={({ isActive }) => ({
+                          display: 'flex',
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: collapsed ? 0 : 10,
+                          margin: collapsed ? '2px 6px' : '1px 8px',
+                          padding: collapsed ? '0' : '7px 10px',
+                          width: collapsed ? 48 : undefined,
+                          height: collapsed ? 36 : undefined,
+                          justifyContent: collapsed ? 'center' : 'flex-start',
+                          borderRadius: 6,
+                          fontSize: 13,
+                          fontWeight: 500,
+                          textDecoration: 'none',
+                          transition: 'background 120ms, color 120ms',
+                          background: isActive ? 'var(--sidebar-primary)' : 'transparent',
+                          color: isActive
+                            ? 'var(--sidebar-primary-foreground)'
+                            : 'rgba(255,255,255,0.60)',
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                        })}
+                        onMouseEnter={e => {
+                          const el = e.currentTarget
+                          if (!el.getAttribute('data-active')) {
+                            el.style.background = 'var(--sidebar-accent)'
+                            el.style.color = 'var(--sidebar-accent-foreground)'
+                          }
+                        }}
+                        onMouseLeave={e => {
+                          const el = e.currentTarget
+                          if (!el.getAttribute('data-active')) {
+                            el.style.background = ''
+                            el.style.color = ''
+                          }
+                        }}
                       >
-                        <Icon className="w-4 h-4 flex-shrink-0" />
-                        {!collapsed && (
-                          <span className="truncate">{label}</span>
+                        {({ isActive }) => (
+                          <>
+                            <span style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              width: 16,
+                              height: 16,
+                              minWidth: 16,
+                              flexShrink: 0,
+                              color: 'inherit',
+                            }}>
+                              <Icon size={15} color="currentColor" />
+                            </span>
+                            {!collapsed && (
+                              <span style={{
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                                lineHeight: 1,
+                                color: 'inherit',
+                              }}>
+                                {label}
+                              </span>
+                            )}
+                          </>
                         )}
                       </NavLink>
                     </TooltipTrigger>
                     {collapsed && (
-                      <TooltipContent side="right" className="text-xs">{label}</TooltipContent>
+                      <TooltipContent side="right" style={{ fontSize: 12 }}>{label}</TooltipContent>
                     )}
                   </Tooltip>
                 ))}
@@ -160,20 +251,20 @@ export function Layout({ children }: LayoutProps) {
             ))}
           </nav>
 
-          {/* Footer — usuário + logout */}
-          <div className="border-t border-sidebar-border flex-shrink-0">
+          {/* Footer */}
+          <div style={{ borderTop: '1px solid var(--sidebar-border)', flexShrink: 0 }}>
             {!collapsed && (
-              <div className="flex items-center gap-2 px-4 py-2.5">
-                <Avatar className="h-7 w-7 flex-shrink-0">
-                  <AvatarFallback className="text-[10px] font-bold bg-sidebar-accent text-sidebar-accent-foreground">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px' }}>
+                <Avatar style={{ width: 28, height: 28, flexShrink: 0 }}>
+                  <AvatarFallback style={{ fontSize: 10, fontWeight: 700, background: 'var(--sidebar-accent)', color: 'var(--sidebar-accent-foreground)' }}>
                     {initials}
                   </AvatarFallback>
                 </Avatar>
-                <div className="min-w-0 flex-1">
-                  <p className="text-[11px] font-medium text-sidebar-foreground/80 truncate leading-tight">
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <p style={{ fontSize: 11, fontWeight: 500, color: 'var(--sidebar-foreground)', opacity: 0.8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.3 }}>
                     {user?.email?.split('@')[0]}
                   </p>
-                  <p className="text-[10px] text-sidebar-foreground/40 truncate leading-tight">
+                  <p style={{ fontSize: 10, color: 'var(--sidebar-foreground)', opacity: 0.35, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.3 }}>
                     {user?.email?.split('@')[1]}
                   </p>
                 </div>
@@ -183,14 +274,32 @@ export function Layout({ children }: LayoutProps) {
               <TooltipTrigger asChild>
                 <button
                   onClick={handleSignOut}
-                  className={cn(
-                    'w-full flex items-center gap-2 px-4 py-2.5',
-                    'text-[12px] font-medium text-sidebar-foreground/50',
-                    'hover:text-red-400 hover:bg-red-900/15 transition-colors',
-                    collapsed && 'justify-center px-0 py-3',
-                  )}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: collapsed ? 0 : 8,
+                    justifyContent: collapsed ? 'center' : 'flex-start',
+                    width: '100%',
+                    padding: collapsed ? '12px 0' : '10px 14px',
+                    fontSize: 12,
+                    fontWeight: 500,
+                    color: 'rgba(255,255,255,0.45)',
+                    background: 'transparent',
+                    border: 'none',
+                    cursor: 'pointer',
+                    transition: 'color 150ms, background 150ms',
+                  }}
+                  onMouseEnter={e => {
+                    (e.currentTarget as HTMLButtonElement).style.color = '#f87171'
+                    ;(e.currentTarget as HTMLButtonElement).style.background = 'rgba(239,68,68,0.1)'
+                  }}
+                  onMouseLeave={e => {
+                    (e.currentTarget as HTMLButtonElement).style.color = ''
+                    ;(e.currentTarget as HTMLButtonElement).style.background = ''
+                  }}
                 >
-                  <LogOut className="w-4 h-4 flex-shrink-0" />
+                  <LogOut size={15} color="currentColor" />
                   {!collapsed && <span>Sair</span>}
                 </button>
               </TooltipTrigger>
@@ -199,46 +308,64 @@ export function Layout({ children }: LayoutProps) {
           </div>
         </aside>
 
-        {/* ── MAIN ────────────────────────────────────────────────────────────── */}
-        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-
+        {/* ── MAIN ────────────────────────────────────────────────────────── */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
           {/* Topbar */}
-          <header className="h-14 bg-card border-b border-border flex items-center gap-2 px-4 flex-shrink-0">
-            {/* Toggle sidebar — desktop */}
-            <Button
-              variant="ghost"
-              size="icon"
-              className="hidden lg:flex h-8 w-8 text-muted-foreground hover:text-foreground"
+          <header style={{
+            height: 56,
+            background: 'var(--card)',
+            borderBottom: '1px solid var(--border)',
+            display: 'flex',
+            alignItems: 'center',
+            padding: '0 16px',
+            gap: 8,
+            flexShrink: 0,
+          }}>
+            {/* Toggle desktop */}
+            <button
               onClick={() => setCollapsed(v => !v)}
+              className="hidden lg:flex"
+              style={{
+                width: 32, height: 32,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                borderRadius: 6, border: 'none', background: 'transparent',
+                color: 'var(--muted-foreground)', cursor: 'pointer',
+                transition: 'background 120ms',
+              }}
+              onMouseEnter={e => (e.currentTarget.style.background = 'var(--muted)')}
+              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
               aria-label={collapsed ? 'Expandir menu' : 'Recolher menu'}
             >
               {collapsed
-                ? <ChevronRight className="w-4 h-4" />
-                : <ChevronLeft  className="w-4 h-4" />}
-            </Button>
+                ? <ChevronRight size={16} color="currentColor" />
+                : <ChevronLeft  size={16} color="currentColor" />}
+            </button>
 
-            {/* Toggle sidebar — mobile */}
-            <Button
-              variant="ghost"
-              size="icon"
-              className="lg:hidden h-8 w-8 text-muted-foreground"
+            {/* Toggle mobile */}
+            <button
               onClick={() => setMobileOpen(true)}
+              className="lg:hidden"
+              style={{
+                width: 32, height: 32,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                borderRadius: 6, border: 'none', background: 'transparent',
+                color: 'var(--muted-foreground)', cursor: 'pointer',
+              }}
             >
-              <Menu className="w-4 h-4" />
-            </Button>
+              <Menu size={16} color="currentColor" />
+            </button>
 
-            <div className="flex-1" />
+            <div style={{ flex: 1 }} />
 
-            {/* Avatar usuário no topo */}
-            <Avatar className="h-8 w-8">
-              <AvatarFallback className="text-xs font-bold bg-primary text-primary-foreground">
+            <Avatar style={{ width: 32, height: 32 }}>
+              <AvatarFallback style={{ fontSize: 11, fontWeight: 700, background: 'var(--primary)', color: 'var(--primary-foreground)' }}>
                 {initials}
               </AvatarFallback>
             </Avatar>
           </header>
 
           {/* Conteúdo */}
-          <main className="flex-1 overflow-y-auto p-6">
+          <main style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
             {children}
           </main>
         </div>
