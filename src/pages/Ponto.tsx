@@ -232,7 +232,7 @@ export default function Ponto() {
       const r=mapaP[d]
       const isAtestado=diasAtestado.has(d)
       const isSuspensao=diasSuspensao.has(d)
-      const bloqOutroLanc=diasUsados.has(d)
+      const bloqOutroLanc=diasUsados.has(d)&&!isFDS(d)  // FDS não bloqueia por outro lançamento
       const evento:TipoEvento=isSuspensao?'suspensao':isAtestado?'atestado':null
       const diaSem=DIAS_KEY[new Date(d+'T12:00:00').getDay()]
       const hor=horObra[diaSem]
@@ -328,7 +328,7 @@ export default function Ponto() {
       const diasUsados=new Set<string>()
       for(const [outroId,outroDias] of Object.entries(newDiasMap)){
         if(outroId===lanc.id)continue
-        outroDias.forEach(d=>{ if(!d.bloqueado||d.evento==='atestado'||d.evento==='suspensao')diasUsados.add(d.data) })
+        outroDias.forEach(d=>{ if((!d.bloqueado||d.evento==='atestado'||d.evento==='suspensao')&&!isFDS(d.data))diasUsados.add(d.data) })
       }
       newDiasMap[lanc.id]=await fetchDiasLanc(lanc,colab,horMapFull,diasAtestado,diasSuspensao,diasUsados)
     }
@@ -458,8 +458,13 @@ export default function Ponto() {
     const lancsPorObra=lancamentos.filter(l=>l.obra_id===novoLancObraId).length
     if(lancsPorObra>=2){toast.error('Esta obra já tem 2 lançamentos neste mês');return}
     const diasNovos=new Set(expandRange(novoLancInicio,novoLancFim))
-    const conflitos=lancamentos.flatMap(l=>expandRange(l.data_inicio,l.data_fim)).filter(d=>diasNovos.has(d))
-    if(conflitos.length>0){toast.error(`${conflitos.length} dia(s) já pertencem a outro lançamento`);return}
+    // Conflito BLOQUEANTE apenas quando a obra for a mesma
+    const conflitoMesmaObra=lancamentos
+      .filter(l=>l.obra_id===novoLancObraId)
+      .flatMap(l=>expandRange(l.data_inicio,l.data_fim))
+      .filter(d=>diasNovos.has(d))
+    if(conflitoMesmaObra.length>0){toast.error(`Esta obra já tem ${conflitoMesmaObra.length} dia(s) nesse período`);return}
+    // Obras diferentes: apenas aviso informativo (não bloqueia)
     setSavingLanc(true)
     const{error}=await supabase.from('ponto_lancamentos').insert({
       colaborador_id:colabSel.id,obra_id:novoLancObraId,mes_referencia:mesRef,
@@ -911,13 +916,33 @@ export default function Ponto() {
             </div>
             {novoLancInicio&&novoLancFim&&(()=>{
               const dias=expandRange(novoLancInicio,novoLancFim)
-              const conf=dias.filter(d=>lancamentos.some(l=>expandRange(l.data_inicio,l.data_fim).includes(d)))
+              // Dias com conflito na MESMA obra (bloqueia criação)
+              const confMesmaObra=dias.filter(d=>
+                lancamentos.filter(l=>l.obra_id===novoLancObraId)
+                  .flatMap(l=>expandRange(l.data_inicio,l.data_fim)).includes(d)
+              )
+              // Dias já lançados em OUTRA obra (apenas informativo, 🔒 no ponto)
+              const confOutraObra=novoLancObraId?dias.filter(d=>
+                !confMesmaObra.includes(d)&&
+                lancamentos.filter(l=>l.obra_id!==novoLancObraId)
+                  .flatMap(l=>expandRange(l.data_inicio,l.data_fim)).includes(d)
+              ):[]
+              const diasLivres=dias.length-confMesmaObra.length-confOutraObra.length
               return(
-                <div style={{fontSize:12,padding:'6px 10px',background:conf.length>0?'#fee2e2':'var(--muted)',borderRadius:6,border:conf.length>0?'1px solid #fecaca':undefined}}>
-                  {conf.length>0
-                    ?<span style={{color:'#b91c1c'}}>⚠️ {conf.length} dia(s) em conflito com outro lançamento</span>
-                    :<span><strong>{dias.length} dias</strong> ({dias.filter(d=>!isFDS(d)).length} úteis + {dias.filter(d=>isFDS(d)).length} fins de semana)</span>
-                  }
+                <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                  {confMesmaObra.length>0&&(
+                    <div style={{fontSize:12,padding:'6px 10px',background:'#fee2e2',borderRadius:6,border:'1px solid #fecaca',color:'#b91c1c'}}>
+                      🚫 {confMesmaObra.length} dia(s) já existem nesta obra — altere o período
+                    </div>
+                  )}
+                  {confOutraObra.length>0&&(
+                    <div style={{fontSize:12,padding:'6px 10px',background:'#fef9c3',borderRadius:6,border:'1px solid #fde68a',color:'#854d0e'}}>
+                      🔒 {confOutraObra.length} dia(s) já lançados em outra obra — aparecerão bloqueados
+                    </div>
+                  )}
+                  <div style={{fontSize:12,padding:'6px 10px',background:'var(--muted)',borderRadius:6}}>
+                    <strong>{diasLivres} dias livres</strong> de {dias.length} ({dias.filter(d=>!isFDS(d)).length} úteis + {dias.filter(d=>isFDS(d)).length} fins de semana)
+                  </div>
                 </div>
               )
             })()}
