@@ -86,32 +86,47 @@ export default function Usuarios() {
     if (!inviteEmail.trim()) { toast.error('E-mail obrigatório'); return }
     if (!invitePwd || invitePwd.length < 6) { toast.error('Senha mínimo 6 caracteres'); return }
     setSaving(true)
-    // 1. Cria usuário via Admin API (ou signUp)
-    const { data: signData, error: signErr } = await supabase.auth.admin.createUser({
+
+    // ── Cria o usuário via signUp (sem Admin API — funciona no frontend) ────
+    const nome = inviteNome.trim() || inviteEmail.split('@')[0]
+    const { data: signData, error: signErr } = await supabase.auth.signUp({
       email: inviteEmail.trim(),
       password: invitePwd,
-      email_confirm: true,
-      user_metadata: { nome: inviteNome.trim() || inviteEmail.split('@')[0] },
+      options: {
+        data: { nome },
+        // emailRedirectTo não é necessário para fluxo interno
+      },
     })
+
     if (signErr) {
-      // Tenta via signUp se não tiver permissão de admin
       toast.error('Erro ao criar usuário: ' + signErr.message)
       setSaving(false)
       return
     }
+
     const uid = signData.user?.id
-    if (!uid) { toast.error('Erro: ID do usuário não retornado'); setSaving(false); return }
-    // 2. Upsert profile
+    if (!uid) {
+      toast.error('Erro: ID do usuário não retornado')
+      setSaving(false)
+      return
+    }
+
+    // ── Cria o perfil com a role escolhida ──────────────────────────────────
     const { error: profErr } = await supabase.from('profiles').upsert({
       id: uid,
-      nome: inviteNome.trim() || inviteEmail.split('@')[0],
+      nome,
       email: inviteEmail.trim(),
       role: inviteRole,
       ativo: true,
     })
+
     setSaving(false)
-    if (profErr) { toast.error('Usuário criado mas erro no perfil: ' + profErr.message); return }
-    toast.success('Usuário criado com sucesso!')
+    if (profErr) {
+      toast.error('Usuário criado mas erro no perfil: ' + profErr.message)
+      return
+    }
+
+    toast.success(`Usuário ${nome} criado com sucesso!`)
     setInviteOpen(false)
     setInviteEmail(''); setInviteNome(''); setInvitePwd(''); setInviteRole('rh')
     fetchUsers()
@@ -267,6 +282,18 @@ export default function Usuarios() {
           onPointerDownOutside={e => e.preventDefault()} onEscapeKeyDown={e => e.preventDefault()}>
           <DialogHeader><DialogTitle>Novo Usuário</DialogTitle></DialogHeader>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '8px 0' }}>
+            {/* Aviso sobre confirmação de e-mail */}
+            <div style={{
+              background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 7,
+              padding: '8px 12px', fontSize: 12, color: '#92400e', display: 'flex', gap: 8, alignItems: 'flex-start',
+            }}>
+              <span style={{ fontSize: 15 }}>💡</span>
+              <span>
+                O usuário receberá um e-mail de confirmação do Supabase. Enquanto não confirmar,
+                o login ficará disponível somente se a confirmação de e-mail estiver desativada
+                nas configurações do projeto.
+              </span>
+            </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               <Label>Nome</Label>
               <Input value={inviteNome} onChange={e => setInviteNome(e.target.value)} placeholder="Nome do usuário" />
