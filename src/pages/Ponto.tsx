@@ -466,6 +466,9 @@ export default function Ponto() {
   async function criarLancamento(){
     if(!colabSel||!novoLancObraId||!novoLancInicio||!novoLancFim){toast.error('Preencha todos os campos');return}
     if(novoLancInicio>novoLancFim){toast.error('Data de início deve ser anterior à data de fim');return}
+    // Bloquear se houver lançamento em rascunho ou recusado (precisa aprovar antes)
+    const temAberto=lancamentos.some(l=>l.status==='rascunho'||l.status==='recusado')
+    if(temAberto){toast.error('Finalize (aprove) os lançamentos em aberto antes de criar um novo');return}
     const lancsPorObra=lancamentos.filter(l=>l.obra_id===novoLancObraId).length
     if(lancsPorObra>=2){toast.error('Esta obra já tem 2 lançamentos neste mês');return}
     const diasNovos=new Set(expandRange(novoLancInicio,novoLancFim))
@@ -759,13 +762,11 @@ export default function Ponto() {
                     })()}
                     {/* Ações */}
                     <div style={{display:'flex',gap:4}} onClick={e=>e.stopPropagation()}>
-                      {pb.length>0&&lanc.status==='rascunho'&&<Button size="sm" variant="outline" style={{height:26,fontSize:11,gap:3,borderColor:'#f59e0b',color:'#b45309'}} onClick={()=>abrirModalProd(lanc.id)}><Factory size={11}/> Produção</Button>}
-                      {lanc.status==='rascunho'&&<Button size="sm" onClick={()=>salvarLanc(lanc.id)} disabled={saving} style={{height:26,fontSize:11}}>💾 Salvar</Button>}
-                      {lanc.status==='rascunho'&&<Button size="sm" variant="outline" style={{height:26,fontSize:11,gap:2,borderColor:'#16a34a',color:'#15803d'}} onClick={()=>mudarStatus(lanc.id,'aguardando_aprovacao')}>✔ Aprovar</Button>}
+                      {pb.length>0&&<Button size="sm" variant="outline" style={{height:26,fontSize:11,gap:3,borderColor:'#f59e0b',color:'#b45309'}} onClick={()=>abrirModalProd(lanc.id)}><Factory size={11}/> Produção</Button>}
+                      {lanc.status==='rascunho'&&<Button size="sm" variant="outline" style={{height:26,fontSize:11,gap:2,borderColor:'#16a34a',color:'#15803d',background:'#f0fdf4'}} disabled={saving} onClick={async()=>{await salvarLanc(lanc.id);await mudarStatus(lanc.id,'aguardando_aprovacao')}}>✔ Salvar e Aprovar</Button>}
                       {lanc.status==='aguardando_aprovacao'&&<Button size="sm" variant="outline" style={{height:26,fontSize:11,gap:2,borderColor:'#16a34a',color:'#15803d'}} onClick={()=>mudarStatus(lanc.id,'aprovado')}>✅ Confirmar</Button>}
                       {lanc.status==='aguardando_aprovacao'&&<Button size="sm" variant="outline" style={{height:26,fontSize:11,gap:2,borderColor:'#dc2626',color:'#dc2626'}} onClick={()=>setModalRecusa({lancId:lanc.id,motivo:''})}>❌ Recusar</Button>}
-                      {lanc.status==='recusado'&&<Button size="sm" onClick={()=>salvarLanc(lanc.id)} disabled={saving} style={{height:26,fontSize:11}}>💾 Salvar</Button>}
-                      {lanc.status==='recusado'&&<Button size="sm" variant="outline" style={{height:26,fontSize:11,gap:2,borderColor:'#16a34a',color:'#15803d'}} onClick={()=>mudarStatus(lanc.id,'aguardando_aprovacao')}>↩ Reenviar</Button>}
+                      {lanc.status==='recusado'&&<Button size="sm" variant="outline" style={{height:26,fontSize:11,gap:2,borderColor:'#16a34a',color:'#15803d',background:'#f0fdf4'}} disabled={saving} onClick={async()=>{await salvarLanc(lanc.id);await mudarStatus(lanc.id,'aguardando_aprovacao')}}>↩ Salvar e Reenviar</Button>}
                       {(lanc.status==='rascunho'||lanc.status==='recusado')&&<Button size="sm" variant="ghost" style={{height:26,width:26,padding:0,color:'var(--destructive)'}} onClick={()=>excluirLancamento(lanc.id)}><Trash2 size={12}/></Button>}
                     </div>
                   </div>

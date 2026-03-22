@@ -13,6 +13,10 @@
 --   • ponto_lancamentos: status inclui 'pago' diretamente (sem etapa fechamento obrigatória)
 --   • ponto_fechamentos: mantido para agrupamento opcional, não obrigatório no fluxo
 --   • funcoes: mantido campo contratos_valores JSONB (legado) + funcao_valores (novo)
+--   • acidentes: estrutura corrigida (data_ocorrencia, hora_acidente, tipo, local_acidente,
+--                cat_emitida, status, documento_url/nome) — alinhada com código real
+--   • atestados: estrutura corrigida (tipo, com_afastamento, descricao, documento_url/nome)
+--   • advertencias: adicionado assinada, documento_url/nome; tipo aceita 'demissional'
 --   • Índices revisados e otimizados
 -- ═══════════════════════════════════════════════════════════════════════════════
 
@@ -88,14 +92,16 @@ ON CONFLICT (chave) DO NOTHING;
 
 -- ─── Funções / Cargos ────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.funcoes (
-  id                UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
-  created_at        TIMESTAMPTZ DEFAULT NOW(),
-  nome              TEXT NOT NULL,
-  sigla             TEXT,
-  descricao         TEXT,
-  cbo               TEXT,                    -- Classificação Brasileira de Ocupações
-  contratos_valores JSONB DEFAULT '{}',      -- Legado: {clt:{ativo,valor_hora}, autonomo:{...}}
-  ativo             BOOLEAN DEFAULT TRUE
+  id                   UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  created_at           TIMESTAMPTZ DEFAULT NOW(),
+  nome                 TEXT NOT NULL,
+  sigla                TEXT,
+  descricao            TEXT,
+  cbo                  TEXT,                 -- Classificação Brasileira de Ocupações
+  valor_hora_clt       NUMERIC(10,4),        -- Atalho CLT (espelhado em funcao_valores)
+  valor_hora_autonomo  NUMERIC(10,4),        -- Atalho autônomo (espelhado em funcao_valores)
+  contratos_valores    JSONB DEFAULT '{}',   -- {clt:{ativo,valor_hora}, autonomo:{...}}
+  ativo                BOOLEAN DEFAULT TRUE
 );
 ALTER TABLE public.funcoes ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "funcoes_auth" ON public.funcoes;
@@ -192,7 +198,7 @@ CREATE TABLE IF NOT EXISTS public.colaboradores (
   rg               TEXT,
   pis_nit          TEXT,
   data_nascimento  DATE,
-  genero           TEXT CHECK (genero IN ('masculino','feminino','outro','nao_informado')),
+  genero           TEXT,                     -- M, F, masculino, feminino, outro, nao_informado
   estado_civil     TEXT,
   telefone         TEXT,
   email            TEXT,
@@ -332,16 +338,19 @@ CREATE TABLE IF NOT EXISTS public.acidentes (
   created_at       TIMESTAMPTZ DEFAULT NOW(),
   colaborador_id   UUID REFERENCES public.colaboradores(id) ON DELETE CASCADE,
   obra_id          UUID REFERENCES public.obras(id),
-  data_ocorrencia  DATE,
-  hora_ocorrencia  TIME,
-  tipo_acidente    TEXT,
-  descricao        TEXT,
-  comunicado_cat   BOOLEAN DEFAULT FALSE,    -- Comunicação de Acidente de Trabalho
-  afastamento      BOOLEAN DEFAULT FALSE,
-  dias_afastamento INTEGER DEFAULT 0,
+  data_ocorrencia  DATE,                    -- era data_acidente em versões anteriores
+  hora_acidente    TIME,                    -- hora do acidente
+  tipo             TEXT,                    -- tipico, trajeto, doenca_ocupacional
   gravidade        TEXT CHECK (gravidade IN ('leve','moderado','grave','fatal')),
+  descricao        TEXT,
+  local_acidente   TEXT,
+  cat_emitida      BOOLEAN DEFAULT FALSE,   -- Comunicação de Acidente de Trabalho
+  status           TEXT DEFAULT 'em_investigacao'
+                   CHECK (status IN ('em_investigacao','concluido','arquivado')),
   medidas_tomadas  TEXT,
-  observacoes      TEXT
+  observacoes      TEXT,
+  documento_url    TEXT,
+  documento_nome   TEXT
 );
 ALTER TABLE public.acidentes ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "acidentes_auth" ON public.acidentes;
@@ -354,16 +363,19 @@ CREATE TABLE IF NOT EXISTS public.atestados (
   id                UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
   created_at        TIMESTAMPTZ DEFAULT NOW(),
   colaborador_id    UUID REFERENCES public.colaboradores(id) ON DELETE CASCADE,
-  data              DATE,                    -- Data do atestado
+  acidente_id       UUID REFERENCES public.acidentes(id),
+  data              DATE,                    -- Data de emissão do atestado
   data_inicio       DATE,                    -- Início do afastamento
-  data_fim          DATE,                    -- Fim do afastamento (calculado)
+  data_fim          DATE,                    -- Fim do afastamento
+  tipo              TEXT,                    -- medico, comparecimento, declaracao
   dias_afastamento  INTEGER DEFAULT 0,
-  tipo_afastamento  TEXT,
+  com_afastamento   BOOLEAN DEFAULT FALSE,   -- gera afastamento?
   cid               TEXT,                    -- Código Internacional de Doenças
   medico            TEXT,
-  crm               TEXT,
-  acidente_id       UUID REFERENCES public.acidentes(id),
-  observacoes       TEXT
+  descricao         TEXT,
+  observacoes       TEXT,
+  documento_url     TEXT,
+  documento_nome    TEXT
 );
 ALTER TABLE public.atestados ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "atestados_auth" ON public.atestados;
@@ -377,13 +389,16 @@ CREATE TABLE IF NOT EXISTS public.advertencias (
   created_at          TIMESTAMPTZ DEFAULT NOW(),
   colaborador_id      UUID REFERENCES public.colaboradores(id) ON DELETE CASCADE,
   tipo                TEXT DEFAULT 'verbal'
-                      CHECK (tipo IN ('verbal','escrita','suspensao')),
+                      CHECK (tipo IN ('verbal','escrita','suspensao','demissional')),
   data_advertencia    DATE,
   dias_suspensao      INTEGER DEFAULT 0,
   motivo              TEXT,
   descricao           TEXT,
+  assinada            BOOLEAN DEFAULT FALSE,
   testemunha          TEXT,
-  observacoes         TEXT
+  observacoes         TEXT,
+  documento_url       TEXT,
+  documento_nome      TEXT
 );
 ALTER TABLE public.advertencias ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "advertencias_auth" ON public.advertencias;
