@@ -373,7 +373,7 @@ export default function Ponto() {
 
   // Valor a receber com regra CLT/autônomo
   const totalReceber = useMemo(()=>{
-    if(!colabSel||valorHora===0)return totalProd
+    if(!colabSel)return totalProd
     const tipo=colabSel.tipo_contrato
     const diasComProd=new Set(producoes.flatMap(p=>p.dias))
     if(tipo==='autonomo'||tipo==='pj'){
@@ -381,7 +381,9 @@ export default function Ponto() {
       Object.values(diasMap).forEach(dias=>dias.forEach(d=>{
         if(!diasComProd.has(d.data)){const c=calcDia(d);minSemProd+=c.normais+c.extras50}
       }))
-      return fmtDecimal(minSemProd)*valorHora + totalProd
+      // Autônomo: dias SEM prod → horas. dias COM prod → só produção
+      const horasSemProd = fmtDecimal(minSemProd)*valorHora
+      return horasSemProd + totalProd
     } else {
       let minProdDias=0
       Object.values(diasMap).forEach(dias=>dias.forEach(d=>{
@@ -713,7 +715,14 @@ export default function Ponto() {
                 {label:'⏱ Total de Horas',value:fmtHHMM(totaisGlobais.total),sub:`${fmtHHMM(totaisGlobais.normais)} norm + ${fmtHHMM(totaisGlobais.extras50)} extras`,color:'#1d4ed8'},
                 {label:'💰 Valor das Horas',value:valorHora>0?`R$ ${valorHora.toFixed(2)}/h`:'Sem tabela',sub:valorHora>0?formatCurrency(totalHoras)+' no período':'Cadastre em Funções → valor/hora',color:valorHora>0?'#15803d':'#9ca3af'},
                 {label:'🏗️ Produção',value:totalProd>0?formatCurrency(totalProd):'—',sub:totalProd>0&&totaisGlobais.presentes>0?`≈ ${formatCurrency(totalProd/totaisGlobais.presentes)}/dia (${totaisGlobais.presentes} dias)`:`${producoes.length} item${producoes.length!==1?'ns':''}`,color:'#b45309'},
-                {label:'💵 Total a Receber',value:formatCurrency(totalReceber),sub:colabSel.tipo_contrato==='clt'?'CLT: base + prêmio':'Autônomo: horas + prod.',color:'#7c3aed'},
+                {label:'💵 Total a Receber',value:formatCurrency(totalReceber),sub:(()=>{
+                  if(colabSel.tipo_contrato==='clt'){
+                    const premio=totalReceber-totalHoras
+                    return premio>0?`Base: ${formatCurrency(totalHoras)} + Prêmio: ${formatCurrency(premio)}`:'CLT: valor das horas'
+                  }
+                  const horasVal=totalHoras; const prodVal=totalProd
+                  return `Horas: ${formatCurrency(horasVal)} + Prod: ${formatCurrency(prodVal)}`
+                })(),color:'#7c3aed'},
               ].map(card=>(
                 <div key={card.label} style={{flex:1,padding:'8px 12px',textAlign:'center',borderRight:'1px solid var(--border)'}}>
                   <div style={{fontSize:10,color:'var(--muted-foreground)',fontWeight:600,marginBottom:2}}>{card.label}</div>
@@ -884,11 +893,24 @@ export default function Ponto() {
                                     ? null
                                     : d.presente&&(calc.total>0||prodPorDia>0)
                                     ? (() => {
-                                        const vHoras=calc.normais*valorHora + calc.extras50*valorHora*1.5
-                                        const vTotal=vHoras+prodPorDia
-                                        return <span title={`Horas: ${formatCurrency(vHoras)}${prodPorDia>0?' + Prod: '+formatCurrency(prodPorDia):''}`} style={{cursor:'default'}}>
-                                          {formatCurrency(vTotal)}
-                                          {prodPorDia>0&&<span style={{display:'block',fontSize:9,color:'#b45309',fontWeight:400}}>+{formatCurrency(prodPorDia)} prod</span>}
+                                        const ehAutonomo=lanc.status!==undefined&&colabSel?.tipo_contrato==='autonomo'
+                                        const vHoras=fmtDecimal(calc.normais)*valorHora + fmtDecimal(calc.extras50)*valorHora*1.5
+                                        // Autônomo com prod: só prod. Autônomo sem prod: só horas. CLT: horas + indicador prod
+                                        if(ehAutonomo&&prodPorDia>0){
+                                          return <span title={`Produção: ${formatCurrency(prodPorDia)} (substitui hora)`} style={{cursor:'default',color:'#b45309',fontWeight:700}}>
+                                            {formatCurrency(prodPorDia)}
+                                            <span style={{display:'block',fontSize:9,fontWeight:400}}>só prod.</span>
+                                          </span>
+                                        }
+                                        if(ehAutonomo&&prodPorDia===0){
+                                          return <span title={`Horas: ${formatCurrency(vHoras)}`} style={{cursor:'default'}}>
+                                            {valorHora>0?formatCurrency(vHoras):'—'}
+                                          </span>
+                                        }
+                                        // CLT: mostra horas, prod vai como prêmio no total
+                                        return <span title={`Horas: ${formatCurrency(vHoras)}${prodPorDia>0?' | Prod do dia (prêmio): '+formatCurrency(prodPorDia):''}`} style={{cursor:'default'}}>
+                                          {valorHora>0?formatCurrency(vHoras):'—'}
+                                          {prodPorDia>0&&<span style={{display:'block',fontSize:9,color:'#b45309',fontWeight:400}}>+prod prêmio</span>}
                                         </span>
                                       })()
                                     : <span style={{color:'#d1d5db',fontSize:9}}>{valorHora===0?'s/val':'—'}</span>
@@ -916,11 +938,18 @@ export default function Ponto() {
                             <td style={{padding:'7px 8px',textAlign:'right',background:'rgba(74,26,122,0.4)',color:'#e9d5ff',fontWeight:700,fontSize:11}}>
                               {(() => {
                                 const vHoras=fmtDecimal(tot.normais)*valorHora + fmtDecimal(tot.extras50)*valorHora*1.5
-                                const vTotal=vHoras+totalProdLancamento
-                                if(vTotal===0)return '—'
-                                return <span title={`Horas: ${formatCurrency(vHoras)}${totalProdLancamento>0?' + Prod: '+formatCurrency(totalProdLancamento):''}`}>
+                                const ehAuto=colabSel?.tipo_contrato==='autonomo'
+                                // CLT: horas + prêmio se prod>horas. Autônomo: horas(sem prod) + prod
+                                const vTotal=ehAuto
+                                  ? vHoras + totalProdLancamento  // autônomo: ambos somam
+                                  : totalProdLancamento>vHoras    // clt: horas + excedente
+                                    ? vHoras+(totalProdLancamento-vHoras)
+                                    : vHoras
+                                if(vTotal===0&&vHoras===0&&totalProdLancamento===0)return '—'
+                                const premio=!ehAuto&&totalProdLancamento>vHoras?totalProdLancamento-vHoras:0
+                                return <span title={`Horas: ${formatCurrency(vHoras)}${totalProdLancamento>0?(ehAuto?' + Prod: ':' | Prod: ')+formatCurrency(totalProdLancamento):''}`}>
                                   {formatCurrency(vTotal)}
-                                  {totalProdLancamento>0&&<span style={{display:'block',fontSize:9,opacity:0.8}}>+{formatCurrency(totalProdLancamento)} prod</span>}
+                                  {totalProdLancamento>0&&<span style={{display:'block',fontSize:9,opacity:0.8}}>{ehAuto?`+${formatCurrency(totalProdLancamento)} prod`:premio>0?`+${formatCurrency(premio)} prêmio`:'prod incl.'}</span>}
                                 </span>
                               })()}
                             </td>
