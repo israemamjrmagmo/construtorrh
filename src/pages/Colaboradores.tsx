@@ -617,7 +617,7 @@ export default function Colaboradores() {
       quantidade: (fe.quantidade ?? 1) as number,
       tamanho: '',
       numero: '',
-      status: 'pendente',
+      status: 'ativo',
       documento_url: null as string | null | undefined,
       documento_nome: null as string | null | undefined,
     }))
@@ -666,7 +666,7 @@ export default function Colaboradores() {
           // preserva tamanho/número já preenchidos
           tamanho: jaExistia?.tamanho ?? '',
           numero: jaExistia?.numero ?? '',
-          status: 'pendente',
+          status: 'ativo',
           documento_url: (jaExistia?.documento_url ?? null) as string | null | undefined,
           documento_nome: (jaExistia?.documento_nome ?? null) as string | null | undefined,
           _foraFuncao: false,
@@ -849,7 +849,7 @@ export default function Colaboradores() {
           obrigatorio: item.obrigatorio ?? true,
           quantidade: item.quantidade ?? 1,
           quantidade_entregue: 0,
-          status: 'pendente',
+          status: 'ativo',
           documento_url: item.documento_url || null,
           documento_nome: item.documento_nome || null,
         }))

@@ -292,6 +292,12 @@ ALTER TABLE public.colaborador_epi ADD COLUMN IF NOT EXISTS documento_nome      
 ALTER TABLE public.colaborador_epi ADD COLUMN IF NOT EXISTS obrigatorio         BOOLEAN DEFAULT TRUE;
 ALTER TABLE public.colaborador_epi ADD COLUMN IF NOT EXISTS quantidade          INTEGER DEFAULT 1;
 ALTER TABLE public.colaborador_epi ADD COLUMN IF NOT EXISTS quantidade_entregue INTEGER DEFAULT 0;
+
+-- Corrige constraint de status para aceitar todos os valores usados no sistema
+ALTER TABLE public.colaborador_epi DROP CONSTRAINT IF EXISTS colaborador_epi_status_check;
+ALTER TABLE public.colaborador_epi ADD CONSTRAINT colaborador_epi_status_check
+  CHECK (status IN ('ativo','devolvido','vencido','pendente','entregue','substituido'));
+
 ALTER TABLE public.colaborador_epi ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "colab_epi_auth" ON public.colaborador_epi;
 CREATE POLICY "colab_epi_auth" ON public.colaborador_epi
