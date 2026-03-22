@@ -15,6 +15,8 @@ interface ColabRow {
   chapa: string
   funcao_id: string | null
   tipo_contrato: string | null
+  valor_hora_clt: number | null
+  valor_hora_autonomo: number | null
   contratos_valores: Record<string, { ativo?: boolean; valor_hora?: number }> | null
   funcoes: { nome: string; sigla: string } | null
 }
@@ -130,15 +132,33 @@ export default function Ponto() {
 
   // ── fetch colaboradores ───────────────────────────────────────────────────
   useEffect(() => {
-    supabase
-      .from('colaboradores')
-      .select('id, nome, chapa, funcao_id, tipo_contrato, contratos_valores, funcoes(nome, sigla)')
-      .eq('status', 'ativo')
-      .order('nome')
-      .then(({ data }) => {
-        setColaboradores((data as unknown as ColabRow[]) ?? [])
-        setLoadingColabs(false)
-      })
+    const load = async () => {
+      // Tenta com join funcoes
+      let { data, error } = await supabase
+        .from('colaboradores')
+        .select('id, nome, chapa, funcao_id, tipo_contrato, valor_hora_clt, valor_hora_autonomo, contratos_valores, funcoes(nome, sigla)')
+        .in('status', ['ativo', 'Ativo', 'ATIVO'])
+        .order('nome')
+
+      // Se não retornou nada por filtro de status, busca sem filtro
+      if (!error && (!data || data.length === 0)) {
+        const res = await supabase
+          .from('colaboradores')
+          .select('id, nome, chapa, funcao_id, tipo_contrato, valor_hora_clt, valor_hora_autonomo, contratos_valores, funcoes(nome, sigla)')
+          .order('nome')
+        data = res.data
+        error = res.error
+      }
+
+      if (error) {
+        console.error('Erro ao buscar colaboradores:', error.message)
+        toast.error('Erro ao carregar colaboradores: ' + error.message)
+      }
+
+      setColaboradores((data as unknown as ColabRow[]) ?? [])
+      setLoadingColabs(false)
+    }
+    load()
   }, [])
 
   // ── fetch registros do mês para o colaborador selecionado ─────────────────
@@ -216,7 +236,13 @@ export default function Ponto() {
   // ── valor hora do colaborador selecionado ─────────────────────────────────
   const valorHora = useMemo(() => {
     if (!colabSel) return 0
-    const tipo = colabSel.tipo_contrato ?? 'clt'
+    // Tenta valor_hora_clt / valor_hora_autonomo primeiro
+    const tipo = (colabSel.tipo_contrato ?? 'clt').toLowerCase()
+    if (tipo === 'autonomo' || tipo === 'autônomo' || tipo === 'pj') {
+      if (colabSel.valor_hora_autonomo) return colabSel.valor_hora_autonomo
+    }
+    if (colabSel.valor_hora_clt) return colabSel.valor_hora_clt
+    // Fallback: contratos_valores
     const cv = colabSel.contratos_valores
     if (cv && cv[tipo]?.valor_hora) return cv[tipo].valor_hora!
     return 0
