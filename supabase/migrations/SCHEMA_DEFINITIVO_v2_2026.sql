@@ -294,6 +294,10 @@ ALTER TABLE public.colaborador_epi ADD COLUMN IF NOT EXISTS quantidade          
 ALTER TABLE public.colaborador_epi ADD COLUMN IF NOT EXISTS quantidade_entregue INTEGER DEFAULT 0;
 
 -- Corrige constraint de status para aceitar todos os valores usados no sistema
+-- Adiciona colunas de hora extra ao registro_ponto
+ALTER TABLE public.registro_ponto ADD COLUMN IF NOT EXISTS he_entrada TIME;
+ALTER TABLE public.registro_ponto ADD COLUMN IF NOT EXISTS he_saida   TIME;
+
 ALTER TABLE public.colaborador_epi DROP CONSTRAINT IF EXISTS colaborador_epi_status_check;
 ALTER TABLE public.colaborador_epi ADD CONSTRAINT colaborador_epi_status_check
   CHECK (status IN ('ativo','devolvido','vencido','pendente','entregue','substituido'));

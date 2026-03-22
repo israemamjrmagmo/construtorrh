@@ -232,6 +232,8 @@ export interface RegistroPonto {
   hora_saida: string | null
   horas_trabalhadas: number | null
   horas_extras: number
+  he_entrada: string | null
+  he_saida: string | null
   falta: boolean
   justificativa: string | null
   colaboradores?: Pick<Colaborador, 'nome' | 'chapa'>
