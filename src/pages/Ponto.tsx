@@ -82,18 +82,32 @@ function fmtDecimal(min: number): number {
   return parseFloat((min / 60).toFixed(2))
 }
 
-function calcDia(d: DiaRegistro): { normais: number; extras: number; total: number } {
-  if (!d.presente || d.falta) return { normais: 0, extras: 0, total: 0 }
-  let normais = 0
+// calcDia retorna:
+// normais   = horas seg-sex (regular, sem HE) — multiplicador 1.0
+// extras50  = HE (qualquer dia) + horas do sábado — multiplicador 1.5
+function calcDia(d: DiaRegistro): { normais: number; extras50: number; extras: number; total: number } {
+  if (!d.presente || d.falta) return { normais: 0, extras50: 0, extras: 0, total: 0 }
+
+  const isSab = new Date(d.data + 'T12:00:00').getDay() === 6
+
+  let horasDia = 0
   if (d.hora_entrada && d.hora_saida) {
     let bruto = diffMin(d.hora_entrada, d.hora_saida)
     if (d.saida_almoco && d.retorno_almoco) bruto -= diffMin(d.saida_almoco, d.retorno_almoco)
     else if (d.saida_almoco) bruto -= 60
-    normais = Math.max(0, bruto)
+    horasDia = Math.max(0, bruto)
   }
-  let extras = 0
-  if (d.he_entrada && d.he_saida) extras = Math.max(0, diffMin(d.he_entrada, d.he_saida))
-  return { normais, extras, total: normais + extras }
+
+  // HE (entrada/saída extra)
+  let he = 0
+  if (d.he_entrada && d.he_saida) he = Math.max(0, diffMin(d.he_entrada, d.he_saida))
+
+  // Sábado: horas do dia vão para extras50 (adicional 50%)
+  // Seg-Sex: horas normais = horasDia, HE = extras50
+  const normais  = isSab ? 0       : horasDia
+  const extras50 = isSab ? horasDia + he : he
+
+  return { normais, extras50, extras: extras50, total: normais + extras50 }
 }
 
 function diasDoMes(ano: number, mes: number): string[] {
@@ -351,20 +365,26 @@ export default function Ponto() {
 
   // ── Totais ────────────────────────────────────────────────────────────────
   const totais = useMemo(() => {
-    let normais = 0, extras = 0, faltas = 0, presentes = 0, atestados = 0, suspensoes = 0
+    let normais = 0, extras50 = 0, faltas = 0, presentes = 0, atestados = 0, suspensoes = 0
     dias.forEach(d => {
       const c = calcDia(d)
-      normais += c.normais; extras += c.extras
+      normais  += c.normais
+      extras50 += c.extras50
       if (d.presente && !d.falta) presentes++
       if (d.falta) faltas++
       if (d.evento === 'atestado' && !isFDS(d.data)) atestados++
       if (d.evento === 'suspensao') suspensoes++
     })
-    return { normais, extras, total: normais + extras, presentes, faltas, atestados, suspensoes }
+    const total = normais + extras50
+    return { normais, extras50, extras: extras50, total, presentes, faltas, atestados, suspensoes }
   }, [dias])
 
-  const valorHora  = colabSel?.salario ? colabSel.salario / 220 : 0
-  const valorTotal = valorHora > 0 ? fmtDecimal(totais.total) * valorHora : 0
+  // Valor hora base = salário ÷ 220h
+  const valorHora    = colabSel?.salario ? colabSel.salario / 220 : 0
+  // Valores de recebimento
+  const valorNormal  = valorHora > 0 ? fmtDecimal(totais.normais)  * valorHora        : 0
+  const valorExtra   = valorHora > 0 ? fmtDecimal(totais.extras50) * valorHora * 1.5  : 0
+  const valorTotal   = valorNormal + valorExtra
 
   // ── Salvar ────────────────────────────────────────────────────────────────
   const handleSalvar = async () => {
@@ -508,7 +528,7 @@ export default function Ponto() {
                       <th style={{ ...TH, background:'#2d5a9e' }}>H.E. Entrada</th>
                       <th style={{ ...TH, background:'#2d5a9e' }}>H.E. Saída</th>
                       <th style={{ ...TH, background:'#1a4a1a' }}>Normais</th>
-                      <th style={{ ...TH, background:'#2d5a1a' }}>Extras</th>
+                      <th style={{ ...TH, background:'#2d5a1a' }} title="HE + Sábado (+50%)">Extras</th>
                       <th style={{ ...TH, background:'#0f3320' }}>Total</th>
                       <th style={{ ...TH, width:90 }}>Obs.</th>
                     </tr>
@@ -565,7 +585,7 @@ export default function Ponto() {
                           <td style={{ ...TD, background:'rgba(45,90,158,0.04)' }}><TI disabled={!d.presente||d.falta} value={d.he_saida}   onChange={v=>updDia(idx,'he_saida',v)}/></td>
 
                           <td style={{ ...TD, textAlign:'center', fontWeight:600, color:calc.normais>0?'#15803d':'#9ca3af', background:'rgba(22,163,74,0.05)' }}>{calc.normais>0?fmtHHMM(calc.normais):'—'}</td>
-                          <td style={{ ...TD, textAlign:'center', fontWeight:600, color:calc.extras>0?'#1d4ed8':'#9ca3af', background:'rgba(45,90,158,0.05)' }}>{calc.extras>0?fmtHHMM(calc.extras):'—'}</td>
+                          <td style={{ ...TD, textAlign:'center', fontWeight:600, color:calc.extras50>0?'#1d4ed8':'#9ca3af', background:'rgba(45,90,158,0.05)' }} title={calc.extras50>0?'+50%':''}>{calc.extras50>0?fmtHHMM(calc.extras50)+'*':'—'}</td>
                           <td style={{ ...TD, textAlign:'center', fontWeight:700, background:'rgba(0,0,0,0.03)' }}>{calc.total>0?fmtHHMM(calc.total):'—'}</td>
 
                           {/* Obs / indicador */}
@@ -579,31 +599,67 @@ export default function Ponto() {
                   </tbody>
 
                   <tfoot>
+                    {/* Linha 1: horas */}
                     <tr style={{ background:'#1e3a5f', color:'#fff', fontWeight:700 }}>
                       <td colSpan={4} style={{ padding:'10px 14px', fontSize:12 }}>
                         TOTAIS — {totais.presentes} dia{totais.presentes!==1?'s':''} trabalhado{totais.presentes!==1?'s':''}
-                        {totais.faltas>0 && <span style={{ color:'#fca5a5', marginLeft:8 }}>· {totais.faltas} falta{totais.faltas!==1?'s':''}</span>}
+                        {totais.faltas>0    && <span style={{ color:'#fca5a5', marginLeft:8 }}>· {totais.faltas} falta{totais.faltas!==1?'s':''}</span>}
                         {totais.atestados>0 && <span style={{ color:'#93c5fd', marginLeft:8 }}>· {totais.atestados} afastamento{totais.atestados!==1?'s':''}</span>}
-                        {totais.suspensoes>0 && <span style={{ color:'#fca5a5', marginLeft:8 }}>· {totais.suspensoes} suspensão{totais.suspensoes!==1?'ões':''}</span>}
+                        {totais.suspensoes>0 && <span style={{ color:'#fca5a5', marginLeft:8 }}>· {totais.suspensoes} suspensão</span>}
                       </td>
                       <td colSpan={6} style={{ padding:'10px 14px', textAlign:'right', fontSize:11, opacity:0.7 }}>
-                        {valorHora>0 && <>R$ {valorHora.toFixed(2)}/h</>}
+                        {valorHora>0 && <><strong>R$ {valorHora.toFixed(4)}/h</strong> base</>}
                       </td>
                       <td style={{ padding:'10px 8px', textAlign:'center', background:'rgba(22,163,74,0.3)', fontSize:13 }}>{fmtHHMM(totais.normais)}</td>
-                      <td style={{ padding:'10px 8px', textAlign:'center', background:'rgba(45,90,158,0.4)', fontSize:13 }}>{fmtHHMM(totais.extras)}</td>
+                      <td style={{ padding:'10px 8px', textAlign:'center', background:'rgba(45,90,158,0.4)', fontSize:13 }}>{fmtHHMM(totais.extras50)}</td>
                       <td style={{ padding:'10px 8px', textAlign:'center', background:'rgba(0,0,0,0.2)', fontSize:13 }}>{fmtHHMM(totais.total)}</td>
                       <td />
                     </tr>
-                    <tr style={{ background:'#0f2d4a', color:'#fff' }}>
-                      <td colSpan={10} style={{ padding:'10px 14px', fontSize:12 }}>
-                        {fmtDecimal(totais.normais)}h normais + {fmtDecimal(totais.extras)}h extras = <strong>{fmtDecimal(totais.total)}h total</strong>
-                      </td>
-                      <td colSpan={4} style={{ padding:'10px 14px', textAlign:'right', fontSize:14 }}>
-                        {valorHora>0
-                          ? <span>💰 <strong>{formatCurrency(valorTotal)}</strong> <span style={{ fontSize:10, opacity:0.6 }}>estimado</span></span>
-                          : <span style={{ fontSize:11, opacity:0.6 }}>Cadastre o salário para ver o total</span>}
-                      </td>
-                    </tr>
+
+                    {/* Linha 2: valores em R$ */}
+                    {valorHora>0 && (
+                      <tr style={{ background:'#0f2d4a', color:'#fff' }}>
+                        <td colSpan={4} style={{ padding:'8px 14px', fontSize:12 }}>
+                          <span style={{ opacity:0.8 }}>
+                            {fmtDecimal(totais.normais)}h normais × R$ {valorHora.toFixed(4)}
+                            &nbsp;+&nbsp;
+                            {fmtDecimal(totais.extras50)}h extras/sáb × R$ {valorHora.toFixed(4)} × 1,5
+                          </span>
+                        </td>
+
+                        {/* Valor Normal */}
+                        <td colSpan={3} style={{ padding:'8px 10px', textAlign:'right' }}>
+                          <div style={{ fontSize:10, opacity:0.6, marginBottom:1 }}>HORAS NORMAIS</div>
+                          <div style={{ fontSize:14, fontWeight:700, color:'#86efac' }}>
+                            {formatCurrency(valorNormal)}
+                          </div>
+                        </td>
+
+                        {/* Valor Extra (+50%) */}
+                        <td colSpan={3} style={{ padding:'8px 10px', textAlign:'right', background:'rgba(45,90,158,0.3)' }}>
+                          <div style={{ fontSize:10, opacity:0.6, marginBottom:1 }}>EXTRAS / SÁB +50%</div>
+                          <div style={{ fontSize:14, fontWeight:700, color:'#93c5fd' }}>
+                            {formatCurrency(valorExtra)}
+                          </div>
+                        </td>
+
+                        {/* Total */}
+                        <td colSpan={3} style={{ padding:'8px 14px', textAlign:'right', background:'rgba(255,255,255,0.08)' }}>
+                          <div style={{ fontSize:10, opacity:0.6, marginBottom:1 }}>💰 TOTAL A RECEBER</div>
+                          <div style={{ fontSize:16, fontWeight:800, color:'#fbbf24' }}>
+                            {formatCurrency(valorTotal)}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+
+                    {valorHora === 0 && (
+                      <tr style={{ background:'#0f2d4a', color:'#fff' }}>
+                        <td colSpan={14} style={{ padding:'10px 14px', fontSize:12, opacity:0.6, textAlign:'center' }}>
+                          Cadastre o salário do colaborador para calcular os valores a receber
+                        </td>
+                      </tr>
+                    )}
                   </tfoot>
                 </table>
               )}
