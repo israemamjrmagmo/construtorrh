@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 
 interface ColabSimples {
   id: string; nome: string; chapa: string | null
-  salario: number | null; obra_id: string | null
+  funcao_id: string | null; obra_id: string | null
   tipo_contrato: string; funcao_nome: string
 }
 interface ObraSimples { id: string; nome: string }
@@ -30,7 +30,8 @@ interface PlaybookItem {
 interface Lancamento {
   id: string; obra_id: string; obra_nome: string
   mes_referencia: string; data_inicio: string; data_fim: string
-  numero_lancamento: 1 | 2
+  status: 'rascunho'|'aguardando_aprovacao'|'aprovado'|'recusado'
+  motivo_recusa: string | null
 }
 type TipoEvento = 'atestado' | 'suspensao' | null
 interface DiaRegistro {
@@ -128,6 +129,7 @@ export default function Ponto() {
   const [savingProd, setSavingProd] = useState(false)
 
   const [saving, setSaving] = useState(false)
+  const [valorHora, setValorHora] = useState(0)
   const [loadingDias, setLoadingDias] = useState(false)
 
   const mesRef = `${ano}-${String(mes).padStart(2,'0')}`
@@ -136,11 +138,11 @@ export default function Ponto() {
   useEffect(()=>{
     const load=async()=>{
       const [{data:colsRaw},{data:obsRaw}]=await Promise.all([
-        supabase.from('colaboradores').select('id,nome,chapa,salario,obra_id,tipo_contrato,funcoes(nome)').order('nome'),
+        supabase.from('colaboradores').select('id,nome,chapa,funcao_id,obra_id,tipo_contrato,funcoes(nome)').order('nome'),
         supabase.from('obras').select('id,nome').order('nome'),
       ])
       setColaboradores((colsRaw??[]).map((c:any)=>({
-        id:c.id,nome:c.nome,chapa:c.chapa??null,salario:c.salario??null,
+        id:c.id,nome:c.nome,chapa:c.chapa??null,funcao_id:c.funcao_id??null,
         obra_id:c.obra_id??null,tipo_contrato:c.tipo_contrato??'clt',
         funcao_nome:c.funcoes?.nome??'Sem função',
       })))
@@ -159,7 +161,7 @@ export default function Ponto() {
     const list:Lancamento[]=(data??[]).map((l:any)=>({
       id:l.id,obra_id:l.obra_id,obra_nome:l.obras?.nome??'Obra',
       mes_referencia:l.mes_referencia,data_inicio:l.data_inicio,data_fim:l.data_fim,
-      numero_lancamento:l.numero_lancamento,
+      status:l.status??'rascunho',motivo_recusa:l.motivo_recusa??null,
     }))
     setLancamentos(list)
     return list
@@ -273,6 +275,14 @@ export default function Ponto() {
       expandRange(da,f.toISOString().slice(0,10)).forEach(x=>diasSuspensao.add(x))
     })
 
+    // Carregar valor/hora por função+contrato
+    if(colab.funcao_id){
+      const{data:fv}=await supabase.from('funcao_valores')
+        .select('valor_hora').eq('funcao_id',colab.funcao_id)
+        .eq('tipo_contrato',colab.tipo_contrato).single()
+      setValorHora(fv?.valor_hora??0)
+    } else { setValorHora(0) }
+
     const [list,,pbMap,horMap]=await Promise.all([
       fetchLancamentos(colab.id,mr),
       fetchProducoes(colab.id,mr),
@@ -306,7 +316,6 @@ export default function Ponto() {
     return{normais,extras50,total:normais+extras50}
   },[diasMap])
 
-  const valorHora  = colabSel?.salario?(colabSel.salario/220):0
   const totalHoras = valorHora>0?(fmtDecimal(totaisGlobais.normais)*valorHora + fmtDecimal(totaisGlobais.extras50)*valorHora*1.5):0
   const totalProd  = producoes.reduce((s,p)=>s+p.valor_total,0)
 
@@ -375,6 +384,8 @@ export default function Ponto() {
   // ── Salvar dias de um lançamento ──────────────────────────────────────────
   async function salvarLanc(lancId:string){
     if(!colabSel)return
+    const lanc=lancamentos.find(l=>l.id===lancId)
+    if(lanc&&lanc.status!=='rascunho'&&lanc.status!=='recusado'){toast.error('Ponto em aprovação ou aprovado não pode ser editado');return}
     setSaving(true)
     const dias=diasMap[lancId]??[]
     const upserts=dias.filter(d=>d.presente||d.falta||d.id).map(d=>{
@@ -391,9 +402,21 @@ export default function Ponto() {
       }
     })
     if(upserts.length===0){toast.info('Nenhum registro para salvar');setSaving(false);return}
-    const{error}=await supabase.from('registro_ponto').upsert(upserts,{onConflict:'lancamento_id,data'})
+    const toUpdate=upserts.filter(u=>u.id)
+    const toInsert=upserts.filter(u=>!u.id)
+    const errs=[]
+    if(toUpdate.length){
+      for(const row of toUpdate){
+        const{error:e}=await supabase.from('registro_ponto').update(row).eq('id',(row as any).id)
+        if(e)errs.push(e.message)
+      }
+    }
+    if(toInsert.length){
+      const{error:e}=await supabase.from('registro_ponto').insert(toInsert.map(({id:_,...r})=>r))
+      if(e)errs.push(e.message)
+    }
     setSaving(false)
-    if(error){toast.error('Erro: '+error.message);return}
+    if(errs.length){toast.error('Erro: '+errs[0]);return}
     toast.success('Ponto salvo!')
   }
 
@@ -402,30 +425,11 @@ export default function Ponto() {
     if(!colabSel||!novoLancObraId||!novoLancInicio||!novoLancFim){toast.error('Preencha todos os campos');return}
     if(novoLancInicio>novoLancFim){toast.error('Data de início deve ser anterior à data de fim');return}
 
-    // Verificar limite de 2 por obra/mês
-    const lancObra=lancamentos.filter(l=>l.obra_id===novoLancObraId)
-    if(lancObra.length>=2){toast.error('Limite de 2 lançamentos por obra/mês atingido');return}
-
-    // Verificar sobreposição de datas para essa obra
-    for(const l of lancObra){
-      if(!(novoLancFim<l.data_inicio||novoLancInicio>l.data_fim)){
-        toast.error(`Período sobrepõe com lançamento ${l.numero_lancamento} (${l.data_inicio} a ${l.data_fim})`);return
-      }
-    }
-
-    // Verificar sobreposição com outros lançamentos de outras obras
-    for(const l of lancamentos){
-      if(l.obra_id===novoLancObraId)continue
-      if(!(novoLancFim<l.data_inicio||novoLancInicio>l.data_fim)){
-        toast.error(`Período sobrepõe com obra "${l.obra_nome}" (${l.data_inicio.slice(8)}/${l.data_inicio.slice(5,7)} a ${l.data_fim.slice(8)}/${l.data_fim.slice(5,7)})`);return
-      }
-    }
-
     setSavingLanc(true)
     const{data,error}=await supabase.from('ponto_lancamentos').insert({
       colaborador_id:colabSel.id,obra_id:novoLancObraId,mes_referencia:mesRef,
       data_inicio:novoLancInicio,data_fim:novoLancFim,
-      numero_lancamento:(lancObra.length+1) as 1|2,
+      status:'rascunho',
     }).select('*,obras(nome)').single()
     setSavingLanc(false)
     if(error){toast.error('Erro: '+error.message);return}
@@ -436,10 +440,27 @@ export default function Ponto() {
 
   // ── Excluir lançamento ────────────────────────────────────────────────────
   async function excluirLancamento(id:string){
+    const lanc=lancamentos.find(l=>l.id===id)
+    if(lanc&&lanc.status!=='rascunho'&&lanc.status!=='recusado'){toast.error('Lançamento em aprovação ou aprovado não pode ser excluído');return}
     if(!confirm('Excluir este lançamento e todos os registros de ponto do período?'))return
     await supabase.from('registro_ponto').delete().eq('lancamento_id',id)
     await supabase.from('ponto_lancamentos').delete().eq('id',id)
     toast.success('Lançamento excluído')
+    if(colabSel)fetchTudo(colabSel,ano,mes)
+  }
+
+  // ── Aprovação de ponto ───────────────────────────────────────────────────
+  async function mudarStatus(id:string,status:Lancamento['status'],motivo?:string){
+    const{error}=await supabase.from('ponto_lancamentos').update({
+      status,motivo_recusa:motivo??null
+    }).eq('id',id)
+    if(error){toast.error('Erro: '+error.message);return}
+    const msgs:Record<string,string>={
+      aguardando_aprovacao:'Enviado para aprovação!',
+      aprovado:'Ponto aprovado!',
+      recusado:'Ponto recusado — devolvido para edição',
+    }
+    toast.success(msgs[status]??'Atualizado')
     if(colabSel)fetchTudo(colabSel,ano,mes)
   }
 
@@ -586,7 +607,7 @@ export default function Ponto() {
             <div style={{display:'flex',gap:1,borderTop:'1px solid var(--border)',background:'var(--muted)'}}>
               {[
                 {label:'⏱ Total de Horas',value:fmtHHMM(totaisGlobais.total),sub:`${fmtHHMM(totaisGlobais.normais)} norm + ${fmtHHMM(totaisGlobais.extras50)} extras`,color:'#1d4ed8'},
-                {label:'💰 Valor das Horas',value:valorHora>0?formatCurrency(totalHoras):'—',sub:valorHora>0?`R$ ${valorHora.toFixed(4)}/h`:'Sem salário cadastrado',color:'#15803d'},
+                {label:'💰 Valor das Horas',value:valorHora>0?formatCurrency(totalHoras):'—',sub:valorHora>0?`R$ ${valorHora.toFixed(4)}/h`:'Sem tabela de valor/hora',color:'#15803d'},
                 {label:'🏗️ Produção',value:totalProd>0?formatCurrency(totalProd):`${producoes.length} lançamento${producoes.length!==1?'s':''}`,sub:`${producoes.length} item${producoes.length!==1?'ns':''}`,color:'#b45309'},
                 {label:'💵 Total a Receber',value:formatCurrency(totalReceber),sub:colabSel.tipo_contrato==='clt'?'CLT: base + prêmio':'Autônomo: horas + prod.',color:'#7c3aed'},
               ].map(card=>(
@@ -629,7 +650,7 @@ export default function Ponto() {
                     <Building2 size={14} style={{color:'var(--primary)',flexShrink:0}}/>
                     <div style={{flex:1}}>
                       <div style={{fontWeight:700,fontSize:14}}>{lanc.obra_nome}
-                        <span style={{marginLeft:8,fontSize:11,background:'var(--primary)',color:'#fff',borderRadius:4,padding:'1px 6px'}}>{lanc.numero_lancamento}º lançamento</span>
+  
                       </div>
                       <div style={{fontSize:11,color:'var(--muted-foreground)',fontFamily:'monospace'}}>
                         {lanc.data_inicio.slice(8)}/{lanc.data_inicio.slice(5,7)} → {lanc.data_fim.slice(8)}/{lanc.data_fim.slice(5,7)}
@@ -642,14 +663,36 @@ export default function Ponto() {
                     {valorHora>0&&<div style={{fontSize:12,fontWeight:700,color:'#15803d',textAlign:'right'}}>
                       {formatCurrency((fmtDecimal(tot.normais)*valorHora)+(fmtDecimal(tot.extras50)*valorHora*1.5))}
                     </div>}
+                    {/* Badge status */}
+                    {(() => {
+                      const cfg:{[k:string]:{bg:string;color:string;label:string}}={
+                        rascunho:{bg:'#f1f5f9',color:'#475569',label:'Rascunho'},
+                        aguardando_aprovacao:{bg:'#fef3c7',color:'#92400e',label:'⏳ Aguardando'},
+                        aprovado:{bg:'#dcfce7',color:'#15803d',label:'✅ Aprovado'},
+                        recusado:{bg:'#fee2e2',color:'#b91c1c',label:'❌ Recusado'},
+                      }
+                      const s=cfg[lanc.status]??cfg.rascunho
+                      return<span style={{fontSize:10,fontWeight:700,padding:'2px 8px',borderRadius:10,background:s.bg,color:s.color,flexShrink:0}}>{s.label}</span>
+                    })()}
                     {/* Ações */}
                     <div style={{display:'flex',gap:4}} onClick={e=>e.stopPropagation()}>
-                      {pb.length>0&&<Button size="sm" variant="outline" style={{height:26,fontSize:11,gap:3,borderColor:'#f59e0b',color:'#b45309'}} onClick={()=>abrirModalProd(lanc.id)}><Factory size={11}/> Produção</Button>}
-                      <Button size="sm" onClick={()=>salvarLanc(lanc.id)} disabled={saving} style={{height:26,fontSize:11}}>💾 Salvar</Button>
-                      <Button size="sm" variant="ghost" style={{height:26,width:26,padding:0,color:'var(--destructive)'}} onClick={()=>excluirLancamento(lanc.id)}><Trash2 size={12}/></Button>
+                      {pb.length>0&&lanc.status==='rascunho'&&<Button size="sm" variant="outline" style={{height:26,fontSize:11,gap:3,borderColor:'#f59e0b',color:'#b45309'}} onClick={()=>abrirModalProd(lanc.id)}><Factory size={11}/> Produção</Button>}
+                      {lanc.status==='rascunho'&&<Button size="sm" onClick={()=>salvarLanc(lanc.id)} disabled={saving} style={{height:26,fontSize:11}}>💾 Salvar</Button>}
+                      {lanc.status==='rascunho'&&<Button size="sm" variant="outline" style={{height:26,fontSize:11,gap:2,borderColor:'#16a34a',color:'#15803d'}} onClick={()=>mudarStatus(lanc.id,'aguardando_aprovacao')}>✔ Aprovar</Button>}
+                      {lanc.status==='aguardando_aprovacao'&&<Button size="sm" variant="outline" style={{height:26,fontSize:11,gap:2,borderColor:'#16a34a',color:'#15803d'}} onClick={()=>mudarStatus(lanc.id,'aprovado')}>✅ Confirmar</Button>}
+                      {lanc.status==='aguardando_aprovacao'&&<Button size="sm" variant="outline" style={{height:26,fontSize:11,gap:2,borderColor:'#dc2626',color:'#dc2626'}} onClick={()=>mudarStatus(lanc.id,'recusado','Recusado pelo gestor')}>❌ Recusar</Button>}
+                      {lanc.status==='recusado'&&<Button size="sm" onClick={()=>salvarLanc(lanc.id)} disabled={saving} style={{height:26,fontSize:11}}>💾 Salvar</Button>}
+                      {lanc.status==='recusado'&&<Button size="sm" variant="outline" style={{height:26,fontSize:11,gap:2,borderColor:'#16a34a',color:'#15803d'}} onClick={()=>mudarStatus(lanc.id,'aguardando_aprovacao')}>↩ Reenviar</Button>}
+                      {(lanc.status==='rascunho'||lanc.status==='recusado')&&<Button size="sm" variant="ghost" style={{height:26,width:26,padding:0,color:'var(--destructive)'}} onClick={()=>excluirLancamento(lanc.id)}><Trash2 size={12}/></Button>}
                     </div>
                   </div>
 
+                  {/* Motivo recusa */}
+                  {lanc.status==='recusado'&&lanc.motivo_recusa&&(
+                    <div style={{background:'#fee2e2',borderBottom:'1px solid #fecaca',padding:'5px 14px',fontSize:11,color:'#b91c1c'}}>
+                      ❌ Motivo: {lanc.motivo_recusa}
+                    </div>
+                  )}
                   {/* Produções do lançamento */}
                   {prodLanc.length>0&&(
                     <div style={{background:'#fffbeb',borderBottom:'1px solid #fde68a',padding:'6px 14px'}}>
@@ -683,29 +726,28 @@ export default function Ponto() {
                         </thead>
                         <tbody>
                           {diasLanc.map((d,idx)=>{
-                            const fds=isFDS(d.data); const calc=calcDia(d)
+                            const fds=isFDS(d.data); const calc=calcDia(d); const lancBloq=lanc.status!=='rascunho'&&lanc.status!=='recusado'
                             const bg=d.evento==='suspensao'?'rgba(239,68,68,0.09)':d.evento==='atestado'?'rgba(59,130,246,0.09)':fds?'rgba(100,100,100,0.04)':d.falta?'rgba(239,68,68,0.05)':d.presente?'rgba(22,163,74,0.03)':'transparent'
                             return(
                               <tr key={d.data} style={{borderBottom:'1px solid var(--border)',background:bg}}>
                                 <td style={{...TD,fontWeight:700,textAlign:'center',color:fds?'#9ca3af':undefined}}>{diaSemana(d.data)}</td>
                                 <td style={{...TD,textAlign:'center',fontFamily:'monospace',fontWeight:600}}>{d.data.slice(8)}/{d.data.slice(5,7)}</td>
                                 <td style={{...TD,textAlign:'center'}}>
-                                  {fds?<span style={{fontSize:10,color:'#9ca3af'}}>FDS</span>
-                                  :d.evento==='atestado'?<span title="Afastamento">🩺</span>
+                                  {d.evento==='atestado'?<span title="Afastamento">🩺</span>
                                   :d.evento==='suspensao'?<span title="Suspensão">⛔</span>
-                                  :<button onClick={()=>togglePresente(lanc.id,idx,colabSel!)} style={{border:'none',background:'none',cursor:'pointer',padding:2,color:d.presente?'#16a34a':'#9ca3af'}}>
+                                  :<button onClick={()=>!lancBloq&&togglePresente(lanc.id,idx,colabSel!)} style={{border:'none',background:'none',cursor:lancBloq?'not-allowed':'pointer',padding:2,color:d.presente?'#16a34a':'#9ca3af',opacity:lancBloq?0.5:1}}>
                                     {d.presente?<CheckCircle2 size={16}/>:<span style={{fontSize:16,opacity:0.3}}>○</span>}
                                   </button>}
                                 </td>
                                 <td style={{...TD,textAlign:'center'}}>
-                                  {!fds&&!d.bloqueado&&<button onClick={()=>toggleFalta(lanc.id,idx)} style={{border:'none',background:'none',cursor:'pointer',padding:2,color:d.falta?'#dc2626':'#9ca3af'}}><span style={{fontSize:15,opacity:d.falta?1:0.3}}>✗</span></button>}
+                                  {!d.bloqueado&&<button onClick={()=>!lancBloq&&toggleFalta(lanc.id,idx)} style={{border:'none',background:'none',cursor:lancBloq?'not-allowed':'pointer',padding:2,color:d.falta?'#dc2626':'#9ca3af',opacity:lancBloq?0.5:1}}><span style={{fontSize:15,opacity:d.falta?1:0.3}}>✗</span></button>}
                                 </td>
-                                <td style={TD}><TI disabled={!d.presente||d.falta||d.bloqueado} value={d.hora_entrada} onChange={v=>updDia(lanc.id,idx,'hora_entrada',v)}/></td>
-                                <td style={TD}><TI disabled={!d.presente||d.falta||d.bloqueado} value={d.saida_almoco} onChange={v=>updDia(lanc.id,idx,'saida_almoco',v)}/></td>
-                                <td style={TD}><TI disabled={!d.presente||d.falta||d.bloqueado} value={d.retorno_almoco} onChange={v=>updDia(lanc.id,idx,'retorno_almoco',v)}/></td>
-                                <td style={TD}><TI disabled={!d.presente||d.falta||d.bloqueado} value={d.hora_saida} onChange={v=>updDia(lanc.id,idx,'hora_saida',v)}/></td>
-                                <td style={{...TD,background:'rgba(45,90,158,0.04)'}}><TI disabled={!d.presente||d.falta||d.bloqueado} value={d.he_entrada} onChange={v=>updDia(lanc.id,idx,'he_entrada',v)}/></td>
-                                <td style={{...TD,background:'rgba(45,90,158,0.04)'}}><TI disabled={!d.presente||d.falta||d.bloqueado} value={d.he_saida} onChange={v=>updDia(lanc.id,idx,'he_saida',v)}/></td>
+                                <td style={TD}><TI disabled={!d.presente||d.falta||d.bloqueado||lancBloq} value={d.hora_entrada} onChange={v=>updDia(lanc.id,idx,'hora_entrada',v)}/></td>
+                                <td style={TD}><TI disabled={!d.presente||d.falta||d.bloqueado||lancBloq} value={d.saida_almoco} onChange={v=>updDia(lanc.id,idx,'saida_almoco',v)}/></td>
+                                <td style={TD}><TI disabled={!d.presente||d.falta||d.bloqueado||lancBloq} value={d.retorno_almoco} onChange={v=>updDia(lanc.id,idx,'retorno_almoco',v)}/></td>
+                                <td style={TD}><TI disabled={!d.presente||d.falta||d.bloqueado||lancBloq} value={d.hora_saida} onChange={v=>updDia(lanc.id,idx,'hora_saida',v)}/></td>
+                                <td style={{...TD,background:'rgba(45,90,158,0.04)'}}><TI disabled={!d.presente||d.falta||d.bloqueado||lancBloq} value={d.he_entrada} onChange={v=>updDia(lanc.id,idx,'he_entrada',v)}/></td>
+                                <td style={{...TD,background:'rgba(45,90,158,0.04)'}}><TI disabled={!d.presente||d.falta||d.bloqueado||lancBloq} value={d.he_saida} onChange={v=>updDia(lanc.id,idx,'he_saida',v)}/></td>
                                 <td style={{...TD,textAlign:'center',fontWeight:600,color:calc.normais>0?'#15803d':'#9ca3af',background:'rgba(22,163,74,0.05)'}}>{calc.normais>0?fmtHHMM(calc.normais):'—'}</td>
                                 <td style={{...TD,textAlign:'center',fontWeight:600,color:calc.extras50>0?'#1d4ed8':'#9ca3af',background:'rgba(45,90,158,0.05)'}}>{calc.extras50>0?fmtHHMM(calc.extras50)+'*':'—'}</td>
                                 <td style={{...TD,textAlign:'center',fontWeight:700,background:'rgba(0,0,0,0.03)'}}>{calc.total>0?fmtHHMM(calc.total):'—'}</td>
@@ -761,10 +803,9 @@ export default function Ponto() {
                   return<option key={o.id} value={o.id} disabled={disabled}>{o.nome}{disabled?' (limite atingido)':lancObra.length===1?` (${lancObra.length}/2)`:''}</option>
                 })}
               </select>
-              {novoLancObraId&&lancamentos.filter(l=>l.obra_id===novoLancObraId).length===1&&(
-                <div style={{fontSize:11,color:'#b45309',marginTop:4,padding:'4px 8px',background:'#fef3c7',borderRadius:4}}>
-                  ⚠️ Já existe 1 lançamento para esta obra. O 2º lançamento deve cobrir o restante do mês.
-                  {' '}Período já usado: {lancamentos.filter(l=>l.obra_id===novoLancObraId)[0]?.data_inicio?.slice(8)}/{lancamentos.filter(l=>l.obra_id===novoLancObraId)[0]?.data_inicio?.slice(5,7)} a {lancamentos.filter(l=>l.obra_id===novoLancObraId)[0]?.data_fim?.slice(8)}/{lancamentos.filter(l=>l.obra_id===novoLancObraId)[0]?.data_fim?.slice(5,7)}
+              {novoLancObraId&&lancamentos.filter(l=>l.obra_id===novoLancObraId).length>0&&(
+                <div style={{fontSize:11,color:'#1d4ed8',marginTop:4,padding:'4px 8px',background:'#dbeafe',borderRadius:4}}>
+                  ℹ️ Esta obra já possui {lancamentos.filter(l=>l.obra_id===novoLancObraId).length} lançamento(s) no mês. Um novo período será adicionado.
                 </div>
               )}
             </div>
@@ -784,7 +825,8 @@ export default function Ponto() {
             </div>
             {novoLancInicio&&novoLancFim&&(
               <div style={{fontSize:12,color:'var(--muted-foreground)',padding:'6px 10px',background:'var(--muted)',borderRadius:6}}>
-                Período: {expandRange(novoLancInicio,novoLancFim).length} dias ({expandRange(novoLancInicio,novoLancFim).filter(d=>!isFDS(d)).length} úteis)
+                Período: <strong>{expandRange(novoLancInicio,novoLancFim).length} dias</strong>
+                {' '}({expandRange(novoLancInicio,novoLancFim).filter(d=>!isFDS(d)).length} úteis + {expandRange(novoLancInicio,novoLancFim).filter(d=>isFDS(d)).length} fins de semana)
               </div>
             )}
           </div>
@@ -800,7 +842,7 @@ export default function Ponto() {
     {modalProd&&colabSel&&(()=>{
       const lanc=lancamentos.find(l=>l.id===prodLancId)
       const pb=lanc?playbookMap[lanc.obra_id]??[]:[]
-      const diasDisp=(diasMap[prodLancId]??[]).filter(d=>!isFDS(d.data)&&d.evento!=='atestado'&&d.evento!=='suspensao'&&d.presente)
+      const diasDisp=(diasMap[prodLancId]??[]).filter(d=>d.evento!=='atestado'&&d.evento!=='suspensao'&&d.presente)
       const totalCalc=itensProd.reduce((s,i)=>{const p=pb.find(x=>x.id===i.playbook_item_id);return s+(p?p.preco_unitario*i.quantidade:0)},0)
       return(
         <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:60,display:'flex',alignItems:'center',justifyContent:'center'}}>

@@ -23,7 +23,8 @@ const ValeTransportePage = React.lazy(() => import('@/pages/ValeTransportePage')
 const Provisoes      = React.lazy(() => import('@/pages/Provisoes'))
 const Relatorios     = React.lazy(() => import('@/pages/Relatorios'))
 const Configuracoes  = React.lazy(() => import('@/pages/Configuracoes'))
-const Playbooks      = React.lazy(() => import('@/pages/Playbooks'))
+const Playbooks         = React.lazy(() => import('@/pages/Playbooks'))
+const FechamentoPonto   = React.lazy(() => import('@/pages/FechamentoPonto'))
 const Usuarios       = React.lazy(() => import('@/pages/Usuarios'))
 
 // ─── Full-page loading spinner ───────────────────────────────────────────────
@@ -110,6 +111,16 @@ export default function App() {
                   <PrivateRoute>
                     <Layout>
                       <Playbooks />
+                    </Layout>
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/fechamento-ponto"
+                element={
+                  <PrivateRoute>
+                    <Layout>
+                      <FechamentoPonto />
                     </Layout>
                   </PrivateRoute>
                 }

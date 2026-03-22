@@ -10,7 +10,7 @@ import {
   AlertTriangle, FileText, Clock, DollarSign, Award,
   Calculator, Bus, BarChart3, Settings, LogOut, Menu,
   HardHat, ChevronLeft, ChevronRight, UserCog,
-  ClipboardList } from 'lucide-react'
+  ClipboardList, Lock } from 'lucide-react'
 
 // ── grupos de navegação ───────────────────────────────────────────────────────
 const NAV_GROUPS = [
@@ -40,6 +40,7 @@ const NAV_GROUPS = [
     label: 'Financeiro',
     items: [
       { to: '/ponto',          label: 'Ponto',           icon: Clock },
+      { to: '/fechamento-ponto', label: 'Fechamento',    icon: Lock },
       { to: '/pagamentos',     label: 'Pagamentos',      icon: DollarSign },
       { to: '/premios',        label: 'Prêmios',          icon: Award },
       { to: '/vt',             label: 'Vale Transporte',  icon: Bus },
