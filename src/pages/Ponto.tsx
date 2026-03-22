@@ -135,6 +135,9 @@ export default function Ponto() {
   // Modal recusa
   const [modalRecusa, setModalRecusa] = useState<{lancId:string;motivo:string}|null>(null)
 
+  // Contagem de lançamentos por colaborador no mês (para sidebar)
+  const [contadoresLanc, setContadoresLanc] = useState<Record<string,number>>({})
+
   const mesRef = `${ano}-${String(mes).padStart(2,'0')}`
 
   // ── Carregar colaboradores + obras ──────────────────────────────────────
@@ -154,6 +157,22 @@ export default function Ponto() {
     }
     load()
   },[])
+
+  // ── Carregar contadores de lançamentos para todos os colaboradores ────────
+  useEffect(()=>{
+    const loadContadores=async()=>{
+      const mr=`${ano}-${String(mes).padStart(2,'0')}`
+      const{data}=await supabase.from('ponto_lancamentos')
+        .select('colaborador_id')
+        .eq('mes_referencia',mr)
+      const map:Record<string,number>={}
+      ;(data??[]).forEach((r:any)=>{
+        map[r.colaborador_id]=(map[r.colaborador_id]??0)+1
+      })
+      setContadoresLanc(map)
+    }
+    loadContadores()
+  },[ano,mes])
 
   // ── Fetch lançamentos do mês ─────────────────────────────────────────────
   const fetchLancamentos = useCallback(async(colabId:string,mr:string)=>{
@@ -452,6 +471,8 @@ export default function Ponto() {
     toast.success('Lançamento criado!')
     setModalLanc(false)
     fetchTudo(colabSel,ano,mes)
+    // Atualizar contadores sidebar
+    setContadoresLanc(prev=>({...prev,[colabSel.id]:(prev[colabSel.id]??0)+1}))
   }
 
   // ── Excluir lançamento ────────────────────────────────────────────────────
@@ -579,7 +600,23 @@ export default function Ponto() {
               background:colabSel?.id===c.id?'var(--primary)':'transparent',
               color:colabSel?.id===c.id?'#fff':'var(--foreground)',cursor:'pointer',
             }}>
-              <div style={{fontSize:10,fontFamily:'monospace',fontWeight:700,opacity:0.6}}>{c.chapa??'—'}</div>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:4}}>
+                <div style={{fontSize:10,fontFamily:'monospace',fontWeight:700,opacity:0.6}}>{c.chapa??'—'}</div>
+                {(()=>{
+                  const qtd=contadoresLanc[c.id]??0
+                  const ativo=colabSel?.id===c.id
+                  if(qtd===0)return(
+                    <span title="Sem lançamento neste mês" style={{fontSize:11,background:ativo?'rgba(255,255,255,0.25)':'#fef9c3',color:ativo?'#fff':'#854d0e',borderRadius:10,padding:'1px 5px',fontWeight:700,display:'flex',alignItems:'center',gap:2}}>
+                      ⚠️
+                    </span>
+                  )
+                  return(
+                    <span title={`${qtd} lançamento${qtd!==1?'s':''}`} style={{fontSize:10,background:ativo?'rgba(255,255,255,0.25)':'var(--muted)',color:ativo?'#fff':'var(--muted-foreground)',borderRadius:10,padding:'1px 6px',fontWeight:700}}>
+                      {qtd}
+                    </span>
+                  )
+                })()}
+              </div>
               <div style={{fontSize:13,fontWeight:600}}>{c.nome}</div>
               <div style={{fontSize:11,opacity:0.7}}>{c.funcao_nome}</div>
             </button>
