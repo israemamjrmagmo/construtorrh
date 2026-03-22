@@ -458,6 +458,8 @@ export default function Colaboradores() {
   const [gerando, setGerando]             = useState(false)
   const [funcaoOriginal, setFuncaoOriginal] = useState('')  // id antes da edição
   const [chapaOriginal, setChapaOriginal]   = useState('')  // chapa antes da edição
+  const [tipoContratoOriginal, setTipoContratoOriginal] = useState('') // tipo_contrato antes da edição
+  const [temPontoLancado, setTemPontoLancado] = useState(false) // trava: tem ponto lançado
   const [motivoTroca, setMotivoTroca]       = useState('')
   const [trocandoFuncao, setTrocandoFuncao] = useState(false)
 
@@ -630,6 +632,8 @@ export default function Colaboradores() {
     setForm({ ...EMPTY, funcao_id: preFuncaoId, data_admissao: preAdmissao, chapa })
     setChapaGerada(chapa)
     setFuncaoOriginal('')
+    setTipoContratoOriginal('')
+    setTemPontoLancado(false)
     setChapaOriginal('')
     setMotivoTroca('')
     setTrocandoFuncao(false)
@@ -683,10 +687,16 @@ export default function Colaboradores() {
   const openEdit = async (c: ColaboradorRow) => {
     setEditId(c.id)
     setFuncaoOriginal(c.funcao_id ?? '')
+    setTipoContratoOriginal(c.tipo_contrato ?? 'clt')
     setChapaOriginal(c.chapa ?? '')
     setChapaGerada(c.chapa ?? '')
     setMotivoTroca('')
     setTrocandoFuncao(false)
+    // Verificar se tem ponto lançado → trava de função/contrato
+    const { count } = await supabase.from('ponto_lancamentos')
+      .select('id', { count: 'exact', head: true })
+      .eq('colaborador_id', c.id)
+    setTemPontoLancado((count ?? 0) > 0)
     setSection('pessoal')
     setForm({
       nome: c.nome, chapa: c.chapa ?? '', cpf: c.cpf ?? '', rg: c.rg ?? '',
@@ -744,8 +754,14 @@ export default function Colaboradores() {
     if (!form.funcao_id)   { toast.error('Selecione a função'); setSection('funcao'); return }
     if (!form.chapa)       { toast.error('Chapa não gerada — selecione a função'); setSection('funcao'); return }
 
-    // Troca de função sem motivo
-    const mudouFuncao = editId && form.funcao_id !== funcaoOriginal && funcaoOriginal !== ''
+    // Trava: não pode mudar função ou contrato se tiver ponto lançado
+    const mudouFuncao     = editId && form.funcao_id !== funcaoOriginal && funcaoOriginal !== ''
+    const mudouContrato   = editId && form.tipo_contrato !== tipoContratoOriginal && tipoContratoOriginal !== ''
+    if (temPontoLancado && (mudouFuncao || mudouContrato)) {
+      toast.error('⛔ Este colaborador possui pontos lançados. Função e tipo de contrato não podem ser alterados.')
+      setSection('funcao')
+      return
+    }
     if (mudouFuncao && !motivoTroca.trim()) {
       toast.error('Informe o motivo da troca de função')
       setTrocandoFuncao(true)
@@ -1233,6 +1249,7 @@ export default function Colaboradores() {
                 onSet={set}
                 onDataAdmissao={handleDataAdmissao}
                 onGotoFuncoes={() => { setModalOpen(false); setPageTab('funcoes') }}
+                temPontoLancado={temPontoLancado}
               />
             )}
 
@@ -2080,12 +2097,13 @@ interface FuncaoSectionProps {
   onSet: (k: keyof FormData, v: string | boolean) => void
   onDataAdmissao: (data: string) => void
   onGotoFuncoes: () => void
+  temPontoLancado?: boolean
 }
 
 function FuncaoSection({
   form, funcoes, obras, editId, funcaoOriginal, chapaOriginal,
   gerando, trocandoFuncao, motivoTroca, setMotivoTroca,
-  onFuncaoChange, onSet, onDataAdmissao, onGotoFuncoes,
+  onFuncaoChange, onSet, onDataAdmissao, onGotoFuncoes, temPontoLancado,
 }: FuncaoSectionProps) {
   // Calcula valor/hora fora do JSX — sem IIFE, sem risco de crash
   const funcaoSelecionada = funcoes.find(f => f.id === form.funcao_id) ?? null
@@ -2141,6 +2159,23 @@ function FuncaoSection({
         )}
       </div>
 
+      {/* ── TRAVA: TEM PONTO LANÇADO ─────────────────────────────────── */}
+      {temPontoLancado && (
+        <div style={{ borderRadius: 8, border: '2px solid #b45309', background: 'rgba(180,83,9,0.07)', padding: '14px 16px', display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+          <span style={{ fontSize: 22, flexShrink: 0 }}>🔒</span>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 13, color: '#92400e', marginBottom: 4 }}>
+              Função e Tipo de Contrato bloqueados
+            </div>
+            <div style={{ fontSize: 12, color: '#78350f', lineHeight: 1.6 }}>
+              Este colaborador possui <strong>pontos lançados</strong>. Alterar a função ou o tipo de contrato
+              comprometeria o cálculo de valores já registrados.<br />
+              Para alterar, <strong>exclua todos os lançamentos de ponto</strong> do colaborador primeiro.
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── ALERTA TROCA DE FUNÇÃO ────────────────────────────────────── */}
       {mostrarAlertaTroca && (
         <div style={{ borderRadius: 8, border: '1px solid #f59e0b', background: 'rgba(245,158,11,0.07)', padding: '14px 16px' }}>
@@ -2182,9 +2217,10 @@ function FuncaoSection({
               <>
                 <Select
                   value={form.funcao_id || undefined}
-                  onValueChange={onFuncaoChange}
+                  onValueChange={temPontoLancado ? undefined : onFuncaoChange}
+                  disabled={!!temPontoLancado}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger style={temPontoLancado ? { opacity: 0.6, cursor: 'not-allowed' } : undefined}>
                     <SelectValue placeholder="Selecione a função…" />
                   </SelectTrigger>
                   <SelectContent>
@@ -2221,14 +2257,14 @@ function FuncaoSection({
             ) : (
               <Select
                 value={
-                  // garante que o valor atual é válido para essa função; se não, usa o primeiro disponível
                   tiposContratoAtivos.find(t => t.value === form.tipo_contrato)
                     ? (form.tipo_contrato || undefined)
                     : tiposContratoAtivos[0].value
                 }
-                onValueChange={v => onSet('tipo_contrato', v)}
+                onValueChange={temPontoLancado ? undefined : v => onSet('tipo_contrato', v)}
+                disabled={!!temPontoLancado}
               >
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger style={temPontoLancado ? { opacity: 0.6, cursor: 'not-allowed' } : undefined}><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {tiposContratoAtivos.map(t => (
                     <SelectItem key={t.value} value={t.value}>

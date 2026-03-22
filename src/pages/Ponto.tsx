@@ -144,11 +144,12 @@ export default function Ponto() {
   useEffect(()=>{
     const load=async()=>{
       const [{data:colsRaw},{data:obsRaw}]=await Promise.all([
-        supabase.from('colaboradores').select('id,nome,chapa,funcao_id,obra_id,tipo_contrato,funcoes(nome)').order('nome'),
+        supabase.from('colaboradores').select('id,nome,chapa,funcao_id,obra_id,tipo_contrato,funcoes!colaboradores_funcao_id_fkey(id,nome)').order('nome'),
         supabase.from('obras').select('id,nome').order('nome'),
       ])
       setColaboradores((colsRaw??[]).map((c:any)=>({
-        id:c.id,nome:c.nome,chapa:c.chapa??null,funcao_id:c.funcao_id??null,
+        id:c.id,nome:c.nome,chapa:c.chapa??null,
+        funcao_id:c.funcao_id??c.funcoes?.id??null,
         obra_id:c.obra_id??null,tipo_contrato:c.tipo_contrato??'clt',
         funcao_nome:c.funcoes?.nome??'Sem função',
       })))
@@ -302,10 +303,13 @@ export default function Ponto() {
 
     // Carregar valor/hora por função+contrato
     if(colab.funcao_id){
-      const{data:fv}=await supabase.from('funcao_valores')
-        .select('valor_hora').eq('funcao_id',colab.funcao_id)
-        .eq('tipo_contrato',colab.tipo_contrato).single()
-      setValorHora(fv?.valor_hora??0)
+      // 1ª tentativa: funcao_id direto + tipo_contrato exato
+      const{data:fvList}=await supabase.from('funcao_valores')
+        .select('valor_hora,tipo_contrato').eq('funcao_id',colab.funcao_id)
+      const fvMatch = (fvList??[]).find((r:any)=>r.tipo_contrato===colab.tipo_contrato)
+      if(fvMatch){ setValorHora(fvMatch.valor_hora) }
+      else if((fvList??[]).length>0){ setValorHora((fvList??[])[0].valor_hora) }
+      else{ setValorHora(0) }
     } else { setValorHora(0) }
 
     const [list,,pbMap,horMap]=await Promise.all([
