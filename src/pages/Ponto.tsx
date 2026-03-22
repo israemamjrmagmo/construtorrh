@@ -232,7 +232,7 @@ export default function Ponto() {
       const r=mapaP[d]
       const isAtestado=diasAtestado.has(d)
       const isSuspensao=diasSuspensao.has(d)
-      const bloqOutroLanc=diasUsados.has(d)&&!isFDS(d)  // FDS não bloqueia por outro lançamento
+      const bloqOutroLanc=diasUsados.has(d)  // qualquer dia já lançado em outra obra fica bloqueado
       const evento:TipoEvento=isSuspensao?'suspensao':isAtestado?'atestado':null
       const diaSem=DIAS_KEY[new Date(d+'T12:00:00').getDay()]
       const hor=horObra[diaSem]
@@ -328,7 +328,7 @@ export default function Ponto() {
       const diasUsados=new Set<string>()
       for(const [outroId,outroDias] of Object.entries(newDiasMap)){
         if(outroId===lanc.id)continue
-        outroDias.forEach(d=>{ if((!d.bloqueado||d.evento==='atestado'||d.evento==='suspensao')&&!isFDS(d.data))diasUsados.add(d.data) })
+        outroDias.forEach(d=>{ if(!d.bloqueado||d.evento==='atestado'||d.evento==='suspensao')diasUsados.add(d.data) })
       }
       newDiasMap[lanc.id]=await fetchDiasLanc(lanc,colab,horMapFull,diasAtestado,diasSuspensao,diasUsados)
     }
@@ -481,14 +481,23 @@ export default function Ponto() {
   }
 
   // ── Excluir lançamento ────────────────────────────────────────────────────
+  // Modal confirmar exclusão
+  const [modalExcluir, setModalExcluir] = useState<string|null>(null)
+
   async function excluirLancamento(id:string){
     const lanc=lancamentos.find(l=>l.id===id)
     if(lanc&&lanc.status!=='rascunho'&&lanc.status!=='recusado'){toast.error('Lançamento em aprovação ou aprovado não pode ser excluído');return}
-    if(!confirm('Excluir este lançamento e todos os registros de ponto do período?'))return
-    await supabase.from('registro_ponto').delete().eq('lancamento_id',id)
-    await supabase.from('ponto_lancamentos').delete().eq('id',id)
+    setModalExcluir(id)
+  }
+
+  async function confirmarExclusao(id:string){
+    const{error:e1}=await supabase.from('registro_ponto').delete().eq('lancamento_id',id)
+    const{error:e2}=await supabase.from('ponto_lancamentos').delete().eq('id',id)
+    if(e1||e2){toast.error('Erro ao excluir: '+(e1?.message||e2?.message));return}
     toast.success('Lançamento excluído')
+    setModalExcluir(null)
     if(colabSel)fetchTudo(colabSel,ano,mes)
+    setContadoresLanc(prev=>({...prev,[colabSel!.id]:Math.max(0,(prev[colabSel!.id]??1)-1)}))
   }
 
   // ── Aprovação de ponto ───────────────────────────────────────────────────
@@ -841,6 +850,27 @@ export default function Ponto() {
         )}
       </div>
     </div>
+
+    {/* ═══ MODAL CONFIRMAR EXCLUSÃO ═══ */}
+    {modalExcluir&&(
+      <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:75,display:'flex',alignItems:'center',justifyContent:'center'}}>
+        <div style={{background:'var(--background)',borderRadius:12,width:380,padding:28,boxShadow:'0 20px 60px rgba(0,0,0,0.3)'}}>
+          <div style={{textAlign:'center',marginBottom:20}}>
+            <div style={{fontSize:36,marginBottom:8}}>🗑️</div>
+            <h3 style={{fontWeight:800,fontSize:15,margin:0}}>Excluir lançamento?</h3>
+            <p style={{fontSize:13,color:'var(--muted-foreground)',marginTop:8}}>
+              Todos os registros de ponto deste período serão apagados permanentemente.
+            </p>
+          </div>
+          <div style={{display:'flex',gap:10,justifyContent:'center'}}>
+            <Button variant="outline" onClick={()=>setModalExcluir(null)}>Cancelar</Button>
+            <Button style={{background:'#dc2626',color:'#fff'}} onClick={()=>confirmarExclusao(modalExcluir)}>
+              🗑️ Confirmar Exclusão
+            </Button>
+          </div>
+        </div>
+      </div>
+    )}
 
     {/* ═══ MODAL RECUSA ═══ */}
     {modalRecusa&&(
