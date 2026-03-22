@@ -116,6 +116,7 @@ export default function Ponto() {
 
   // Modal novo lançamento
   const [modalLanc, setModalLanc] = useState(false)
+  const [prodExpandida, setProdExpandida] = useState<string|null>(null) // lancId com prod visível
   const [novoLancObraId, setNovoLancObraId] = useState('')
   const [novoLancInicio, setNovoLancInicio] = useState('')
   const [novoLancFim, setNovoLancFim]       = useState('')
@@ -791,7 +792,17 @@ export default function Ponto() {
                     })()}
                     {/* Ações */}
                     <div style={{display:'flex',gap:4}} onClick={e=>e.stopPropagation()}>
-                      <Button size="sm" variant="outline" style={{height:26,fontSize:11,gap:3,borderColor:'#f59e0b',color:pb.length===0?'#d97706':'#b45309',opacity:pb.length===0?0.6:1}} onClick={()=>{ if(pb.length===0){toast.error('Cadastre os itens de produção no Playbook desta obra antes de lançar'); return;} abrirModalProd(lanc.id)}}><Factory size={11}/> Produção{pb.length===0&&<span style={{fontSize:9,marginLeft:2}}>⚠</span>}</Button>
+                      {/* Botão Lançar Produção — só em rascunho/recusado */}
+                      {(lanc.status==='rascunho'||lanc.status==='recusado')&&(
+                        <Button size="sm" variant="outline" style={{height:26,fontSize:11,gap:3,borderColor:'#f59e0b',color:pb.length===0?'#d97706':'#b45309',opacity:pb.length===0?0.6:1}} onClick={()=>{ if(pb.length===0){toast.error('Cadastre os itens de produção no Playbook desta obra antes de lançar'); return;} abrirModalProd(lanc.id)}}><Factory size={11}/> Produção{pb.length===0&&<span style={{fontSize:9,marginLeft:2}}>⚠</span>}</Button>
+                      )}
+                      {/* Botão Ver Produções — sempre visível quando há produções */}
+                      {prodLanc.length>0&&(
+                        <Button size="sm" variant="outline" style={{height:26,fontSize:11,gap:3,borderColor:'#d97706',color:'#92400e',background:prodExpandida===lanc.id?'#fef3c7':'transparent'}} onClick={e=>{e.stopPropagation();setProdExpandida(v=>v===lanc.id?null:lanc.id)}}>
+                          🏗️ {prodLanc.length} produção{prodLanc.length!==1?'s':''} · {formatCurrency(totalProdLancamento)}
+                          {prodExpandida===lanc.id?<ChevronDown size={11}/>:<ChevronRight size={11}/>}
+                        </Button>
+                      )}
                       {lanc.status==='rascunho'&&<Button size="sm" variant="outline" style={{height:26,fontSize:11,gap:2,borderColor:'#16a34a',color:'#15803d',background:'#f0fdf4'}} disabled={saving} onClick={async()=>{await salvarLanc(lanc.id);await mudarStatus(lanc.id,'aguardando_aprovacao')}}>✔ Salvar e Aprovar</Button>}
                       {lanc.status==='aguardando_aprovacao'&&<Button size="sm" variant="outline" style={{height:26,fontSize:11,gap:2,borderColor:'#16a34a',color:'#15803d'}} onClick={()=>mudarStatus(lanc.id,'aprovado')}>✅ Confirmar</Button>}
                       {lanc.status==='aguardando_aprovacao'&&<Button size="sm" variant="outline" style={{height:26,fontSize:11,gap:2,borderColor:'#dc2626',color:'#dc2626'}} onClick={()=>setModalRecusa({lancId:lanc.id,motivo:''})}>❌ Recusar</Button>}
@@ -806,8 +817,8 @@ export default function Ponto() {
                       ❌ Motivo: {lanc.motivo_recusa}
                     </div>
                   )}
-                  {/* Produções do lançamento */}
-                  {prodLanc.length>0&&(
+                  {/* Produções do lançamento — expansível */}
+                  {prodLanc.length>0&&prodExpandida===lanc.id&&(
                     <div style={{background:'#fffbeb',borderBottom:'1px solid #fde68a',padding:'6px 14px'}}>
                       {(() => {
                         const totalProdLanc = prodLanc.reduce((s,p)=>s+p.valor_total,0)
