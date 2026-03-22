@@ -294,6 +294,27 @@ ALTER TABLE public.colaborador_epi ADD COLUMN IF NOT EXISTS quantidade          
 ALTER TABLE public.colaborador_epi ADD COLUMN IF NOT EXISTS quantidade_entregue INTEGER DEFAULT 0;
 
 -- Corrige constraint de status para aceitar todos os valores usados no sistema
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- OBRA_HORARIOS: Horário de funcionamento por dia da semana
+-- ─────────────────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.obra_horarios (
+  id              UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  created_at      TIMESTAMPTZ DEFAULT NOW(),
+  obra_id         UUID NOT NULL REFERENCES public.obras(id) ON DELETE CASCADE,
+  dia_semana      TEXT NOT NULL CHECK (dia_semana IN ('seg','ter','qua','qui','sex','sab','dom')),
+  hora_entrada    TIME,
+  saida_almoco    TIME,
+  retorno_almoco  TIME,
+  hora_saida      TIME,
+  ativo           BOOLEAN DEFAULT TRUE,
+  UNIQUE(obra_id, dia_semana)
+);
+ALTER TABLE public.obra_horarios ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "obra_horarios_auth" ON public.obra_horarios;
+CREATE POLICY "obra_horarios_auth" ON public.obra_horarios
+  FOR ALL TO authenticated USING (true) WITH CHECK (true);
+
 -- Adiciona colunas de hora extra ao registro_ponto
 ALTER TABLE public.registro_ponto ADD COLUMN IF NOT EXISTS he_entrada TIME;
 ALTER TABLE public.registro_ponto ADD COLUMN IF NOT EXISTS he_saida   TIME;
