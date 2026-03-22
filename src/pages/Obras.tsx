@@ -302,9 +302,8 @@ export default function Obras() {
                       <div>
                         <div style={{ fontWeight: 600, fontSize: 14, display:'flex', alignItems:'center', gap:6 }}>
                           {o.nome}
-                          {o.has_horarios
-                            ? <span title="Horários configurados" style={{ color:'#16a34a', fontSize:11, display:'flex', alignItems:'center', gap:2, background:'#dcfce7', borderRadius:4, padding:'1px 5px', fontWeight:600 }}>🕐 Horários</span>
-                            : <span title="Sem horários cadastrados" style={{ color:'#92400e', fontSize:11, background:'#fef3c7', borderRadius:4, padding:'1px 5px', fontWeight:600 }}>⚠️ Sem horários</span>
+                          {!o.has_horarios &&
+                            <span title="Sem horários cadastrados — configure pelo botão de relógio" style={{ color:'#92400e', fontSize:11, background:'#fef3c7', borderRadius:4, padding:'1px 5px', fontWeight:600 }}>⚠️ Sem horários</span>
                           }
                         </div>
                         {o.codigo && <div style={{ fontSize: 11, fontFamily: 'monospace', color: 'var(--muted-foreground)', marginTop: 2 }}>#{o.codigo}</div>}
@@ -343,7 +342,10 @@ export default function Obras() {
                     <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
                       <Button variant="ghost" size="icon" style={{ width: 30, height: 30 }} onClick={() => openEdit(o)} title="Editar"><Pencil size={13} /></Button>
                       <Button variant="ghost" size="icon" style={{ width: 30, height: 30 }} onClick={() => { openEdit(o); setTimeout(() => setModalTab('horarios'), 100) }} title="Horários"><Clock size={13} /></Button>
-                      <Button variant="ghost" size="icon" style={{ width: 30, height: 30, color: 'var(--destructive)' }} onClick={() => setDeleteId(o.id)} title="Excluir"><Trash2 size={13} /></Button>
+                      {(o.colaboradores_count ?? 0) > 0
+                        ? <Button variant="ghost" size="icon" style={{ width: 30, height: 30, color: 'var(--muted-foreground)', opacity: 0.35, cursor: 'not-allowed' }} title={`Não é possível excluir: ${o.colaboradores_count} colaborador(es) vinculado(s)`} disabled><Trash2 size={13} /></Button>
+                        : <Button variant="ghost" size="icon" style={{ width: 30, height: 30, color: 'var(--destructive)' }} onClick={() => setDeleteId(o.id)} title="Excluir"><Trash2 size={13} /></Button>
+                      }
                     </div>
                   </TableCell>
                 </TableRow>
@@ -463,7 +465,7 @@ export default function Obras() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Excluir obra?</AlertDialogTitle>
-            <AlertDialogDescription>Esta ação não pode ser desfeita.</AlertDialogDescription>
+            <AlertDialogDescription>Esta ação não pode ser desfeita. Certifique-se de que não há colaboradores, registros de ponto ou documentos vinculados a esta obra.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
