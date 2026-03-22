@@ -1,9 +1,25 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import { toast } from 'sonner'
-import { Plus, Pencil, Trash2, BookOpen, ChevronDown, ChevronRight, X } from 'lucide-react'
+import { Plus, Pencil, Trash2, BookOpen, ChevronDown, ChevronRight, Search, Tag, Package } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { formatCurrency } from '@/lib/utils'
+import { PageHeader, EmptyState, LoadingSkeleton } from '@/components/Shared'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from '@/components/ui/dialog'
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select'
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from '@/components/ui/table'
 import { useProfile } from '@/hooks/useProfile'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -12,7 +28,7 @@ interface PlaybookItem {
   id: string
   obra_id: string
   descricao: string
-  unidade: string          // m², m³, un, pç, verba…
+  unidade: string
   preco_unitario: number
   categoria: string | null
   ativo: boolean
@@ -26,11 +42,14 @@ interface ObraComItens {
   aberta: boolean
 }
 
-const UNIDADES = ['m²','m³','m','un','pç','kg','t','h','verba','outro']
-const CATEGORIAS = ['Alvenaria','Argamassa','Concretagem','Revestimento','Pintura','Instalações','Estrutura','Cobertura','Esquadrias','Outros']
+const UNIDADES = ['m²', 'm³', 'm', 'un', 'pç', 'kg', 't', 'h', 'verba', 'outro']
+const CATEGORIAS = [
+  'Alvenaria', 'Argamassa', 'Concretagem', 'Revestimento',
+  'Pintura', 'Instalações', 'Estrutura', 'Cobertura', 'Esquadrias', 'Outros',
+]
 
-const ITEM_EMPTY = (): Omit<PlaybookItem,'id'|'obra_id'> => ({
-  descricao: '', unidade: 'm²', preco_unitario: 0, categoria: null, ativo: true
+const ITEM_EMPTY = (): Omit<PlaybookItem, 'id' | 'obra_id'> => ({
+  descricao: '', unidade: 'm²', preco_unitario: 0, categoria: null, ativo: true,
 })
 
 // ─── Componente ───────────────────────────────────────────────────────────────
@@ -38,16 +57,15 @@ const ITEM_EMPTY = (): Omit<PlaybookItem,'id'|'obra_id'> => ({
 export default function Playbooks() {
   const { permissions: { canCreate, canEdit, canDelete } } = useProfile()
 
-  const [obras, setObras] = useState<ObraComItens[]>([])
-  const [loading, setLoading] = useState(true)
-  const [busca, setBusca] = useState('')
+  const [obras, setObras]       = useState<ObraComItens[]>([])
+  const [loading, setLoading]   = useState(true)
+  const [busca, setBusca]       = useState('')
 
-  // Modal
-  const [modal, setModal] = useState(false)
-  const [editItem, setEditItem] = useState<PlaybookItem | null>(null)
-  const [obraIdModal, setObraIdModal] = useState<string>('')
-  const [form, setForm] = useState(ITEM_EMPTY())
-  const [saving, setSaving] = useState(false)
+  const [modal, setModal]             = useState(false)
+  const [editItem, setEditItem]       = useState<PlaybookItem | null>(null)
+  const [obraIdModal, setObraIdModal] = useState('')
+  const [form, setForm]               = useState(ITEM_EMPTY())
+  const [saving, setSaving]           = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<PlaybookItem | null>(null)
 
   // ── Fetch ──────────────────────────────────────────────────────────────────
@@ -57,13 +75,11 @@ export default function Playbooks() {
       supabase.from('obras').select('id, nome, codigo').order('nome'),
       supabase.from('playbook_itens').select('*').order('categoria').order('descricao'),
     ])
-
     const mapaItens: Record<string, PlaybookItem[]> = {}
     ;(itensRaw ?? []).forEach((i: any) => {
       if (!mapaItens[i.obra_id]) mapaItens[i.obra_id] = []
       mapaItens[i.obra_id].push(i as PlaybookItem)
     })
-
     setObras((obrasRaw ?? []).map((o: any) => ({
       id: o.id, nome: o.nome, codigo: o.codigo ?? null,
       itens: mapaItens[o.id] ?? [],
@@ -85,233 +101,386 @@ export default function Playbooks() {
   function openEdit(item: PlaybookItem) {
     setEditItem(item)
     setObraIdModal(item.obra_id)
-    setForm({ descricao: item.descricao, unidade: item.unidade, preco_unitario: item.preco_unitario, categoria: item.categoria, ativo: item.ativo })
+    setForm({
+      descricao: item.descricao, unidade: item.unidade,
+      preco_unitario: item.preco_unitario,
+      categoria: item.categoria, ativo: item.ativo,
+    })
     setModal(true)
   }
 
-  // ── Save ───────────────────────────────────────────────────────────────────
+  function setF<K extends keyof typeof form>(k: K, v: (typeof form)[K]) {
+    setForm(p => ({ ...p, [k]: v }))
+  }
+
+  // ── Salvar ─────────────────────────────────────────────────────────────────
   async function handleSave() {
-    if (!form.descricao.trim()) { toast.error('Informe a descrição do serviço'); return }
-    if (!form.preco_unitario || form.preco_unitario <= 0) { toast.error('Informe o preço unitário'); return }
+    if (!form.descricao.trim()) { toast.error('Informe a descrição'); return }
+    if (form.preco_unitario <= 0) { toast.error('Informe o preço unitário'); return }
     setSaving(true)
-
     const payload = { obra_id: obraIdModal, ...form }
-
     const { error } = editItem
       ? await supabase.from('playbook_itens').update(payload).eq('id', editItem.id)
       : await supabase.from('playbook_itens').insert(payload)
-
     setSaving(false)
-    if (error) { toast.error('Erro ao salvar: ' + error.message); return }
-    toast.success(editItem ? 'Item atualizado!' : 'Item adicionado!')
+    if (error) { toast.error('Erro: ' + error.message); return }
+    toast.success(editItem ? 'Item atualizado!' : 'Item criado!')
     setModal(false)
     fetchData()
   }
 
-  // ── Delete ─────────────────────────────────────────────────────────────────
+  // ── Excluir ────────────────────────────────────────────────────────────────
   async function handleDelete() {
     if (!deleteTarget) return
     const { error } = await supabase.from('playbook_itens').delete().eq('id', deleteTarget.id)
     if (error) { toast.error('Erro: ' + error.message); return }
-    toast.success('Item removido')
+    toast.success('Item excluído!')
     setDeleteTarget(null)
     fetchData()
   }
 
-  // ── Toggle ─────────────────────────────────────────────────────────────────
+  // ── Toggle obra aberta ─────────────────────────────────────────────────────
   function toggleObra(id: string) {
     setObras(prev => prev.map(o => o.id === id ? { ...o, aberta: !o.aberta } : o))
   }
 
-  const obrasFiltradas = obras.filter(o =>
-    !busca || o.nome.toLowerCase().includes(busca.toLowerCase()) ||
-    o.itens.some(i => i.descricao.toLowerCase().includes(busca.toLowerCase()) || (i.categoria ?? '').toLowerCase().includes(busca.toLowerCase()))
-  )
+  // ── Filtro ─────────────────────────────────────────────────────────────────
+  const obrasFiltradas = obras.filter(o => {
+    const q = busca.toLowerCase()
+    if (!q) return true
+    return o.nome.toLowerCase().includes(q) ||
+      (o.codigo ?? '').toLowerCase().includes(q) ||
+      o.itens.some(i => i.descricao.toLowerCase().includes(q) || (i.categoria ?? '').toLowerCase().includes(q))
+  })
 
-  // ── Render ─────────────────────────────────────────────────────────────────
+  const totalItens = obras.reduce((s, o) => s + o.itens.length, 0)
+
+  // ─────────────────────────────────────────────────────────────────────────
   return (
-    <div style={{ padding: '24px', maxWidth: 960, margin: '0 auto' }}>
-      {/* Header */}
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20 }}>
-        <div>
-          <h1 style={{ fontSize:22, fontWeight:800, margin:0 }}>📋 Playbooks de Produção</h1>
-          <p style={{ fontSize:13, color:'var(--muted-foreground)', marginTop:4 }}>
-            Tabela de preços por produção por obra — base para apuração de pagamento variável
-          </p>
+    <div className="p-6">
+      <PageHeader
+        title="Playbooks de Produção"
+        subtitle={`${totalItens} serviço${totalItens !== 1 ? 's' : ''} cadastrado${totalItens !== 1 ? 's' : ''} em ${obras.length} obra${obras.length !== 1 ? 's' : ''}`}
+        action={undefined}
+      />
+
+      {/* ── Busca ── */}
+      <div className="flex flex-wrap gap-3 mb-6">
+        <div className="relative flex-1 min-w-[240px]">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            className="pl-9"
+            placeholder="Buscar por obra, serviço ou categoria…"
+            value={busca}
+            onChange={e => setBusca(e.target.value)}
+          />
         </div>
-        <Input placeholder="🔍 Buscar obra ou serviço…" value={busca} onChange={e => setBusca(e.target.value)} style={{ width:260, fontSize:13 }} />
       </div>
 
+      {/* ── Conteúdo ── */}
       {loading ? (
-        <div style={{ textAlign:'center', padding:40, color:'var(--muted-foreground)' }}>Carregando…</div>
+        <LoadingSkeleton rows={4} />
       ) : obrasFiltradas.length === 0 ? (
-        <div style={{ textAlign:'center', padding:40, color:'var(--muted-foreground)' }}>Nenhuma obra encontrada</div>
+        <EmptyState
+          icon={<BookOpen size={28} />}
+          title="Nenhuma obra encontrada"
+          description="Cadastre obras primeiro e depois configure os serviços de produção de cada uma."
+        />
       ) : (
-        <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
-          {obrasFiltradas.map(obra => (
-            <div key={obra.id} style={{ border:'1px solid var(--border)', borderRadius:10, overflow:'hidden' }}>
-
-              {/* Cabeçalho da obra */}
+        <div className="space-y-4">
+          {obrasFiltradas.map(obra => {
+            const totalObra = obra.itens.reduce((s, i) => s + i.preco_unitario, 0)
+            return (
               <div
-                onClick={() => toggleObra(obra.id)}
-                style={{ display:'flex', alignItems:'center', padding:'12px 16px', cursor:'pointer', background:'var(--muted)', gap:10, userSelect:'none' }}
+                key={obra.id}
+                style={{ border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}
               >
-                {obra.aberta ? <ChevronDown size={16}/> : <ChevronRight size={16}/>}
-                <BookOpen size={16} style={{ color:'var(--primary)' }}/>
-                <div style={{ flex:1 }}>
-                  <span style={{ fontWeight:700, fontSize:15 }}>{obra.nome}</span>
-                  {obra.codigo && <span style={{ marginLeft:8, fontSize:11, fontFamily:'monospace', color:'var(--muted-foreground)' }}>#{obra.codigo}</span>}
-                </div>
-                <span style={{ fontSize:12, color:'var(--muted-foreground)' }}>
-                  {obra.itens.length} {obra.itens.length === 1 ? 'serviço' : 'serviços'}
-                </span>
-                {canCreate && (
-                  <Button size="sm" variant="outline" style={{ fontSize:11, height:28, gap:4 }}
-                    onClick={e => { e.stopPropagation(); openNew(obra.id) }}>
-                    <Plus size={12}/> Novo serviço
-                  </Button>
-                )}
-              </div>
-
-              {/* Itens */}
-              {obra.aberta && (
-                <div>
-                  {obra.itens.length === 0 ? (
-                    <div style={{ padding:'20px 24px', textAlign:'center', fontSize:13, color:'var(--muted-foreground)' }}>
-                      Nenhum serviço cadastrado — clique em "Novo serviço" para adicionar
+                {/* ── Cabeçalho da obra ── */}
+                <div
+                  className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-muted/50 transition-colors"
+                  style={{ background: 'var(--muted)' }}
+                  onClick={() => toggleObra(obra.id)}
+                >
+                  {obra.aberta
+                    ? <ChevronDown size={16} className="text-muted-foreground flex-shrink-0" />
+                    : <ChevronRight size={16} className="text-muted-foreground flex-shrink-0" />
+                  }
+                  <div
+                    className="w-2 h-8 rounded-full flex-shrink-0"
+                    style={{ background: obra.itens.length > 0 ? '#16a34a' : '#e2e8f0' }}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-sm">{obra.nome}</span>
+                      {obra.codigo && (
+                        <span className="text-xs font-mono text-muted-foreground bg-background px-1.5 py-0.5 rounded border border-border">
+                          #{obra.codigo}
+                        </span>
+                      )}
                     </div>
-                  ) : (
-                    <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
-                      <thead>
-                        <tr style={{ borderBottom:'2px solid var(--border)', background:'var(--background)' }}>
-                          <th style={TH}>Serviço / Descrição</th>
-                          <th style={TH}>Categoria</th>
-                          <th style={{ ...TH, width:80, textAlign:'center' }}>Unidade</th>
-                          <th style={{ ...TH, width:120, textAlign:'right' }}>Preço Unit.</th>
-                          <th style={{ ...TH, width:70, textAlign:'center' }}>Status</th>
-                          {(canEdit || canDelete) && <th style={{ ...TH, width:80 }}></th>}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {obra.itens.map((item, idx) => (
-                          <tr key={item.id} style={{ borderBottom:'1px solid var(--border)', background: idx%2===0?'transparent':'var(--muted)', opacity: item.ativo ? 1 : 0.5 }}>
-                            <td style={{ padding:'10px 16px', fontWeight:600 }}>{item.descricao}</td>
-                            <td style={{ padding:'10px 16px', color:'var(--muted-foreground)' }}>{item.categoria ?? '—'}</td>
-                            <td style={{ padding:'10px 8px', textAlign:'center' }}>
-                              <span style={{ background:'var(--muted)', borderRadius:4, padding:'2px 8px', fontSize:11, fontWeight:600 }}>{item.unidade}</span>
-                            </td>
-                            <td style={{ padding:'10px 16px', textAlign:'right', fontWeight:700, fontSize:15, color:'#16a34a' }}>
-                              R$ {item.preco_unitario.toFixed(2)}
-                              <span style={{ fontSize:10, fontWeight:400, color:'var(--muted-foreground)', marginLeft:2 }}>/{item.unidade}</span>
-                            </td>
-                            <td style={{ padding:'10px 8px', textAlign:'center' }}>
-                              <span style={{ fontSize:10, borderRadius:4, padding:'2px 6px', fontWeight:600,
-                                background: item.ativo ? '#dcfce7' : '#fee2e2',
-                                color:      item.ativo ? '#15803d' : '#b91c1c' }}>
-                                {item.ativo ? 'Ativo' : 'Inativo'}
-                              </span>
-                            </td>
-                            {(canEdit || canDelete) && (
-                              <td style={{ padding:'6px 8px', textAlign:'right' }}>
-                                <div style={{ display:'flex', gap:4, justifyContent:'flex-end' }}>
-                                  {canEdit   && <Button variant="ghost" size="icon" style={{ width:28, height:28 }} onClick={() => openEdit(item)}><Pencil size={12}/></Button>}
-                                  {canDelete && <Button variant="ghost" size="icon" style={{ width:28, height:28, color:'var(--destructive)' }} onClick={() => setDeleteTarget(item)}><Trash2 size={12}/></Button>}
-                                </div>
-                              </td>
-                            )}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                    <div className="text-xs text-muted-foreground mt-0.5">
+                      {obra.itens.length === 0
+                        ? 'Nenhum serviço cadastrado — clique para adicionar'
+                        : `${obra.itens.length} serviço${obra.itens.length !== 1 ? 's' : ''}`}
+                    </div>
+                  </div>
+
+                  {/* Stats rápidas */}
+                  {obra.itens.length > 0 && (
+                    <div className="flex items-center gap-4 mr-2">
+                      {[...new Set(obra.itens.map(i => i.categoria).filter(Boolean))].slice(0, 3).map(cat => (
+                        <span
+                          key={cat}
+                          className="hidden sm:inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium"
+                          style={{ background: '#dbeafe', color: '#1d4ed8' }}
+                        >
+                          <Tag size={10} /> {cat}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Ação: adicionar item */}
+                  {canCreate && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-1.5 h-8 text-xs"
+                      onClick={e => { e.stopPropagation(); openNew(obra.id) }}
+                    >
+                      <Plus size={13} /> Serviço
+                    </Button>
                   )}
                 </div>
-              )}
-            </div>
-          ))}
+
+                {/* ── Tabela de itens ── */}
+                {obra.aberta && (
+                  obra.itens.length === 0 ? (
+                    <div className="px-6 py-8 text-center">
+                      <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                        <Package size={32} className="opacity-30" />
+                        <p className="text-sm">Nenhum serviço cadastrado para esta obra</p>
+                        {canCreate && (
+                          <Button size="sm" variant="outline" className="gap-1.5 mt-1" onClick={() => openNew(obra.id)}>
+                            <Plus size={13} /> Adicionar serviço
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ borderTop: '1px solid var(--border)' }}>
+                      <Table>
+                        <TableHeader>
+                          <TableRow style={{ background: 'var(--muted)' }}>
+                            {['Descrição', 'Categoria', 'Unidade', 'Preço Unitário', 'Status', ''].map((h, i) => (
+                              <TableHead
+                                key={i}
+                                style={{
+                                  fontWeight: 700, fontSize: 11,
+                                  textTransform: 'uppercase', letterSpacing: '0.05em',
+                                  textAlign: i >= 2 ? 'center' : undefined,
+                                  width: i === 5 ? 80 : undefined,
+                                }}
+                              >
+                                {h}
+                              </TableHead>
+                            ))}
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {obra.itens.map(item => (
+                            <TableRow key={item.id} className="hover:bg-muted/40">
+                              <TableCell>
+                                <div className="font-medium text-sm">{item.descricao}</div>
+                              </TableCell>
+                              <TableCell>
+                                {item.categoria ? (
+                                  <span
+                                    className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium"
+                                    style={{ background: '#dbeafe', color: '#1d4ed8' }}
+                                  >
+                                    <Tag size={10} /> {item.categoria}
+                                  </span>
+                                ) : (
+                                  <span className="text-muted-foreground text-xs">—</span>
+                                )}
+                              </TableCell>
+                              <TableCell style={{ textAlign: 'center' }}>
+                                <span
+                                  className="text-xs font-semibold px-2 py-0.5 rounded"
+                                  style={{ background: 'var(--muted)', fontFamily: 'monospace' }}
+                                >
+                                  {item.unidade}
+                                </span>
+                              </TableCell>
+                              <TableCell style={{ textAlign: 'center' }}>
+                                <span className="font-bold text-sm" style={{ color: '#15803d' }}>
+                                  {formatCurrency(item.preco_unitario)}
+                                </span>
+                              </TableCell>
+                              <TableCell style={{ textAlign: 'center' }}>
+                                <span
+                                  className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium"
+                                  style={item.ativo
+                                    ? { background: '#dcfce7', color: '#15803d' }
+                                    : { background: '#f1f5f9', color: '#64748b' }}
+                                >
+                                  {item.ativo ? 'Ativo' : 'Inativo'}
+                                </span>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex gap-1 justify-end">
+                                  {canEdit && (
+                                    <Button
+                                      variant="ghost" size="icon"
+                                      style={{ width: 30, height: 30 }}
+                                      onClick={() => openEdit(item)}
+                                      title="Editar"
+                                    >
+                                      <Pencil size={13} />
+                                    </Button>
+                                  )}
+                                  {canDelete && (
+                                    <Button
+                                      variant="ghost" size="icon"
+                                      style={{ width: 30, height: 30, color: 'var(--destructive)' }}
+                                      onClick={() => setDeleteTarget(item)}
+                                      title="Excluir"
+                                    >
+                                      <Trash2 size={13} />
+                                    </Button>
+                                  )}
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+
+                      {/* Rodapé da obra */}
+                      <div
+                        className="flex items-center justify-between px-4 py-2 text-xs text-muted-foreground"
+                        style={{ borderTop: '1px solid var(--border)', background: 'var(--muted)' }}
+                      >
+                        <span>{obra.itens.length} serviço{obra.itens.length !== 1 ? 's' : ''}</span>
+                        <span className="font-semibold" style={{ color: '#15803d' }}>
+                          Ticket médio: {formatCurrency(totalObra / obra.itens.length)}
+                        </span>
+                      </div>
+                    </div>
+                  )
+                )}
+              </div>
+            )
+          })}
         </div>
       )}
 
-      {/* ── Modal de item ─────────────────────────────────────────────────── */}
-      {modal && (
-        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', zIndex:50, display:'flex', alignItems:'center', justifyContent:'center' }}>
-          <div style={{ background:'var(--background)', borderRadius:12, width:480, padding:28, boxShadow:'0 20px 60px rgba(0,0,0,0.3)' }}>
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
-              <h3 style={{ fontWeight:800, fontSize:16, margin:0 }}>
-                {editItem ? 'Editar Serviço' : 'Novo Serviço'}
-              </h3>
-              <button onClick={() => setModal(false)} style={{ border:'none', background:'none', cursor:'pointer' }}><X size={18}/></button>
+      {/* ═══ MODAL CRIAR / EDITAR ═══ */}
+      <Dialog open={modal} onOpenChange={setModal}>
+        <DialogContent style={{ maxWidth: 480 }} onPointerDownOutside={e => e.preventDefault()}>
+          <DialogHeader>
+            <DialogTitle>{editItem ? 'Editar Serviço' : 'Novo Serviço de Produção'}</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div>
+              <Label>Descrição *</Label>
+              <Input
+                placeholder="Ex: Alvenaria de bloco cerâmico"
+                value={form.descricao}
+                onChange={e => setF('descricao', e.target.value)}
+                className="mt-1"
+              />
             </div>
 
-            <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+            <div className="grid grid-cols-2 gap-4">
               <div>
-                <label style={LBL}>Obra</label>
-                <div style={{ fontSize:13, fontWeight:600, padding:'8px 12px', background:'var(--muted)', borderRadius:6 }}>
-                  {obras.find(o=>o.id===obraIdModal)?.nome ?? '—'}
-                </div>
+                <Label>Categoria</Label>
+                <Select value={form.categoria ?? ''} onValueChange={v => setF('categoria', v || null)}>
+                  <SelectTrigger className="mt-1"><SelectValue placeholder="Selecionar…" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">— Sem categoria —</SelectItem>
+                    {CATEGORIAS.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                  </SelectContent>
+                </Select>
               </div>
-
               <div>
-                <label style={LBL}>Descrição do Serviço *</label>
-                <Input value={form.descricao} onChange={e=>setForm(f=>({...f, descricao:e.target.value}))} placeholder="Ex: Alvenaria de bloco cerâmico" />
-              </div>
-
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-                <div>
-                  <label style={LBL}>Categoria</label>
-                  <select value={form.categoria ?? ''} onChange={e=>setForm(f=>({...f, categoria:e.target.value||null}))} style={SEL}>
-                    <option value="">Selecionar…</option>
-                    {CATEGORIAS.map(c=><option key={c} value={c}>{c}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label style={LBL}>Unidade *</label>
-                  <select value={form.unidade} onChange={e=>setForm(f=>({...f, unidade:e.target.value}))} style={SEL}>
-                    {UNIDADES.map(u=><option key={u} value={u}>{u}</option>)}
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label style={LBL}>Preço por {form.unidade} (R$) *</label>
-                <Input type="number" min="0" step="0.01"
-                  value={form.preco_unitario || ''}
-                  onChange={e=>setForm(f=>({...f, preco_unitario:parseFloat(e.target.value)||0}))}
-                  placeholder="0,00" />
-              </div>
-
-              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                <input type="checkbox" id="ativo" checked={form.ativo} onChange={e=>setForm(f=>({...f, ativo:e.target.checked}))} />
-                <label htmlFor="ativo" style={{ fontSize:13, cursor:'pointer' }}>Serviço ativo (disponível para lançamento)</label>
+                <Label>Unidade *</Label>
+                <Select value={form.unidade} onValueChange={v => setF('unidade', v)}>
+                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {UNIDADES.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
-            <div style={{ display:'flex', gap:10, marginTop:24, justifyContent:'flex-end' }}>
-              <Button variant="outline" onClick={()=>setModal(false)}>Cancelar</Button>
-              <Button onClick={handleSave} disabled={saving}>{saving?'Salvando…':'💾 Salvar'}</Button>
+            <div>
+              <Label>Preço Unitário (R$) *</Label>
+              <Input
+                type="number" min="0" step="0.01" placeholder="0,00"
+                value={form.preco_unitario || ''}
+                onChange={e => setF('preco_unitario', parseFloat(e.target.value) || 0)}
+                className="mt-1"
+              />
+            </div>
+
+            <div className="flex items-center gap-3 p-3 rounded-lg" style={{ background: 'var(--muted)' }}>
+              <button
+                type="button"
+                onClick={() => setF('ativo', !form.ativo)}
+                className="flex items-center gap-2 text-sm font-medium"
+              >
+                <div
+                  className="w-9 h-5 rounded-full relative transition-colors"
+                  style={{ background: form.ativo ? '#16a34a' : '#d1d5db' }}
+                >
+                  <div
+                    className="absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform"
+                    style={{ transform: form.ativo ? 'translateX(18px)' : 'translateX(2px)' }}
+                  />
+                </div>
+                <span style={{ color: form.ativo ? '#15803d' : 'var(--muted-foreground)' }}>
+                  {form.ativo ? 'Ativo' : 'Inativo'}
+                </span>
+              </button>
+              <span className="text-xs text-muted-foreground">
+                Itens inativos não aparecem nos lançamentos de produção
+              </span>
             </div>
           </div>
-        </div>
-      )}
 
-      {/* ── Confirm delete ────────────────────────────────────────────────── */}
-      {deleteTarget && (
-        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', zIndex:50, display:'flex', alignItems:'center', justifyContent:'center' }}>
-          <div style={{ background:'var(--background)', borderRadius:12, width:400, padding:28 }}>
-            <h3 style={{ fontWeight:700, marginBottom:10 }}>Remover serviço?</h3>
-            <p style={{ fontSize:13, color:'var(--muted-foreground)', marginBottom:20 }}>
-              "<strong>{deleteTarget.descricao}</strong>" será removido do playbook. Lançamentos de produção existentes não serão afetados.
-            </p>
-            <div style={{ display:'flex', gap:10, justifyContent:'flex-end' }}>
-              <Button variant="outline" onClick={()=>setDeleteTarget(null)}>Cancelar</Button>
-              <Button variant="destructive" onClick={handleDelete}>Remover</Button>
-            </div>
-          </div>
-        </div>
-      )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setModal(false)}>Cancelar</Button>
+            <Button onClick={handleSave} disabled={saving} className="gap-2">
+              {saving ? '⏳ Salvando…' : editItem ? '✅ Atualizar' : <><Plus size={14} /> Criar Serviço</>}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ═══ CONFIRM EXCLUIR ═══ */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={open => !open && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir serviço?</AlertDialogTitle>
+            <AlertDialogDescription>
+              O serviço <strong>"{deleteTarget?.descricao}"</strong> será removido do playbook da obra.
+              Lançamentos de produção já realizados não serão afetados. Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              style={{ background: 'var(--destructive)', color: '#fff' }}
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
-
-const TH: React.CSSProperties = { padding:'8px 16px', fontWeight:700, fontSize:11, textTransform:'uppercase', letterSpacing:'0.04em', textAlign:'left', whiteSpace:'nowrap', color:'var(--muted-foreground)' }
-const LBL: React.CSSProperties = { display:'block', fontSize:12, fontWeight:600, marginBottom:4, color:'var(--muted-foreground)' }
-const SEL: React.CSSProperties = { width:'100%', padding:'8px 10px', fontSize:13, border:'1px solid var(--border)', borderRadius:6, background:'var(--background)', color:'var(--foreground)' }
