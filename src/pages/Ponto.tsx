@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react'
 import { toast } from 'sonner'
-import { Search, ChevronLeft, ChevronRight, CheckCircle2, Printer } from 'lucide-react'
+import { Search, ChevronLeft, ChevronRight, CheckCircle2, Printer, Factory, X, Plus, Trash2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { formatCurrency } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -21,6 +21,34 @@ interface ColabSimples {
 interface ObraSimples {
   id: string
   nome: string
+}
+
+// Playbook
+interface PlaybookItem {
+  id: string
+  descricao: string
+  unidade: string
+  preco_unitario: number
+  categoria: string | null
+}
+
+// Lançamento de produção (salvo no banco)
+interface LancProducao {
+  id?: string
+  colaborador_id: string
+  mes_referencia: string   // YYYY-MM
+  playbook_item_id: string
+  dias: string[]           // datas YYYY-MM-DD
+  quantidade: number
+  valor_total: number
+  observacoes: string | null
+  playbook_item?: PlaybookItem
+}
+
+// Item de produção no modal (antes de salvar)
+interface ItemModalProd {
+  playbook_item_id: string
+  quantidade: number
 }
 
 // Horário padrão por dia da semana (da tabela obra_horarios)
@@ -178,6 +206,17 @@ export default function Ponto() {
   const [dias, setDias]     = useState<DiaRegistro[]>([])
   const [loadingDias, setLoadingDias] = useState(false)
   const [saving, setSaving] = useState(false)
+
+  // ── Produção ──────────────────────────────────────────────────────────────
+  const [playbookItens, setPlaybookItens] = useState<PlaybookItem[]>([])
+  const [lancamentos,   setLancamentos]   = useState<LancProducao[]>([])
+  const [modalProd,     setModalProd]     = useState(false)
+  // seleção de dias no modal
+  const [diasSel,       setDiasSel]       = useState<Set<string>>(new Set())
+  // itens de produção no modal
+  const [itensProd,     setItensProd]     = useState<ItemModalProd[]>([{ playbook_item_id:'', quantidade:0 }])
+  const [savingProd,    setSavingProd]    = useState(false)
+  const [editLanc,      setEditLanc]      = useState<LancProducao | null>(null)
 
   // ── Carregar colaboradores e obras ────────────────────────────────────────
   useEffect(() => {
@@ -460,8 +499,138 @@ export default function Ponto() {
   function mesAnterior() { if (mes===1){setAno(a=>a-1);setMes(12)}else setMes(m=>m-1) }
   function mesSeguinte() { if (mes===12){setAno(a=>a+1);setMes(1)}else setMes(m=>m+1) }
 
+  // ── Funções de produção ───────────────────────────────────────────────────
+
+  // Carregar playbook e lançamentos quando colaborador ou mês mudar
+  const fetchProducao = useCallback(async (colab: ColabSimples, a: number, m: number) => {
+    const mesRef = `${a}-${String(m).padStart(2,'0')}`
+    const obraId = colab.obra_id
+
+    const [{ data: pbRaw }, { data: lancRaw }] = await Promise.all([
+      obraId
+        ? supabase.from('playbook_itens').select('*').eq('obra_id', obraId).eq('ativo', true).order('categoria').order('descricao')
+        : Promise.resolve({ data: [] }),
+      supabase.from('ponto_producao').select('*, playbook_item:playbook_itens(*)').eq('colaborador_id', colab.id).eq('mes_referencia', mesRef),
+    ])
+    setPlaybookItens((pbRaw ?? []) as PlaybookItem[])
+    setLancamentos((lancRaw ?? []) as LancProducao[])
+  }, [])
+
+  // Chama fetchProducao quando seleciona colaborador / muda mês
+  useEffect(() => {
+    if (colabSel) fetchProducao(colabSel, ano, mes)
+  }, [colabSel, ano, mes, fetchProducao])
+
+  function abrirModalProd() {
+    setEditLanc(null)
+    setDiasSel(new Set())
+    setItensProd([{ playbook_item_id: playbookItens[0]?.id ?? '', quantidade: 0 }])
+    setModalProd(true)
+  }
+
+  async function salvarProducao() {
+    if (!colabSel) return
+    if (diasSel.size === 0) { toast.error('Selecione ao menos um dia de produção'); return }
+    const itensValidos = itensProd.filter(i => i.playbook_item_id && i.quantidade > 0)
+    if (itensValidos.length === 0) { toast.error('Informe ao menos um item com quantidade > 0'); return }
+    setSavingProd(true)
+
+    const mesRef = `${ano}-${String(mes).padStart(2,'0')}`
+    const diasArr = Array.from(diasSel).sort()
+
+    // Remove lançamentos anteriores para os mesmos dias (substitui)
+    if (editLanc?.id) {
+      await supabase.from('ponto_producao').delete().eq('id', editLanc.id)
+    }
+
+    const rows = itensValidos.map(item => {
+      const pb = playbookItens.find(p => p.id === item.playbook_item_id)
+      return {
+        colaborador_id:   colabSel.id,
+        mes_referencia:   mesRef,
+        playbook_item_id: item.playbook_item_id,
+        dias:             diasArr,
+        quantidade:       item.quantidade,
+        valor_total:      (pb?.preco_unitario ?? 0) * item.quantidade,
+        observacoes:      null as string | null,
+      }
+    })
+
+    const { error } = await supabase.from('ponto_producao').insert(rows)
+    setSavingProd(false)
+    if (error) { toast.error('Erro ao salvar produção: ' + error.message); return }
+    toast.success('Produção lançada!')
+    setModalProd(false)
+    fetchProducao(colabSel, ano, mes)
+  }
+
+  async function deletarLanc(id: string) {
+    const { error } = await supabase.from('ponto_producao').delete().eq('id', id)
+    if (error) { toast.error('Erro: ' + error.message); return }
+    toast.success('Lançamento removido')
+    if (colabSel) fetchProducao(colabSel, ano, mes)
+  }
+
+  // Calcula o resumo financeiro considerando tipo_contrato
+  const resumoFinanceiro = useMemo(() => {
+    if (!colabSel || valorHora === 0) return null
+
+    const tipoContrato = (colabSel as any).tipo_contrato ?? 'clt'
+    const totalProd = lancamentos.reduce((s, l) => s + l.valor_total, 0)
+
+    // Dias que têm lançamento de produção
+    const diasComProd = new Set(lancamentos.flatMap(l => l.dias))
+
+    // Horas sem produção (dias normais não cobertos por produção)
+    let minSemProd = 0
+    dias.forEach(d => {
+      if (!diasComProd.has(d.data)) {
+        const c = calcDia(d)
+        minSemProd += c.normais + c.extras50
+      }
+    })
+    const valorHorasSemProd = fmtDecimal(minSemProd) * valorHora
+
+    if (tipoContrato === 'autonomo' || tipoContrato === 'pj') {
+      // Autônomo: horas sem produção + valor da produção
+      return {
+        tipo: 'autonomo' as const,
+        valorHorasSemProd,
+        totalProd,
+        totalPagar: valorHorasSemProd + totalProd,
+        premio: 0,
+      }
+    } else {
+      // CLT: salário base pelas horas totais
+      // Horas nos dias de produção
+      let minComProd = 0
+      dias.forEach(d => {
+        if (diasComProd.has(d.data)) {
+          const c = calcDia(d)
+          minComProd += c.normais + c.extras50
+        }
+      })
+      const valorHorasProd = fmtDecimal(minComProd) * valorHora
+      const valorHoraTotal = fmtDecimal(totais.normais + totais.extras50) * valorHora
+
+      // Compara produção vs horas nos dias de produção
+      const excedente = totalProd - valorHorasProd
+      const premio = excedente > 0 ? excedente : 0
+
+      return {
+        tipo: 'clt' as const,
+        valorHoraTotal,      // base CLT (nunca recebe menos)
+        valorHorasProd,      // valor das horas nos dias de produção
+        totalProd,           // valor apurado por produção
+        premio,              // excedente pago como prêmio
+        totalPagar: valorHoraTotal + premio,
+      }
+    }
+  }, [colabSel, lancamentos, dias, totais, valorHora])
+
   // ─────────────────────────────────────────────────────────────────────────
   return (
+    <>
     <div style={{ display:'flex', height:'calc(100vh - 80px)', overflow:'hidden' }}>
 
       {/* ── Painel esquerdo ──────────────────────────────────────────────── */}
@@ -532,6 +701,11 @@ export default function Ponto() {
               </div>
 
               <Button variant="outline" size="sm" onClick={() => window.print()} style={{ gap:5 }}><Printer size={13}/> Imprimir</Button>
+              {playbookItens.length > 0 && (
+                <Button variant="outline" size="sm" onClick={abrirModalProd} style={{ gap:5, borderColor:'#f59e0b', color:'#b45309' }}>
+                  <Factory size={13}/> Lançar Produção
+                </Button>
+              )}
               <Button size="sm" onClick={handleSalvar} disabled={saving}>{saving ? '⏳ Salvando…' : '💾 Salvar Ponto'}</Button>
             </div>
 
@@ -699,10 +873,204 @@ export default function Ponto() {
                 </table>
               )}
             </div>
+
+            {/* ── Painel de Produção ──────────────────────────────────── */}
+            {lancamentos.length > 0 && (
+              <div style={{ flexShrink:0, borderTop:'2px solid #f59e0b', background:'#fffbeb' }}>
+                <div style={{ padding:'8px 16px 4px', display:'flex', alignItems:'center', gap:8 }}>
+                  <Factory size={14} style={{ color:'#b45309' }}/>
+                  <span style={{ fontWeight:700, fontSize:13, color:'#92400e' }}>Produção lançada no mês</span>
+                </div>
+                <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+                  <thead>
+                    <tr style={{ background:'#fef3c7' }}>
+                      <th style={{ padding:'5px 16px', textAlign:'left', fontWeight:700, fontSize:11 }}>Serviço</th>
+                      <th style={{ padding:'5px 8px',  textAlign:'left', fontWeight:700, fontSize:11 }}>Dias</th>
+                      <th style={{ padding:'5px 8px',  textAlign:'right',fontWeight:700, fontSize:11 }}>Qtd</th>
+                      <th style={{ padding:'5px 8px',  textAlign:'right',fontWeight:700, fontSize:11 }}>Preço unit.</th>
+                      <th style={{ padding:'5px 16px', textAlign:'right',fontWeight:700, fontSize:11 }}>Total</th>
+                      <th style={{ padding:'5px 8px',  width:40 }}></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {lancamentos.map(l => (
+                      <tr key={l.id} style={{ borderTop:'1px solid #fde68a' }}>
+                        <td style={{ padding:'6px 16px', fontWeight:600 }}>{l.playbook_item?.descricao ?? '—'}</td>
+                        <td style={{ padding:'6px 8px', fontSize:11, color:'#92400e' }}>{l.dias.map(d=>d.slice(8)+'/'+d.slice(5,7)).join(', ')}</td>
+                        <td style={{ padding:'6px 8px', textAlign:'right' }}>{l.quantidade} {l.playbook_item?.unidade}</td>
+                        <td style={{ padding:'6px 8px', textAlign:'right', color:'#92400e' }}>R$ {(l.playbook_item?.preco_unitario??0).toFixed(2)}</td>
+                        <td style={{ padding:'6px 16px', textAlign:'right', fontWeight:700, color:'#b45309' }}>{formatCurrency(l.valor_total)}</td>
+                        <td style={{ padding:'6px 8px' }}>
+                          <button onClick={()=>l.id && deletarLanc(l.id)} style={{ border:'none', background:'none', cursor:'pointer', color:'#ef4444', padding:2 }}>
+                            <Trash2 size={13}/>
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr style={{ background:'#fde68a', fontWeight:700 }}>
+                      <td colSpan={4} style={{ padding:'8px 16px' }}>Total apurado por produção</td>
+                      <td style={{ padding:'8px 16px', textAlign:'right', fontSize:14, color:'#92400e' }}>
+                        {formatCurrency(lancamentos.reduce((s,l)=>s+l.valor_total,0))}
+                      </td>
+                      <td/>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
+
+            {/* ── Resumo financeiro com regra CLT/Autônomo ─────────── */}
+            {resumoFinanceiro && (
+              <div style={{ flexShrink:0, borderTop:'2px solid #1e3a5f', background:'#0f2d4a', color:'#fff', padding:'10px 16px' }}>
+                {resumoFinanceiro.tipo === 'autonomo' ? (
+                  <div style={{ display:'flex', gap:24, flexWrap:'wrap', alignItems:'center' }}>
+                    <span style={{ fontSize:11, opacity:0.7 }}>AUTÔNOMO / PJ</span>
+                    <span>🕐 Horas sem produção: <strong>{formatCurrency(resumoFinanceiro.valorHorasSemProd)}</strong></span>
+                    <span>🏗️ Produção: <strong>{formatCurrency(resumoFinanceiro.totalProd)}</strong></span>
+                    <span style={{ marginLeft:'auto', fontSize:16, fontWeight:800, color:'#fbbf24' }}>
+                      💰 TOTAL: {formatCurrency(resumoFinanceiro.totalPagar)}
+                    </span>
+                  </div>
+                ) : (
+                  <div style={{ display:'flex', gap:24, flexWrap:'wrap', alignItems:'center' }}>
+                    <span style={{ fontSize:11, opacity:0.7 }}>CLT</span>
+                    <span>🕐 Horas base: <strong style={{ color:'#86efac' }}>{formatCurrency(resumoFinanceiro.valorHoraTotal)}</strong></span>
+                    <span>🏗️ Produção apurada: <strong style={{ color:'#fcd34d' }}>{formatCurrency(resumoFinanceiro.totalProd)}</strong></span>
+                    {resumoFinanceiro.premio > 0 && (
+                      <span>🏆 Prêmio (excedente): <strong style={{ color:'#f59e0b' }}>+{formatCurrency(resumoFinanceiro.premio)}</strong></span>
+                    )}
+                    <span style={{ marginLeft:'auto', fontSize:16, fontWeight:800, color:'#fbbf24' }}>
+                      💰 TOTAL: {formatCurrency(resumoFinanceiro.totalPagar)}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
           </>
         )}
       </div>
     </div>
+  {/* ═══════ MODAL DE LANÇAMENTO DE PRODUÇÃO ════════════════════════════════ */}
+  {modalProd && colabSel && (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', zIndex:60, display:'flex', alignItems:'center', justifyContent:'center' }}>
+      <div style={{ background:'var(--background)', borderRadius:14, width:680, maxHeight:'85vh', overflow:'auto', boxShadow:'0 24px 80px rgba(0,0,0,0.4)' }}>
+
+        {/* Header */}
+        <div style={{ padding:'18px 24px 14px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', gap:10 }}>
+          <Factory size={18} style={{ color:'#b45309' }}/>
+          <div style={{ flex:1 }}>
+            <div style={{ fontWeight:800, fontSize:16 }}>Lançar Produção</div>
+            <div style={{ fontSize:12, color:'var(--muted-foreground)' }}>{colabSel.nome} · {MESES[mes-1]}/{ano}</div>
+          </div>
+          <button onClick={()=>setModalProd(false)} style={{ border:'none', background:'none', cursor:'pointer' }}><X size={18}/></button>
+        </div>
+
+        <div style={{ padding:'20px 24px', display:'flex', flexDirection:'column', gap:20 }}>
+
+          {/* Seleção de dias */}
+          <div>
+            <div style={{ fontWeight:700, fontSize:13, marginBottom:8 }}>
+              1. Selecione os dias de produção
+              <span style={{ fontWeight:400, fontSize:11, color:'var(--muted-foreground)', marginLeft:8 }}>
+                (dias com atestado ou suspensão não estão disponíveis)
+              </span>
+            </div>
+            <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+              {dias.filter(d => !isFDS(d.data) && d.evento !== 'atestado' && d.evento !== 'suspensao' && d.presente).map(d => {
+                const sel = diasSel.has(d.data)
+                return (
+                  <button key={d.data} onClick={() => {
+                    setDiasSel(prev => {
+                      const next = new Set(prev)
+                      sel ? next.delete(d.data) : next.add(d.data)
+                      return next
+                    })
+                  }} style={{
+                    padding:'4px 10px', borderRadius:6, fontSize:12, fontWeight:600, cursor:'pointer', border:'2px solid',
+                    borderColor: sel ? '#b45309' : 'var(--border)',
+                    background:  sel ? '#fef3c7' : 'transparent',
+                    color:       sel ? '#92400e' : 'var(--foreground)',
+                  }}>
+                    {d.data.slice(8)}/{d.data.slice(5,7)} {['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'][new Date(d.data+'T12:00:00').getDay()]}
+                  </button>
+                )
+              })}
+              {dias.filter(d => !isFDS(d.data) && d.evento !== 'atestado' && d.evento !== 'suspensao' && d.presente).length === 0 && (
+                <span style={{ fontSize:12, color:'var(--muted-foreground)' }}>Nenhum dia com presença disponível para produção</span>
+              )}
+            </div>
+          </div>
+
+          {/* Itens de produção */}
+          <div>
+            <div style={{ fontWeight:700, fontSize:13, marginBottom:8 }}>2. Informe os serviços produzidos</div>
+            <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+              {itensProd.map((item, idx) => {
+                const pb = playbookItens.find(p => p.id === item.playbook_item_id)
+                const valorCalc = pb ? pb.preco_unitario * item.quantidade : 0
+                return (
+                  <div key={idx} style={{ display:'grid', gridTemplateColumns:'1fr 130px 120px 32px', gap:8, alignItems:'center' }}>
+                    <select value={item.playbook_item_id} onChange={e => setItensProd(prev => prev.map((it,i) => i===idx ? {...it, playbook_item_id:e.target.value} : it))}
+                      style={{ padding:'7px 10px', fontSize:13, border:'1px solid var(--border)', borderRadius:6, background:'var(--background)', color:'var(--foreground)' }}>
+                      <option value="">— Selecionar serviço —</option>
+                      {playbookItens.map(p => <option key={p.id} value={p.id}>{p.descricao} ({p.unidade})</option>)}
+                    </select>
+                    <div style={{ display:'flex', flexDirection:'column' }}>
+                      <input type="number" min="0" step="0.01" placeholder={`Qtd (${pb?.unidade??'un'})`}
+                        value={item.quantidade || ''}
+                        onChange={e => setItensProd(prev => prev.map((it,i) => i===idx ? {...it, quantidade:parseFloat(e.target.value)||0} : it))}
+                        style={{ padding:'7px 10px', fontSize:13, border:'1px solid var(--border)', borderRadius:6, background:'var(--background)', color:'var(--foreground)', textAlign:'right' }}
+                      />
+                    </div>
+                    <div style={{ textAlign:'right', fontWeight:700, color:'#b45309', fontSize:13 }}>
+                      {valorCalc > 0 ? formatCurrency(valorCalc) : '—'}
+                    </div>
+                    <button onClick={() => setItensProd(prev => prev.filter((_,i) => i!==idx))}
+                      disabled={itensProd.length<=1}
+                      style={{ border:'none', background:'none', cursor:'pointer', color:'#ef4444', opacity: itensProd.length<=1?0.3:1 }}>
+                      <X size={14}/>
+                    </button>
+                  </div>
+                )
+              })}
+              <Button variant="outline" size="sm" onClick={() => setItensProd(prev => [...prev, { playbook_item_id: playbookItens[0]?.id??'', quantidade:0 }])} style={{ width:'fit-content', gap:4, fontSize:12 }}>
+                <Plus size={12}/> Adicionar serviço
+              </Button>
+            </div>
+          </div>
+
+          {/* Resumo do modal */}
+          {diasSel.size > 0 && itensProd.some(i=>i.quantidade>0) && (() => {
+            const totalProd = itensProd.reduce((s,i) => {
+              const pb = playbookItens.find(p=>p.id===i.playbook_item_id)
+              return s + (pb ? pb.preco_unitario * i.quantidade : 0)
+            }, 0)
+            return (
+              <div style={{ background:'#fef3c7', borderRadius:8, padding:'12px 16px', border:'1px solid #fde68a' }}>
+                <div style={{ fontSize:12, color:'#92400e', marginBottom:4 }}>
+                  <strong>{diasSel.size}</strong> dias selecionados · <strong>{itensProd.filter(i=>i.quantidade>0).length}</strong> serviço(s)
+                </div>
+                <div style={{ fontSize:16, fontWeight:800, color:'#b45309' }}>
+                  Total de produção: {formatCurrency(totalProd)}
+                </div>
+              </div>
+            )
+          })()}
+        </div>
+
+        {/* Footer modal */}
+        <div style={{ padding:'14px 24px', borderTop:'1px solid var(--border)', display:'flex', gap:10, justifyContent:'flex-end' }}>
+          <Button variant="outline" onClick={()=>setModalProd(false)}>Cancelar</Button>
+          <Button onClick={salvarProducao} disabled={savingProd} style={{ background:'#b45309', color:'#fff' }}>
+            {savingProd ? '⏳ Salvando…' : '🏗️ Salvar Produção'}
+          </Button>
+        </div>
+      </div>
+    </div>
+  )}
+  </>
   )
 }
 

@@ -10,7 +10,7 @@ import {
   AlertTriangle, FileText, Clock, DollarSign, Award,
   Calculator, Bus, BarChart3, Settings, LogOut, Menu,
   HardHat, ChevronLeft, ChevronRight, UserCog,
-} from 'lucide-react'
+  ClipboardList } from 'lucide-react'
 
 // ── grupos de navegação ───────────────────────────────────────────────────────
 const NAV_GROUPS = [
@@ -25,7 +25,7 @@ const NAV_GROUPS = [
     items: [
       { to: '/colaboradores',  label: 'Colaboradores',  icon: Users },
       { to: '/obras',          label: 'Obras',          icon: Building2 },
-
+      { to: '/playbooks',      label: 'Playbooks',      icon: ClipboardList },
     ],
   },
   {

@@ -23,6 +23,7 @@ const ValeTransportePage = React.lazy(() => import('@/pages/ValeTransportePage')
 const Provisoes      = React.lazy(() => import('@/pages/Provisoes'))
 const Relatorios     = React.lazy(() => import('@/pages/Relatorios'))
 const Configuracoes  = React.lazy(() => import('@/pages/Configuracoes'))
+const Playbooks      = React.lazy(() => import('@/pages/Playbooks'))
 const Usuarios       = React.lazy(() => import('@/pages/Usuarios'))
 
 // ─── Full-page loading spinner ───────────────────────────────────────────────
@@ -99,6 +100,16 @@ export default function App() {
                   <PrivateRoute>
                     <Layout>
                       <Obras />
+                    </Layout>
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/playbooks"
+                element={
+                  <PrivateRoute>
+                    <Layout>
+                      <Playbooks />
                     </Layout>
                   </PrivateRoute>
                 }
