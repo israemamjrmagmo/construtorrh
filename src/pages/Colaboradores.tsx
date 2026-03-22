@@ -650,54 +650,33 @@ export default function Colaboradores() {
       .select('*, epi_catalogo(id, nome, categoria, requer_tamanho, requer_numero)')
       .eq('funcao_id', form.funcao_id)
 
-    const episDaFuncao = (feData ?? []).map((fe: any) => fe.epi_id as string)
-
-    // Mantém EPIs que já existem no colaborador (preserva tamanho/número já preenchidos)
-    // Adiciona novos EPIs da função que ainda não estão na lista
-    // Remove EPIs que não pertencem mais à função E ainda não foram entregues (status pendente)
+    // Substitui a lista pelos EPIs da função,
+    // preservando tamanho/número se o mesmo EPI já existia antes
     setEpiList(prev => {
-      const novos: ColabEpiItem[] = []
-
-      // Adicionar EPIs da função que ainda não existem
-      ;(feData ?? []).forEach((fe: any) => {
-        const jaExiste = prev.find(e => e.epi_id === fe.epi_id)
-        if (!jaExiste) {
-          novos.push({
-            epi_id: fe.epi_id as string,
-            epi_nome: (fe.epi_catalogo?.nome ?? '') as string,
-            epi_categoria: (fe.epi_catalogo?.categoria ?? null) as string | null,
-            requer_tamanho: (fe.epi_catalogo?.requer_tamanho ?? false) as boolean,
-            requer_numero: (fe.epi_catalogo?.requer_numero ?? false) as boolean,
-            obrigatorio: (fe.obrigatorio ?? true) as boolean,
-            quantidade: (fe.quantidade ?? 1) as number,
-            tamanho: '',
-            numero: '',
-            status: 'pendente',
-            documento_url: null as string | null | undefined,
-            documento_nome: null as string | null | undefined,
-          })
+      return (feData ?? []).map((fe: any) => {
+        const jaExistia = prev.find(e => e.epi_id === fe.epi_id)
+        return {
+          epi_id: fe.epi_id as string,
+          epi_nome: (fe.epi_catalogo?.nome ?? '') as string,
+          epi_categoria: (fe.epi_catalogo?.categoria ?? null) as string | null,
+          requer_tamanho: (fe.epi_catalogo?.requer_tamanho ?? false) as boolean,
+          requer_numero: (fe.epi_catalogo?.requer_numero ?? false) as boolean,
+          obrigatorio: (fe.obrigatorio ?? true) as boolean,
+          quantidade: (fe.quantidade ?? 1) as number,
+          // preserva tamanho/número já preenchidos
+          tamanho: jaExistia?.tamanho ?? '',
+          numero: jaExistia?.numero ?? '',
+          status: 'pendente',
+          documento_url: (jaExistia?.documento_url ?? null) as string | null | undefined,
+          documento_nome: (jaExistia?.documento_nome ?? null) as string | null | undefined,
+          _foraFuncao: false,
         }
       })
-
-      // Manter EPIs já existentes (mesmo fora da função - podem ter sido entregues)
-      // Apenas marca os que NÃO estão mais na função para identificação visual
-      const mantidos = prev.map(e => ({
-        ...e,
-        _foraFuncao: !episDaFuncao.includes(e.epi_id),
-      }))
-
-      return [...mantidos, ...novos]
     })
 
     setAtualizandoEpis(false)
-    const qtdNovos = episDaFuncao.filter(
-      id => !epiList.find(e => e.epi_id === id)
-    ).length
-    if (qtdNovos > 0) {
-      toast.success(`${qtdNovos} novo(s) EPI(s) adicionado(s) da função`)
-    } else {
-      toast.info('EPIs já estão atualizados com a função atual')
-    }
+    const total = (feData ?? []).length
+    toast.success(`EPIs atualizados! ${total} EPI${total !== 1 ? 's' : ''} da função carregado${total !== 1 ? 's' : ''}.`)
   }
 
   // ── abrir modal editar ───────────────────────────────────────────────────
@@ -840,37 +819,42 @@ export default function Colaboradores() {
     setSaving(false)
     if (error) { toast.error(error.message); return }
 
-    // Salvar EPIs do colaborador
-    if (epiList.length > 0) {
-      // Obter ID do colaborador (editId existente ou ID do recém-criado)
-      let colaboradorId = editId
-      if (!colaboradorId) {
-        // Buscar o colaborador recém criado pela chapa
-        const { data: novo } = await supabase
-          .from('colaboradores').select('id').eq('chapa', payloadFull.chapa).single()
-        colaboradorId = novo?.id ?? null
-      }
-      if (colaboradorId) {
-        for (const item of epiList) {
-          if (item.colaborador_epi_id) {
-            await supabase.from('colaborador_epi').update({
-              tamanho: item.tamanho || null,
-              numero: item.numero || null,
-              documento_url: item.documento_url || null,
-              documento_nome: item.documento_nome || null,
-            }).eq('id', item.colaborador_epi_id)
-          } else {
-            await supabase.from('colaborador_epi').insert({
-              colaborador_id: colaboradorId,
-              epi_id: item.epi_id,
-              funcao_id: form.funcao_id || null,
-              tamanho: item.tamanho || null,
-              numero: item.numero || null,
-              quantidade_entregue: 0,
-              status: 'pendente',
-            })
-          }
-        }
+    // ── Salvar EPIs do colaborador ──────────────────────────────────────────
+    // Obtém o ID (editId já existente ou o recém-criado)
+    let colaboradorId = editId
+    if (!colaboradorId) {
+      const { data: novo } = await supabase
+        .from('colaboradores').select('id').eq('chapa', payloadFull.chapa).single()
+      colaboradorId = novo?.id ?? null
+    }
+
+    if (colaboradorId && epiList.length > 0) {
+      // 1. Apaga TODOS os EPIs atuais do colaborador
+      await supabase
+        .from('colaborador_epi')
+        .delete()
+        .eq('colaborador_id', colaboradorId)
+
+      // 2. Reinsere a lista completa (já atualizada pelo botão "Atualizar EPIs" se clicado)
+      const rows = epiList
+        .filter(item => !item._foraFuncao) // ignora marcados como fora da função
+        .map(item => ({
+          colaborador_id: colaboradorId as string,
+          epi_id: item.epi_id,
+          funcao_id: form.funcao_id || null,
+          tamanho: item.tamanho || null,
+          numero: item.numero || null,
+          obrigatorio: item.obrigatorio,
+          quantidade: item.quantidade,
+          quantidade_entregue: 0,
+          status: 'pendente',
+          documento_url: item.documento_url || null,
+          documento_nome: item.documento_nome || null,
+        }))
+
+      if (rows.length > 0) {
+        const { error: epiErr } = await supabase.from('colaborador_epi').insert(rows)
+        if (epiErr) toast.error('EPIs salvos com erro: ' + epiErr.message)
       }
     }
 
@@ -999,14 +983,14 @@ export default function Colaboradores() {
             <AlertDialogTitle>🔄 Atualizar EPIs da função?</AlertDialogTitle>
             <AlertDialogDescription>
               <span>
-                Isso irá adicionar todos os EPIs vinculados à função{' '}
-                <strong>{funcoes.find(f => f.id === form.funcao_id)?.nome}</strong> que ainda não estão na lista do colaborador.
+                A lista de EPIs será <strong>substituída</strong> pelos EPIs da função{' '}
+                <strong>{funcoes.find(f => f.id === form.funcao_id)?.nome}</strong>.
               </span>
               <br /><br />
               <span>
-                ✅ EPIs já entregues <strong>serão mantidos</strong>.<br />
-                ➕ Novos EPIs da função <strong>serão adicionados</strong>.<br />
-                ⚠️ EPIs fora da função <strong>serão marcados</strong> para revisão, mas não removidos.
+                ✅ Tamanhos e números já preenchidos <strong>serão preservados</strong>.<br />
+                🗑️ EPIs que não pertencem à função <strong>serão removidos da lista</strong>.<br />
+                💾 As alterações só são gravadas no banco ao clicar em <strong>Salvar</strong>.
               </span>
             </AlertDialogDescription>
           </AlertDialogHeader>
