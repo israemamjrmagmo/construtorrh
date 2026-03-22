@@ -2,8 +2,8 @@
 -- CONSTRUTOR RH — SCHEMA DEFINITIVO COMPLETO
 -- Versão: v4  |  Data: 2026-03-22
 --
--- ▸ Execute TODO este script no SQL Editor do Supabase
--- ▸ Idempotente: pode rodar em banco vazio OU existente
+-- ▸ BANCO NOVO (vazio): execute este arquivo
+-- ▸ BANCO EXISTENTE (já tinha tabelas): execute SCHEMA_FIX_v4_bancos_existentes.sql
 -- ▸ Este arquivo substitui todos os arquivos anteriores de migração
 -- ═══════════════════════════════════════════════════════════════════════════════
 

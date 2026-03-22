@@ -117,8 +117,6 @@ export default function Ponto() {
   // Modal novo lançamento
   const [modalLanc, setModalLanc] = useState(false)
   const [novoLancObraId, setNovoLancObraId] = useState('')
-  const [novoLancInicio, setNovoLancInicio] = useState('')
-  const [novoLancFim, setNovoLancFim]       = useState('')
   const [savingLanc, setSavingLanc] = useState(false)
 
   // Modal produção
@@ -423,13 +421,14 @@ export default function Ponto() {
 
   // ── Criar novo lançamento ─────────────────────────────────────────────────
   async function criarLancamento(){
-    if(!colabSel||!novoLancObraId||!novoLancInicio||!novoLancFim){toast.error('Preencha todos os campos');return}
-    if(novoLancInicio>novoLancFim){toast.error('Data de início deve ser anterior à data de fim');return}
-
+    if(!colabSel||!novoLancObraId){toast.error('Selecione uma obra');return}
+    // Início = dia 1, Fim = último dia do mês
+    const dataInicio=`${mesRef}-01`
+    const dataFim=`${mesRef}-${String(new Date(ano,mes,0).getDate()).padStart(2,'0')}`
     setSavingLanc(true)
-    const{data,error}=await supabase.from('ponto_lancamentos').insert({
+    const{error}=await supabase.from('ponto_lancamentos').insert({
       colaborador_id:colabSel.id,obra_id:novoLancObraId,mes_referencia:mesRef,
-      data_inicio:novoLancInicio,data_fim:novoLancFim,
+      data_inicio:dataInicio,data_fim:dataFim,
       status:'rascunho',
     }).select('*,obras(nome)').single()
     setSavingLanc(false)
@@ -599,7 +598,7 @@ export default function Ponto() {
                 <button onClick={mesSeguinte} style={{border:'1px solid var(--border)',borderRadius:5,background:'none',cursor:'pointer',padding:'3px 7px',display:'flex'}}><ChevronRight size={13}/></button>
               </div>
               <Button variant="outline" size="sm" onClick={()=>window.print()} style={{gap:4,height:30,fontSize:12}}><Printer size={12}/></Button>
-              <Button size="sm" onClick={()=>{setNovoLancObraId('');setNovoLancInicio('');setNovoLancFim('');setModalLanc(true)}} style={{gap:4,height:30,fontSize:12}}>
+              <Button size="sm" onClick={()=>{setNovoLancObraId('');setModalLanc(true)}} style={{gap:4,height:30,fontSize:12}}>
                 <Plus size={12}/> Novo Lançamento
               </Button>
             </div>
@@ -650,11 +649,9 @@ export default function Ponto() {
                     {exp?<ChevronDown size={15}/>:<ChevronRight size={15}/>}
                     <Building2 size={14} style={{color:'var(--primary)',flexShrink:0}}/>
                     <div style={{flex:1}}>
-                      <div style={{fontWeight:700,fontSize:14}}>{lanc.obra_nome}
-  
-                      </div>
+                      <div style={{fontWeight:700,fontSize:14}}>{lanc.obra_nome}</div>
                       <div style={{fontSize:11,color:'var(--muted-foreground)',fontFamily:'monospace'}}>
-                        {lanc.data_inicio.slice(8)}/{lanc.data_inicio.slice(5,7)} → {lanc.data_fim.slice(8)}/{lanc.data_fim.slice(5,7)}
+                        {MESES[mes-1]}/{ano}
                         <span style={{marginLeft:10}}>· {tot.presentes} dias · {fmtHHMM(tot.total)}h</span>
                         {tot.atestados>0&&<span style={{color:'#1d4ed8',marginLeft:8}}>🩺 {tot.atestados} afastamento{tot.atestados!==1?'s':''}</span>}
                         {tot.suspensoes>0&&<span style={{color:'#dc2626',marginLeft:8}}>⛔ {tot.suspensoes} suspensão</span>}
@@ -794,42 +791,21 @@ export default function Ponto() {
             <button onClick={()=>setModalLanc(false)} style={{border:'none',background:'none',cursor:'pointer'}}><X size={18}/></button>
           </div>
           <div style={{display:'flex',flexDirection:'column',gap:14}}>
+            {/* Info: mês aberto automaticamente */}
+            <div style={{fontSize:12,color:'var(--muted-foreground)',padding:'8px 12px',background:'var(--muted)',borderRadius:6,display:'flex',alignItems:'center',gap:6}}>
+              <Clock size={13}/>
+              Será aberto o mês completo: <strong>{MESES[mes-1]} / {ano}</strong> — todos os dias ficam livres para lançamento
+            </div>
             <div>
               <label style={LBL}>Obra *</label>
               <select value={novoLancObraId} onChange={e=>setNovoLancObraId(e.target.value)} style={SEL}>
                 <option value="">— Selecionar obra —</option>
                 {obras.map(o=>{
                   const lancObra=lancamentos.filter(l=>l.obra_id===o.id)
-                  const disabled=lancObra.length>=2
-                  return<option key={o.id} value={o.id} disabled={disabled}>{o.nome}{disabled?' (limite atingido)':lancObra.length===1?` (${lancObra.length}/2)`:''}</option>
+                  return<option key={o.id} value={o.id}>{o.nome}{lancObra.length>0?` (+${lancObra.length} já aberto${lancObra.length!==1?'s':''})`:''}</option>
                 })}
               </select>
-              {novoLancObraId&&lancamentos.filter(l=>l.obra_id===novoLancObraId).length>0&&(
-                <div style={{fontSize:11,color:'#1d4ed8',marginTop:4,padding:'4px 8px',background:'#dbeafe',borderRadius:4}}>
-                  ℹ️ Esta obra já possui {lancamentos.filter(l=>l.obra_id===novoLancObraId).length} lançamento(s) no mês. Um novo período será adicionado.
-                </div>
-              )}
             </div>
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
-              <div>
-                <label style={LBL}>Data de Início *</label>
-                <input type="date" value={novoLancInicio} onChange={e=>setNovoLancInicio(e.target.value)}
-                  min={`${mesRef}-01`} max={`${mesRef}-${new Date(ano,mes,0).getDate()}`}
-                  style={{width:'100%',padding:'8px 10px',fontSize:13,border:'1px solid var(--border)',borderRadius:6,background:'var(--background)',color:'var(--foreground)'}}/>
-              </div>
-              <div>
-                <label style={LBL}>Data de Fim *</label>
-                <input type="date" value={novoLancFim} onChange={e=>setNovoLancFim(e.target.value)}
-                  min={novoLancInicio||`${mesRef}-01`} max={`${mesRef}-${new Date(ano,mes,0).getDate()}`}
-                  style={{width:'100%',padding:'8px 10px',fontSize:13,border:'1px solid var(--border)',borderRadius:6,background:'var(--background)',color:'var(--foreground)'}}/>
-              </div>
-            </div>
-            {novoLancInicio&&novoLancFim&&(
-              <div style={{fontSize:12,color:'var(--muted-foreground)',padding:'6px 10px',background:'var(--muted)',borderRadius:6}}>
-                Período: <strong>{expandRange(novoLancInicio,novoLancFim).length} dias</strong>
-                {' '}({expandRange(novoLancInicio,novoLancFim).filter(d=>!isFDS(d)).length} úteis + {expandRange(novoLancInicio,novoLancFim).filter(d=>isFDS(d)).length} fins de semana)
-              </div>
-            )}
           </div>
           <div style={{display:'flex',gap:10,marginTop:20,justifyContent:'flex-end'}}>
             <Button variant="outline" onClick={()=>setModalLanc(false)}>Cancelar</Button>
@@ -852,7 +828,7 @@ export default function Ponto() {
               <Factory size={16} style={{color:'#b45309'}}/>
               <div style={{flex:1}}>
                 <div style={{fontWeight:800,fontSize:15}}>Lançar Produção</div>
-                <div style={{fontSize:11,color:'var(--muted-foreground)'}}>{lanc?.obra_nome} · {lanc?.data_inicio?.slice(8)}/{lanc?.data_inicio?.slice(5,7)} a {lanc?.data_fim?.slice(8)}/{lanc?.data_fim?.slice(5,7)}</div>
+                <div style={{fontSize:11,color:'var(--muted-foreground)'}}>{lanc?.obra_nome} · {MESES[mes-1]}/{ano}</div>
               </div>
               <button onClick={()=>setModalProd(false)} style={{border:'none',background:'none',cursor:'pointer'}}><X size={16}/></button>
             </div>
