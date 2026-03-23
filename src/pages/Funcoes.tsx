@@ -176,9 +176,18 @@ export default function Funcoes() {
   // ── delete ────────────────────────────────────────────────────────────────
   const handleDelete = async () => {
     if (!deleteId) return
+
+    // ── Barreira 1: estado local (síncrono — bloqueia ANTES de qualquer await) ──
+    const vLocal = vinculos[deleteId]
+    if ((vLocal?.colabs ?? 0) > 0 || (vLocal?.epis ?? 0) > 0) {
+      toast.error('Não é possível excluir: há colaboradores ou EPIs vinculados. Desvincule primeiro.')
+      setDeleteId(null)
+      return
+    }
+
     setDeleting(true)
 
-    // Verificação server-side completa antes de excluir
+    // ── Barreira 2: verificação server-side (SELECT real, não count) ──
     const [{ data: colabsVinc }, { data: episVinc }] = await Promise.all([
       supabase.from('colaboradores').select('id').eq('funcao_id', deleteId).limit(1),
       supabase.from('funcao_epi').select('id').eq('funcao_id', deleteId).limit(1),
@@ -193,15 +202,17 @@ export default function Funcoes() {
       toast.error(`Não é possível excluir: há ${partes.join(' e ')}. Desvincule primeiro.`)
       setDeleting(false)
       setDeleteId(null)
-      fetchData()
+      fetchData() // atualiza badges na UI
       return
     }
 
+    // ── Barreira 3: executa DELETE ──
     const { error } = await supabase.from('funcoes').delete().eq('id', deleteId)
     setDeleting(false)
     setDeleteId(null)
     if (error) {
-      toast.error('Não é possível excluir: esta função ainda está vinculada a registros do sistema.')
+      // Qualquer FK restante vira mensagem amigável — jamais chega ao usuário como erro técnico
+      toast.error('Não é possível excluir: esta função está vinculada a registros no sistema.')
       fetchData()
       return
     }
@@ -375,7 +386,14 @@ export default function Funcoes() {
                             variant="ghost" size="icon"
                             className="h-8 w-8 text-destructive hover:text-destructive"
                             title={tooltip}
-                            onClick={() => setDeleteId(f.id)}
+                            onClick={() => {
+                              const vv = vinculos[f.id]
+                              if ((vv?.colabs ?? 0) > 0 || (vv?.epis ?? 0) > 0) {
+                                toast.error('Não é possível excluir: há colaboradores ou EPIs vinculados.')
+                                return
+                              }
+                              setDeleteId(f.id)
+                            }}
                           >
                             <Trash2 size={14} />
                           </Button>
