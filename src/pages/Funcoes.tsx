@@ -63,14 +63,26 @@ export default function Funcoes() {
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
 
+  // vínculos: mapa funcao_id → { colabs, epis }
+  const [vinculos, setVinculos] = useState<Record<string, { colabs: number; epis: number }>>({})
+
   // ── fetch ─────────────────────────────────────────────────────────────────
   const fetchData = useCallback(async () => {
     setLoading(true)
-    const { data } = await supabase
-      .from('funcoes')
-      .select('*')
-      .order('nome')
+    const [{ data }, { data: colabsRaw }, { data: episRaw }] = await Promise.all([
+      supabase.from('funcoes').select('*').order('nome'),
+      supabase.from('colaboradores').select('funcao_id'),
+      supabase.from('funcao_epi').select('funcao_id'),
+    ])
     if (data) setRows(data as Funcao[])
+
+    // montar mapa de vínculos
+    const mapa: Record<string, { colabs: number; epis: number }> = {}
+    const ensure = (id: string) => { if (!mapa[id]) mapa[id] = { colabs: 0, epis: 0 } }
+    ;(colabsRaw ?? []).forEach((r: any) => { if (r.funcao_id) { ensure(r.funcao_id); mapa[r.funcao_id].colabs++ } })
+    ;(episRaw   ?? []).forEach((r: any) => { if (r.funcao_id) { ensure(r.funcao_id); mapa[r.funcao_id].epis++   } })
+    setVinculos(mapa)
+
     setLoading(false)
   }, [])
 
@@ -165,17 +177,6 @@ export default function Funcoes() {
   const handleDelete = async () => {
     if (!deleteId) return
     setDeleting(true)
-    // Verificar colaboradores vinculados antes de excluir
-    const { count } = await supabase
-      .from('colaboradores')
-      .select('id', { count: 'exact', head: true })
-      .eq('funcao_id', deleteId)
-    if ((count ?? 0) > 0) {
-      setDeleting(false)
-      setDeleteId(null)
-      toast.error(`Não é possível excluir: ${count} colaborador${count !== 1 ? 'es vinculados' : ' vinculado'} a esta função. Altere a função deles primeiro.`)
-      return
-    }
     const { error } = await supabase.from('funcoes').delete().eq('id', deleteId)
     setDeleting(false)
     setDeleteId(null)
@@ -320,13 +321,26 @@ export default function Funcoes() {
                       <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(f)}>
                         <Pencil size={14} />
                       </Button>
-                      <Button
-                        variant="ghost" size="icon"
-                        className="h-8 w-8 text-destructive hover:text-destructive"
-                        onClick={() => setDeleteId(f.id)}
-                      >
-                        <Trash2 size={14} />
-                      </Button>
+                      {(()=>{
+                        const v = vinculos[f.id]
+                        const temVinculo = (v?.colabs ?? 0) > 0 || (v?.epis ?? 0) > 0
+                        const tooltipParts: string[] = []
+                        if ((v?.colabs ?? 0) > 0) tooltipParts.push(`${v.colabs} colaborador${v.colabs !== 1 ? 'es' : ''} vinculado${v.colabs !== 1 ? 's' : ''}`)
+                        if ((v?.epis ?? 0) > 0)   tooltipParts.push(`${v.epis} EPI${v.epis !== 1 ? 's' : ''} vinculado${v.epis !== 1 ? 's' : ''}`)
+                        const tooltip = temVinculo ? `Não pode excluir: ${tooltipParts.join(' e ')}` : 'Excluir função'
+                        return (
+                          <Button
+                            variant="ghost" size="icon"
+                            className="h-8 w-8 text-destructive hover:text-destructive"
+                            disabled={temVinculo}
+                            title={tooltip}
+                            onClick={() => setDeleteId(f.id)}
+                            style={temVinculo ? { opacity: 0.3, cursor: 'not-allowed' } : undefined}
+                          >
+                            <Trash2 size={14} />
+                          </Button>
+                        )
+                      })()}
                     </div>
                   </TableCell>
                 </TableRow>
