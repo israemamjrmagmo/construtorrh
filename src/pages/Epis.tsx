@@ -20,7 +20,7 @@ import {
 import {
   Shield, Plus, Search, Pencil, Trash2, Link2, Unlink2,
   Package, Tag, CheckCircle2, AlertCircle, X, ChevronRight,
-  Users, Building2, FileText, Download,
+  Users, Building2, FileText, Download, Copy,
 } from 'lucide-react'
 import { toast } from 'sonner'
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -282,6 +282,11 @@ export default function Epis() {
   const [savingVinculo, setSavingVinculo] = useState(false)
   const [deleteVinculoId, setDeleteVinculoId] = useState<string | null>(null)
   const [deletingVinculo, setDeletingVinculo] = useState(false)
+
+  // ── Copiar EPIs de outra função ─────────────────────────────────────────────
+  const [copiarModalOpen, setCopiarModalOpen] = useState(false)
+  const [copiarFuncaoId, setCopiarFuncaoId] = useState('')
+  const [copiando, setCopiando] = useState(false)
 
   // ── Aba 3: solicitações ─────────────────────────────────────────────────────
   const [modoSolicitacao, setModoSolicitacao] = useState<'colaborador' | 'obra'>('colaborador')
@@ -618,6 +623,44 @@ export default function Epis() {
   })
 
   // ─── estilos das abas ──────────────────────────────────────────────────────
+  // ── Copiar EPIs de outra função ─────────────────────────────────────────────
+  const handleCopiarEpis = async () => {
+    if (!copiarFuncaoId || !funcaoSelecionada) return
+    if (copiarFuncaoId === funcaoSelecionada.id) {
+      toast.error('Selecione uma função diferente da atual'); return
+    }
+    setCopiando(true)
+    // Buscar EPIs da função de origem
+    const { data: origem, error: errOrigem } = await supabase
+      .from('funcao_epi')
+      .select('epi_id, obrigatorio, observacoes')
+      .eq('funcao_id', copiarFuncaoId)
+    if (errOrigem || !origem || origem.length === 0) {
+      toast.error(errOrigem?.message ?? 'Nenhum EPI encontrado na função de origem')
+      setCopiando(false); return
+    }
+    // EPIs já vinculados na função destino (para não duplicar)
+    const idsExistentes = new Set(vinculos.map(v => v.epi_id))
+    const novos = origem.filter(o => !idsExistentes.has(o.epi_id)).map(o => ({
+      funcao_id: funcaoSelecionada.id,
+      epi_id: o.epi_id,
+      obrigatorio: o.obrigatorio,
+      observacoes: o.observacoes ?? null,
+    }))
+    if (novos.length === 0) {
+      toast.info('Todos os EPIs da função de origem já estão vinculados aqui')
+      setCopiando(false); setCopiarModalOpen(false); return
+    }
+    const { error: errIns } = await supabase.from('funcao_epi').insert(novos)
+    setCopiando(false)
+    if (errIns) { toast.error(errIns.message); return }
+    toast.success(`${novos.length} EPI${novos.length !== 1 ? 's' : ''} copiado${novos.length !== 1 ? 's' : ''} com sucesso!`)
+    setCopiarModalOpen(false)
+    setCopiarFuncaoId('')
+    fetchVinculos(funcaoSelecionada.id)
+    fetchEpisPorFuncao()
+  }
+
   const tabStyle = (active: boolean): React.CSSProperties => ({
     padding: '10px 20px',
     border: 'none',
@@ -1189,13 +1232,23 @@ export default function Epis() {
                       {vinculos.length} EPI{vinculos.length !== 1 ? 's' : ''} vinculado{vinculos.length !== 1 ? 's' : ''}
                     </p>
                   </div>
-                  <Button
-                    size="sm"
-                    onClick={() => { setVinculoForm(EMPTY_VINCULO_FORM); setVinculoModalOpen(true) }}
-                    style={{ display: 'flex', alignItems: 'center', gap: 6 }}
-                  >
-                    <Plus size={14} /> Vincular EPI
-                  </Button>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => { setCopiarFuncaoId(''); setCopiarModalOpen(true) }}
+                      style={{ display: 'flex', alignItems: 'center', gap: 6, borderColor: '#7c3aed', color: '#7c3aed' }}
+                    >
+                      <Copy size={14} /> Copiar de outra função
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => { setVinculoForm(EMPTY_VINCULO_FORM); setVinculoModalOpen(true) }}
+                      style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+                    >
+                      <Plus size={14} /> Vincular EPI
+                    </Button>
+                  </div>
                 </div>
 
                 {/* Tabela de vínculos */}
@@ -1929,6 +1982,77 @@ export default function Epis() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* ── Modal Copiar EPIs de outra função ── */}
+      <Dialog open={copiarModalOpen} onOpenChange={v => { if (!v) { setCopiarModalOpen(false); setCopiarFuncaoId('') } }}>
+        <DialogContent style={{ maxWidth: 440 }}>
+          <DialogHeader>
+            <DialogTitle style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Copy size={18} style={{ color: '#7c3aed' }} />
+              Copiar EPIs de outra função
+            </DialogTitle>
+          </DialogHeader>
+
+          <div style={{ padding: '8px 0', display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {/* Info destino */}
+            <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: '10px 14px', fontSize: 13 }}>
+              <span style={{ color: '#6b7280' }}>Copiando para: </span>
+              <strong style={{ color: '#1e40af' }}>{funcaoSelecionada?.nome}</strong>
+              {vinculos.length > 0 && (
+                <div style={{ color: '#6b7280', fontSize: 12, marginTop: 2 }}>
+                  Já possui {vinculos.length} EPI{vinculos.length !== 1 ? 's' : ''} — duplicatas serão ignoradas automaticamente
+                </div>
+              )}
+            </div>
+
+            {/* Select da função de origem */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>
+                Copiar EPIs de qual função?
+              </label>
+              <Select value={copiarFuncaoId || 'nenhuma'} onValueChange={v => setCopiarFuncaoId(v === 'nenhuma' ? '' : v)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione a função de origem…" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="nenhuma">— Selecione —</SelectItem>
+                  {funcoes
+                    .filter(f => f.id !== funcaoSelecionada?.id)
+                    .map(f => {
+                      const qtd = episPorFuncao[f.id] ?? 0
+                      return (
+                        <SelectItem key={f.id} value={f.id} disabled={qtd === 0}>
+                          {f.nome}{f.sigla ? ` (${f.sigla})` : ''} — {qtd} EPI{qtd !== 1 ? 's' : ''}
+                        </SelectItem>
+                      )
+                    })}
+                </SelectContent>
+              </Select>
+              {copiarFuncaoId && (episPorFuncao[copiarFuncaoId] ?? 0) > 0 && (
+                <p style={{ fontSize: 12, color: '#6b7280', margin: 0 }}>
+                  Serão copiados <strong>{episPorFuncao[copiarFuncaoId]}</strong> EPI{(episPorFuncao[copiarFuncaoId] ?? 0) !== 1 ? 's' : ''}.
+                  {vinculos.length > 0 ? ' EPIs já existentes serão ignorados.' : ''}
+                </p>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter style={{ gap: 8 }}>
+            <Button variant="outline" onClick={() => { setCopiarModalOpen(false); setCopiarFuncaoId('') }}>
+              Cancelar
+            </Button>
+            <Button
+              disabled={!copiarFuncaoId || copiando}
+              onClick={handleCopiarEpis}
+              style={{ background: '#7c3aed', color: '#fff', gap: 6 }}
+            >
+              <Copy size={14} />
+              {copiando ? 'Copiando…' : 'Copiar EPIs'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
     </div>
   )
 }
