@@ -40,6 +40,12 @@ interface LancItem {
   valor_premio: number
   valor_total: number
   dias_trabalhados: number
+  faltas: number
+  desconto_vt: number
+  valor_vt_dia: number
+  inss: number
+  ir: number
+  liquido: number
 }
 
 const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho',
@@ -79,7 +85,7 @@ export default function FechamentoPonto() {
       .from('ponto_lancamentos')
       .select(`
         id, colaborador_id, obra_id, mes_referencia, data_inicio, data_fim, status,
-        colaboradores(nome, chapa, tipo_contrato, funcao_id, funcoes(nome)),
+        colaboradores(nome, chapa, tipo_contrato, funcao_id, vale_transporte, vt_dados, funcoes(nome)),
         obras(nome)
       `)
       .in('status', ['aprovado', 'em_fechamento', 'pago'])
@@ -90,7 +96,7 @@ export default function FechamentoPonto() {
 
     const ids = lancsRaw.map((l: any) => l.id)
     const [{ data: pontosRaw }, { data: prodRaw }, { data: feriadosRaw }] = await Promise.all([
-      ids.length ? supabase.from('registro_ponto').select('lancamento_id,horas_trabalhadas,horas_extras,data').in('lancamento_id', ids) : Promise.resolve({ data: [] }),
+      ids.length ? supabase.from('registro_ponto').select('lancamento_id,horas_trabalhadas,horas_extras,data,falta').in('lancamento_id', ids) : Promise.resolve({ data: [] }),
       ids.length ? supabase.from('ponto_producao').select('lancamento_id,valor_total,dias').in('lancamento_id', ids) : Promise.resolve({ data: [] }),
       supabase.from('feriados').select('data').gte('data', mr+'-01').lte('data', mr+'-31'),
     ])
@@ -106,13 +112,14 @@ export default function FechamentoPonto() {
     // Feriados do período
     const feriadosSet = new Set<string>((feriadosRaw ?? []).map((f: any) => f.data as string))
 
-    // Agregar horas por lançamento
-    const mapaHoras: Record<string, { norm: number; extra: number; dias: number; diasDatas: Set<string> }> = {}
+    // Agregar horas e faltas por lançamento
+    const mapaHoras: Record<string, { norm: number; extra: number; dias: number; faltas: number; diasDatas: Set<string> }> = {}
     ;(pontosRaw ?? []).forEach((p: any) => {
-      if (!mapaHoras[p.lancamento_id]) mapaHoras[p.lancamento_id] = { norm: 0, extra: 0, dias: 0, diasDatas: new Set() }
-      mapaHoras[p.lancamento_id].norm  += (p.horas_trabalhadas ?? 0)
-      mapaHoras[p.lancamento_id].extra += (p.horas_extras ?? 0)
-      mapaHoras[p.lancamento_id].dias  += 1
+      if (!mapaHoras[p.lancamento_id]) mapaHoras[p.lancamento_id] = { norm: 0, extra: 0, dias: 0, faltas: 0, diasDatas: new Set() }
+      mapaHoras[p.lancamento_id].norm   += (p.horas_trabalhadas ?? 0)
+      mapaHoras[p.lancamento_id].extra  += (p.horas_extras ?? 0)
+      mapaHoras[p.lancamento_id].dias   += 1
+      if (p.falta) mapaHoras[p.lancamento_id].faltas += 1
       if (p.data) mapaHoras[p.lancamento_id].diasDatas.add(p.data)
     })
 
@@ -146,6 +153,30 @@ export default function FechamentoPonto() {
         ? dias.filter(d => { const dow = new Date(d + 'T12:00:00').getDay(); return feriadosSet.has(d) && dow !== 0 }).length
         : 0
       return doms + ferDiasUteis
+    }
+
+    // ── Funções de cálculo de encargos ──────────────────────────────────────
+    function calcINSS(salario: number): number {
+      const base = Math.min(salario, 8475.55)
+      if (base <= 1621.00) return base * 0.075
+      if (base <= 2902.84) return base * 0.09  - 24.32
+      if (base <= 4354.27) return base * 0.12  - 111.40
+      return base * 0.14 - 198.49
+    }
+    function calcIR(salario: number, inss: number): number {
+      const base = salario - inss
+      if (base <= 2372.27) return 0
+      if (base <= 2826.65) return base * 0.075 - 177.92
+      if (base <= 3751.05) return base * 0.15  - 389.92
+      if (base <= 4664.68) return base * 0.225 - 671.25
+      return base * 0.275 - 904.48
+    }
+    function vtDia(vtDados: any): number {
+      if (!vtDados) return 0
+      const ida   = (vtDados.trechos_ida   ?? []).reduce((s: number, t: any) => s + (parseFloat(t.valor) || 0), 0)
+      const volta = (vtDados.trechos_volta ?? []).reduce((s: number, t: any) => s + (parseFloat(t.valor) || 0), 0)
+      const gasolina = vtDados.gasolina_valor_dia ?? 0
+      return vtDados.modalidade === 'gasolina' ? gasolina : (ida + volta)
     }
 
     const lista: LancItem[] = lancsRaw.map((l: any) => {
@@ -183,6 +214,19 @@ export default function FechamentoPonto() {
         valorTotal = diasComProd.size > 0 ? valorHorasSemProd + valorProd : valorHoras + valorProd
       }
 
+      // ── VT: desconto por faltas ──────────────────────────────────────────
+      const faltas     = (horasAgg as any).faltas ?? 0
+      const vtDiario   = (colab?.vale_transporte && colab?.vt_dados) ? vtDia(colab.vt_dados) : 0
+      const descontoVT = vtDiario * faltas  // desconta passagem por dia de falta
+
+      // ── INSS e IR (somente CLT, base = salário horas + DSR) ──────────────
+      const salarioCLT = valorHoras + dsr   // salário base CLT para encargos
+      const inss = tipo === 'clt' ? Math.max(0, calcINSS(salarioCLT)) : 0
+      const ir   = tipo === 'clt' ? Math.max(0, calcIR(salarioCLT, inss))  : 0
+
+      // Líquido = total a receber - desconto VT - INSS - IR
+      const liquido = valorTotal - descontoVT - inss - ir
+
       return {
         id: l.id,
         colaborador_id: l.colaborador_id,
@@ -205,6 +249,12 @@ export default function FechamentoPonto() {
         valor_premio: premio,
         valor_total: valorTotal,
         dias_trabalhados: horasAgg.dias,
+        faltas,
+        desconto_vt: descontoVT,
+        valor_vt_dia: vtDiario,
+        inss,
+        ir,
+        liquido,
       }
     })
     setLancamentos(lista)
@@ -230,6 +280,10 @@ export default function FechamentoPonto() {
       id, ...v,
       totalHoras: v.lancs.reduce((s, l) => s + l.horas_normais + l.horas_extras, 0),
       totalValor: v.lancs.reduce((s, l) => s + l.valor_total, 0),
+      totalLiquido: v.lancs.reduce((s, l) => s + l.liquido, 0),
+      totalInss: v.lancs.reduce((s, l) => s + l.inss, 0),
+      totalIr: v.lancs.reduce((s, l) => s + l.ir, 0),
+      totalVt: v.lancs.reduce((s, l) => s + l.desconto_vt, 0),
     }))
   }, [lancamentos, busca])
 
@@ -353,7 +407,8 @@ export default function FechamentoPonto() {
                       <span style={{ fontSize: 11, color: 'var(--muted-foreground)' }}>{colab.funcao} · {colab.tipo}</span>
                     </div>
                     <div style={{ fontSize: 11, color: 'var(--muted-foreground)', marginTop: 2 }}>
-                      {colab.lancs.length} lançamento(s) · {fmtHHMM(colab.totalHoras)}h · <strong>{formatCurrency(colab.totalValor)}</strong>
+                      {colab.lancs.length} lançamento(s) · {fmtHHMM(colab.totalHoras)}h · Bruto: <strong>{formatCurrency(colab.totalValor)}</strong>
+                      {colab.totalLiquido !== colab.totalValor && <> · Líquido: <strong style={{color:'#15803d'}}>{formatCurrency(colab.totalLiquido)}</strong></>}
                     </div>
                   </div>
                   {todosAprovados && (
@@ -378,7 +433,12 @@ export default function FechamentoPonto() {
                         <TableHead className="text-right" style={{color:'#0369a1'}}>DSR</TableHead>
                         <TableHead className="text-right">Produção</TableHead>
                         <TableHead className="text-right" style={{color:'#15803d'}}>Prêmio</TableHead>
-                        <TableHead className="text-right" style={{color:'#7c3aed',fontWeight:700}}>💵 Total</TableHead>
+                        <TableHead className="text-right" style={{color:'#7c3aed',fontWeight:700}}>💵 Bruto</TableHead>
+                        <TableHead className="text-center" style={{color:'#dc2626'}}>Faltas</TableHead>
+                        <TableHead className="text-right" style={{color:'#dc2626'}}>− VT</TableHead>
+                        <TableHead className="text-right" style={{color:'#dc2626'}}>− INSS</TableHead>
+                        <TableHead className="text-right" style={{color:'#dc2626'}}>− IR</TableHead>
+                        <TableHead className="text-right" style={{color:'#15803d',fontWeight:700}}>✅ Líquido</TableHead>
                         <TableHead className="text-center">Status</TableHead>
                         <TableHead></TableHead>
                       </TableRow>
@@ -404,6 +464,11 @@ export default function FechamentoPonto() {
                             <TableCell className="text-right">{lanc.valor_producao > 0 ? formatCurrency(lanc.valor_producao) : <span style={{ color: 'var(--muted-foreground)' }}>—</span>}</TableCell>
                             <TableCell className="text-right" style={{ color: '#15803d' }}>{lanc.valor_premio > 0 ? formatCurrency(lanc.valor_premio) : <span style={{ color: 'var(--muted-foreground)' }}>—</span>}</TableCell>
                             <TableCell className="text-right" style={{ fontWeight: 800, color: '#7c3aed', fontSize: 13 }}>{formatCurrency(lanc.valor_total)}</TableCell>
+                            <TableCell className="text-center" style={{ color: lanc.faltas > 0 ? '#dc2626' : 'var(--muted-foreground)' }}>{lanc.faltas > 0 ? lanc.faltas : '—'}</TableCell>
+                            <TableCell className="text-right" style={{ color: '#dc2626' }}>{lanc.desconto_vt > 0 ? <span title={`R$ ${lanc.valor_vt_dia.toFixed(2)}/dia × ${lanc.faltas} falta(s)`}>-{formatCurrency(lanc.desconto_vt)}</span> : <span style={{ color: 'var(--muted-foreground)' }}>—</span>}</TableCell>
+                            <TableCell className="text-right" style={{ color: '#dc2626' }}>{lanc.inss > 0 ? <>-{formatCurrency(lanc.inss)}</> : <span style={{ color: 'var(--muted-foreground)' }}>—</span>}</TableCell>
+                            <TableCell className="text-right" style={{ color: '#dc2626' }}>{lanc.ir > 0 ? <>-{formatCurrency(lanc.ir)}</> : <span style={{ color: 'var(--muted-foreground)' }}>—</span>}</TableCell>
+                            <TableCell className="text-right" style={{ fontWeight: 800, color: '#15803d', fontSize: 13 }}>{formatCurrency(lanc.liquido)}</TableCell>
                             <TableCell className="text-center">
                               <span style={{ ...badge, borderRadius: 10, padding: '2px 8px', fontSize: 11, fontWeight: 600, display: 'inline-block' }}>
                                 {badge.label}

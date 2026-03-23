@@ -10,7 +10,7 @@ import {
   AlertTriangle, FileText, Clock, DollarSign, Award,
   Calculator, Bus, BarChart3, Settings, LogOut, Menu,
   HardHat, ChevronLeft, ChevronRight, UserCog,
-  ClipboardList, Lock, CalendarDays } from 'lucide-react'
+  ClipboardList, Lock, CalendarDays, Briefcase } from 'lucide-react'
 
 // ── grupos de navegação ───────────────────────────────────────────────────────
 const NAV_GROUPS = [
@@ -46,6 +46,7 @@ const NAV_GROUPS = [
       { to: '/premios',        label: 'Prêmios',          icon: Award },
       { to: '/vt',             label: 'Vale Transporte',  icon: Bus },
       { to: '/provisoes',      label: 'Provisões FGTS',   icon: Calculator },
+      { to: '/encargos',       label: 'Encargos',          icon: Briefcase },
     ],
   },
   {
@@ -136,7 +137,7 @@ export function Layout({ children }: LayoutProps) {
                 // Esconde item adminOnly para não-admins
                 if (adminOnly && role !== 'admin') return null
                 // Esconde Financeiro para role=obra
-                const isFinanceiro = ['/ponto','/pagamentos','/premios','/vt','/provisoes'].includes(to)
+                const isFinanceiro = ['/ponto','/pagamentos','/premios','/vt','/provisoes','/encargos'].includes(to)
                 if (isFinanceiro && !roleMeta.canViewFinanceiro) return null
 
                 return (
