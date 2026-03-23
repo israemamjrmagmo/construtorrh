@@ -432,24 +432,25 @@ export default function Ponto() {
   },[colabSel,totalProd,totalHoras])
 
   // DSR — só para CLT
-  // Base: valor das horas EXTRAS (extras50 minutos × valorHora × 1.5)
-  // DSR = (valorExtras / diasUteis) × domingos
-  // diasUteis = Seg-Sex do PERÍODO do lançamento (não dias trabalhados)
+  // Fórmula: DSR = (totalHoras × valorHora / diasUteis) × domingos
+  // diasUteis = Seg-Sab do período · domingos = domingos + feriados
   const dsrInfo = useMemo(()=>{
     if(!colabSel||colabSel.tipo_contrato!=='clt'||valorHora===0){
-      return{valor:0,diasUteis:0,domingos:0,valorExtras:0}
+      return{valor:0,diasUteis:0,domingos:0,baseValor:0}
     }
     let totalDiasUteis=0,totalDomingos=0
     lancamentos.forEach(lanc=>{
       totalDiasUteis+=diasUteisPeriodo(lanc.data_inicio,lanc.data_fim,feriados)
       totalDomingos+=domingosFeriadosPeriodo(lanc.data_inicio,lanc.data_fim,feriados)
     })
-    const valorExtras=fmtDecimal(totaisGlobais.extras50)*valorHora*1.5
-    const dsr=totalDiasUteis>0&&totalDomingos>0
-      ? (valorExtras/totalDiasUteis)*totalDomingos
+    // Base = valor total das horas trabalhadas (normais + extras com adicional)
+    const baseValor = fmtDecimal(totaisGlobais.normais)*valorHora
+                    + fmtDecimal(totaisGlobais.extras50)*valorHora*1.5
+    const dsr = totalDiasUteis>0 && totalDomingos>0
+      ? (baseValor / totalDiasUteis) * totalDomingos
       : 0
-    return{valor:dsr,diasUteis:totalDiasUteis,domingos:totalDomingos,valorExtras}
-  },[colabSel,valorHora,lancamentos,totaisGlobais.extras50,feriados])
+    return{valor:dsr,diasUteis:totalDiasUteis,domingos:totalDomingos,baseValor}
+  },[colabSel,valorHora,lancamentos,totaisGlobais.normais,totaisGlobais.extras50,feriados])
 
   const totalReceber = useMemo(()=>{
     if(!colabSel)return totalProd
@@ -801,8 +802,8 @@ export default function Ponto() {
                 ]
                 // Card DSR — só CLT e quando há dias úteis no período
                 if(!ehAuto&&dsrInfo.diasUteis>0){
-                  const subDsr=dsrInfo.valorExtras>0
-                    ? `(${formatCurrency(dsrInfo.valorExtras)} ÷ ${dsrInfo.diasUteis} du) × ${dsrInfo.domingos} dom`
+                  const subDsr=dsrInfo.baseValor>0
+                    ? `(${formatCurrency(dsrInfo.baseValor)} ÷ ${dsrInfo.diasUteis} du) × ${dsrInfo.domingos} dom`
                     : `${dsrInfo.diasUteis} dias úteis · ${dsrInfo.domingos} domingos`
                   cards.push({label:'📅 DSR',value:dsrInfo.valor>0?formatCurrency(dsrInfo.valor):'R$ 0,00',sub:subDsr,color:'#0369a1'})
                 }
