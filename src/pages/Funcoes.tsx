@@ -357,46 +357,35 @@ export default function Funcoes() {
                         <Pencil size={14} />
                       </Button>
                       {(()=>{
-                        const v = vinculos[f.id]
-                        const qtdColabs = v?.colabs ?? 0
-                        const qtdEpis   = v?.epis   ?? 0
-                        const temVinculo = qtdColabs > 0 || qtdEpis > 0
-                        const tooltipParts: string[] = []
-                        if (qtdColabs > 0) tooltipParts.push(`${qtdColabs} colaborador${qtdColabs !== 1 ? 'es' : ''} vinculado${qtdColabs !== 1 ? 's' : ''}`)
-                        if (qtdEpis   > 0) tooltipParts.push(`${qtdEpis} EPI${qtdEpis !== 1 ? 's' : ''} vinculado${qtdEpis !== 1 ? 's' : ''}`)
-                        const tooltip = temVinculo ? `Não pode excluir: ${tooltipParts.join(' e ')}` : 'Excluir função'
-
-                        if (temVinculo) {
-                          return (
-                            <span title={tooltip} style={{ display: 'inline-flex', cursor: 'not-allowed' }}>
+                        const qtdColabs = vinculos[f.id]?.colabs ?? 0
+                        return (
+                          <>
+                            {/* Contador de colaboradores — visível, clicável para info */}
+                            {qtdColabs > 0 && (
+                              <span
+                                title={`${qtdColabs} colaborador${qtdColabs !== 1 ? 'es' : ''} vinculado${qtdColabs !== 1 ? 's' : ''} — remova-os para poder excluir`}
+                                style={{
+                                  display: 'inline-flex', alignItems: 'center', gap: 3,
+                                  fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 999,
+                                  background: 'rgba(37,99,235,0.1)', color: '#2563eb', cursor: 'default',
+                                  marginRight: 4,
+                                }}
+                              >
+                                👷 {qtdColabs}
+                              </span>
+                            )}
+                            {/* Botão excluir — oculto quando há colaboradores vinculados */}
+                            {qtdColabs === 0 && (
                               <Button
                                 variant="ghost" size="icon"
-                                className="h-8 w-8"
-                                disabled
-                                tabIndex={-1}
-                                style={{ opacity: 0.25, pointerEvents: 'none', color: '#9ca3af' }}
+                                className="h-8 w-8 text-destructive hover:text-destructive"
+                                title="Excluir função"
+                                onClick={() => setDeleteId(f.id)}
                               >
                                 <Trash2 size={14} />
                               </Button>
-                            </span>
-                          )
-                        }
-                        return (
-                          <Button
-                            variant="ghost" size="icon"
-                            className="h-8 w-8 text-destructive hover:text-destructive"
-                            title={tooltip}
-                            onClick={() => {
-                              const vv = vinculos[f.id]
-                              if ((vv?.colabs ?? 0) > 0 || (vv?.epis ?? 0) > 0) {
-                                toast.error('Não é possível excluir: há colaboradores ou EPIs vinculados.')
-                                return
-                              }
-                              setDeleteId(f.id)
-                            }}
-                          >
-                            <Trash2 size={14} />
-                          </Button>
+                            )}
+                          </>
                         )
                       })()}
                     </div>

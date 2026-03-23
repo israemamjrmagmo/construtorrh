@@ -66,7 +66,7 @@ export default function Playbooks() {
   const [searchObra, setSearchObra] = useState('')
 
   // mapa item_id → tem produção vinculada
-  const [itensComProd, setItensComProd] = useState<Set<string>>(new Set())
+  const [prodPorItem, setProdPorItem] = useState<Record<string, number>>({})
 
   // modal item
   const [modal, setModal]             = useState(false)
@@ -88,13 +88,14 @@ export default function Playbooks() {
       if (!mapa[i.obra_id]) mapa[i.obra_id] = []
       mapa[i.obra_id].push(i as PlaybookItem)
     })
-    // Itens que já têm produção lançada — não podem ser excluídos
-    const comProd = new Set<string>(
-      (prodRaw ?? []).map((p: any) => p.playbook_item_id as string).filter(Boolean)
-    )
+    // Contar produções por item
+    const contProd: Record<string, number> = {}
+    ;(prodRaw ?? []).forEach((p: any) => {
+      if (p.playbook_item_id) contProd[p.playbook_item_id] = (contProd[p.playbook_item_id] ?? 0) + 1
+    })
     setObras((obrasRaw ?? []) as Obra[])
     setItensMap(mapa)
-    setItensComProd(comProd)
+    setProdPorItem(contProd)
     setLoading(false)
   }, [])
 
@@ -143,6 +144,13 @@ export default function Playbooks() {
   async function handleDelete() {
     if (!deleteTarget) return
     // Verificação server-side: produção lançada vinculada?
+    // Barreira 1: estado local
+    if ((prodPorItem[deleteTarget.id] ?? 0) > 0) {
+      toast.error('Não é possível excluir: há produção lançada vinculada a este serviço.')
+      setDeleteTarget(null)
+      return
+    }
+    // Barreira 2: server-side
     const { data: prodVinc } = await supabase
       .from('ponto_producao')
       .select('id')
@@ -386,20 +394,30 @@ export default function Playbooks() {
                                     </Button>
                                   )}
                                   {canDelete && (
-                                    itensComProd.has(item.id) ? (
-                                      <span title="Não pode excluir: há produção lançada vinculada a este serviço" style={{ display: 'inline-flex', cursor: 'not-allowed' }}>
-                                        <Button variant="ghost" size="icon" disabled tabIndex={-1}
-                                          style={{ width: 30, height: 30, opacity: 0.25, pointerEvents: 'none', color: '#9ca3af' }}>
+                                    <>
+                                      {/* Badge contador de produções — visível quando há lançamentos */}
+                                      {(prodPorItem[item.id] ?? 0) > 0 && (
+                                        <span
+                                          title={`${prodPorItem[item.id]} produção${prodPorItem[item.id] !== 1 ? 'ões' : ''} lançada${prodPorItem[item.id] !== 1 ? 's' : ''} — remova os lançamentos para excluir`}
+                                          style={{
+                                            fontSize: 10, fontWeight: 700, padding: '1px 6px',
+                                            borderRadius: 999, background: 'rgba(180,83,9,0.12)',
+                                            color: '#b45309', cursor: 'default',
+                                          }}
+                                        >
+                                          🏗️ {prodPorItem[item.id]}
+                                        </span>
+                                      )}
+                                      {/* Botão excluir — OCULTO quando há produções lançadas */}
+                                      {(prodPorItem[item.id] ?? 0) === 0 && (
+                                        <Button variant="ghost" size="icon"
+                                          style={{ width: 30, height: 30, color: '#dc2626' }}
+                                          title="Excluir serviço"
+                                          onClick={() => setDeleteTarget(item)}>
                                           <Trash2 size={13} />
                                         </Button>
-                                      </span>
-                                    ) : (
-                                      <Button variant="ghost" size="icon" style={{ width: 30, height: 30, color: '#dc2626' }}
-                                        title="Excluir serviço"
-                                        onClick={() => setDeleteTarget(item)}>
-                                        <Trash2 size={13} />
-                                      </Button>
-                                    )
+                                      )}
+                                    </>
                                   )}
                                 </div>
                               </TableCell>
