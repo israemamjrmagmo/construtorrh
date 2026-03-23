@@ -445,12 +445,9 @@ export default function FechamentoPonto() {
                         const badge = STATUS_BADGE[lanc.status] ?? { bg: '#f3f4f6', color: '#6b7280', label: lanc.status }
                         const ehCLT = lanc.tipo_contrato === 'clt'
 
-                        // Composição do salário em texto
-                        const partesSal: string[] = []
-                        if (lanc.valor_horas > 0) partesSal.push(`Horas: ${formatCurrency(lanc.valor_horas)}`)
-                        if (ehCLT && lanc.valor_dsr > 0) partesSal.push(`DSR: ${formatCurrency(lanc.valor_dsr)}`)
-                        if (ehCLT && lanc.valor_premio > 0) partesSal.push(`Prêmio: ${formatCurrency(lanc.valor_premio)}`)
-                        if (!ehCLT && lanc.valor_producao > 0) partesSal.push(`Prod: ${formatCurrency(lanc.valor_producao)}`)
+                        // Valores pré-calculados para composição
+                        const salarioBase = lanc.valor_horas + lanc.valor_dsr   // CLT: base p/ descontos
+
 
                         return (
                           <TableRow key={lanc.id}>
@@ -467,19 +464,38 @@ export default function FechamentoPonto() {
                             <TableCell className="text-right" style={{ fontFamily: 'monospace', fontSize: 11 }}>{fmtHHMM(lanc.horas_normais)}</TableCell>
 
                             {/* ── Composição do Salário ── */}
-                            <TableCell style={{ minWidth: 260 }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap', fontSize: 11 }}>
-                                {partesSal.map((p, i) => (
-                                  <span key={i} style={{ color: 'var(--muted-foreground)' }}>
-                                    {i > 0 && <span style={{ margin: '0 3px', color: '#9ca3af' }}>+</span>}
-                                    {p}
-                                  </span>
-                                ))}
-                                <span style={{ margin: '0 4px', color: '#9ca3af', fontWeight: 700 }}>=</span>
-                                <span style={{ fontWeight: 800, color: '#7c3aed', fontSize: 12 }}>
-                                  {formatCurrency(lanc.valor_total)}
-                                </span>
-                              </div>
+                            <TableCell style={{ minWidth: 300 }}>
+                              {ehCLT ? (
+                                // CLT: Salário: (Horas + DSR) [+ Prêmio] = Total
+                                <div style={{ fontSize: 11, lineHeight: 1.6 }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'wrap' }}>
+                                    <span style={{ color: '#6b7280' }}>Salário:</span>
+                                    <span style={{ color: '#0369a1' }}>
+                                      {formatCurrency(salarioBase)}
+                                    </span>
+                                    <span style={{ color: '#9ca3af', fontSize: 10 }}>
+                                      ({formatCurrency(lanc.valor_horas)} + {formatCurrency(lanc.valor_dsr)})
+                                    </span>
+                                    {lanc.valor_premio > 0 && <>
+                                      <span style={{ color: '#9ca3af', margin: '0 2px' }}>+</span>
+                                      <span style={{ color: '#15803d' }}>Prêmio: {formatCurrency(lanc.valor_premio)}</span>
+                                    </>}
+                                    <span style={{ color: '#9ca3af', fontWeight: 700, margin: '0 3px' }}>=</span>
+                                    <span style={{ fontWeight: 800, color: '#7c3aed' }}>{formatCurrency(lanc.valor_total)}</span>
+                                  </div>
+                                </div>
+                              ) : (
+                                // Autônomo: Horas: R$ X + Prod: R$ Y = Total
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'wrap', fontSize: 11 }}>
+                                  {lanc.valor_horas > 0 && <span style={{ color: '#6b7280' }}>Horas: <span style={{ color: '#1d4ed8' }}>{formatCurrency(lanc.valor_horas)}</span></span>}
+                                  {lanc.valor_producao > 0 && <>
+                                    {lanc.valor_horas > 0 && <span style={{ color: '#9ca3af' }}>+</span>}
+                                    <span style={{ color: '#6b7280' }}>Prod: <span style={{ color: '#b45309' }}>{formatCurrency(lanc.valor_producao)}</span></span>
+                                  </>}
+                                  <span style={{ color: '#9ca3af', fontWeight: 700, margin: '0 3px' }}>=</span>
+                                  <span style={{ fontWeight: 800, color: '#7c3aed' }}>{formatCurrency(lanc.valor_total)}</span>
+                                </div>
+                              )}
                             </TableCell>
 
                             {/* ── Descontos ── */}
