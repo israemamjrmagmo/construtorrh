@@ -67,6 +67,18 @@ function expandRange(inicio:string,fim:string):string[] {
   return dias
 }
 
+// DSR helpers ──────────────────────────────────────────────────────────────
+// Dias úteis = Seg-Sex do período (independente de presença)
+function diasUteisPeriodo(inicio:string,fim:string):number {
+  const dias=expandRange(inicio,fim)
+  return dias.filter(d=>{ const dow=new Date(d+'T12:00:00').getDay(); return dow>=1&&dow<=5 }).length
+}
+// Domingos do período (feriados precisariam de tabela; usando Domingos por ora)
+function domingosPeriodo(inicio:string,fim:string):number {
+  const dias=expandRange(inicio,fim)
+  return dias.filter(d=>new Date(d+'T12:00:00').getDay()===0).length
+}
+
 function calcDia(d:DiaRegistro):{normais:number;extras50:number;total:number} {
   if(!d.presente||d.falta)return{normais:0,extras50:0,total:0}
   const isSab=new Date(d.data+'T12:00:00').getDay()===6
@@ -391,13 +403,33 @@ export default function Ponto() {
     return excedente>0?excedente:0
   },[colabSel,totalProd,totalHoras])
 
+  // DSR — só para CLT
+  // Base: valor das horas EXTRAS (extras50 minutos × valorHora × 1.5)
+  // DSR = (valorExtras / diasUteis) × domingos
+  // diasUteis = Seg-Sex do PERÍODO do lançamento (não dias trabalhados)
+  const dsrInfo = useMemo(()=>{
+    if(!colabSel||colabSel.tipo_contrato!=='clt'||valorHora===0){
+      return{valor:0,diasUteis:0,domingos:0,valorExtras:0}
+    }
+    let totalDiasUteis=0,totalDomingos=0
+    lancamentos.forEach(lanc=>{
+      totalDiasUteis+=diasUteisPeriodo(lanc.data_inicio,lanc.data_fim)
+      totalDomingos+=domingosPeriodo(lanc.data_inicio,lanc.data_fim)
+    })
+    const valorExtras=fmtDecimal(totaisGlobais.extras50)*valorHora*1.5
+    const dsr=totalDiasUteis>0&&totalDomingos>0
+      ? (valorExtras/totalDiasUteis)*totalDomingos
+      : 0
+    return{valor:dsr,diasUteis:totalDiasUteis,domingos:totalDomingos,valorExtras}
+  },[colabSel,valorHora,lancamentos,totaisGlobais.extras50])
+
   const totalReceber = useMemo(()=>{
     if(!colabSel)return totalProd
     if(colabSel.tipo_contrato==='autonomo'||colabSel.tipo_contrato==='pj'){
       return horasAutonomoSemProd + totalProd
     }
-    return totalHoras + premioCLT
-  },[colabSel,horasAutonomoSemProd,totalProd,totalHoras,premioCLT])
+    return totalHoras + premioCLT + dsrInfo.valor
+  },[colabSel,horasAutonomoSemProd,totalProd,totalHoras,premioCLT,dsrInfo])
 
   // ── Toggle dia ────────────────────────────────────────────────────────────
   function togglePresente(lancId:string,idx:number,colab:ColabSimples){
@@ -716,21 +748,37 @@ export default function Ponto() {
             {/* Linha 2: cards de totais */}
             <div style={{display:'flex',gap:1,borderTop:'1px solid var(--border)',background:'var(--muted)',flexWrap:'wrap'}}>
               {(()=>{
+                const ehAuto=colabSel.tipo_contrato==='autonomo'||colabSel.tipo_contrato==='pj'
                 // Média produção por dia trabalhado (total presentes, não só dias de prod)
                 const diasProd=diasComProd.size
                 const subProd=totalProd>0&&diasProd>0
                   ? `≈ ${formatCurrency(totalProd/diasProd)}/dia (${diasProd} dia${diasProd!==1?'s':''})`
                   : producoes.length>0?`${producoes.length} lançamento${producoes.length!==1?'s':''}`:'Nenhuma produção'
                 // Sub do total a receber
-                const subReceber=premioCLT>0
-                  ? `Salário: ${formatCurrency(totalHoras)} + Prêmio: ${formatCurrency(premioCLT)}`
-                  : totalHoras>0?`${colabSel.tipo_contrato==='clt'?'CLT':'Autônomo'}: R$ ${valorHora.toFixed(2)}/h`:'Sem valor/hora'
+                const subReceber=ehAuto
+                  ? (totalProd>0||horasAutonomoSemProd>0
+                      ? `Horas: ${formatCurrency(horasAutonomoSemProd)} + Prod: ${formatCurrency(totalProd)}`
+                      : `Autônomo: R$ ${valorHora.toFixed(2)}/h`)
+                  : (()=>{
+                      const partes:string[]=[]
+                      if(totalHoras>0) partes.push(`Salário: ${formatCurrency(totalHoras)}`)
+                      if(premioCLT>0) partes.push(`Prêmio: ${formatCurrency(premioCLT)}`)
+                      if(dsrInfo.valor>0) partes.push(`DSR: ${formatCurrency(dsrInfo.valor)}`)
+                      return partes.length>0?partes.join(' + '):'Sem valor/hora cadastrado'
+                    })()
                 const cards=[
                   {label:'⏱ Total de Horas',value:fmtHHMM(totaisGlobais.total),sub:`${fmtHHMM(totaisGlobais.normais)} norm + ${fmtHHMM(totaisGlobais.extras50)} extras`,color:'#1d4ed8'},
                   {label:'💰 Valor das Horas',value:valorHora>0?`R$ ${valorHora.toFixed(2)}/h`:'Sem tabela',sub:valorHora>0?formatCurrency(totalHoras)+' no período':'Cadastre em Funções → valor/hora',color:valorHora>0?'#15803d':'#9ca3af'},
                   {label:'🏗️ Produção',value:totalProd>0?formatCurrency(totalProd):'—',sub:subProd,color:'#b45309'},
-                  {label:'💵 Total a Receber',value:formatCurrency(totalReceber),sub:subReceber,color:'#7c3aed'},
                 ]
+                // Card DSR — só CLT e quando há dias úteis no período
+                if(!ehAuto&&dsrInfo.diasUteis>0){
+                  const subDsr=dsrInfo.valorExtras>0
+                    ? `(${formatCurrency(dsrInfo.valorExtras)} ÷ ${dsrInfo.diasUteis} du) × ${dsrInfo.domingos} dom`
+                    : `${dsrInfo.diasUteis} dias úteis · ${dsrInfo.domingos} domingos`
+                  cards.push({label:'📅 DSR',value:dsrInfo.valor>0?formatCurrency(dsrInfo.valor):'R$ 0,00',sub:subDsr,color:'#0369a1'})
+                }
+                cards.push({label:'💵 Total a Receber',value:formatCurrency(totalReceber),sub:subReceber,color:'#7c3aed'})
                 return cards
               })().map(card=>(
                 <div key={card.label} style={{flex:1,minWidth:120,padding:'8px 12px',textAlign:'center',borderRight:'1px solid var(--border)'}}>
@@ -991,9 +1039,15 @@ export default function Ponto() {
                                     {totalProdLancamento>0&&<span style={{display:'block',fontSize:9,opacity:0.8}}>+{formatCurrency(totalProdLancamento)} prod</span>}
                                   </span>
                                 }
-                                // CLT: mostra só horas (prêmio aparece no card global)
-                                return <span title={`Horas: ${formatCurrency(vHoras)}`}>
-                                  {formatCurrency(vHoras)}
+                                // CLT: horas + DSR proporcional do lançamento
+                                const duLanc=diasUteisPeriodo(lanc.data_inicio,lanc.data_fim)
+                                const domLanc=domingosPeriodo(lanc.data_inicio,lanc.data_fim)
+                                const extrasLanc=fmtDecimal(tot.extras50)*valorHora*1.5
+                                const dsrLanc=duLanc>0&&domLanc>0&&extrasLanc>0?(extrasLanc/duLanc)*domLanc:0
+                                const totalLanc=vHoras+dsrLanc
+                                return <span title={`Horas: ${formatCurrency(vHoras)}${dsrLanc>0?' + DSR: '+formatCurrency(dsrLanc):''}`}>
+                                  {formatCurrency(totalLanc)}
+                                  {dsrLanc>0&&<span style={{display:'block',fontSize:9,opacity:0.8}}>+{formatCurrency(dsrLanc)} DSR</span>}
                                 </span>
                               })()}
                             </td>
