@@ -177,53 +177,31 @@ export default function Funcoes() {
   // ── delete ────────────────────────────────────────────────────────────────
   const handleDelete = async () => {
     if (!deleteId) return
-
-    // ── Barreira 0: vinculos ainda não carregados → aborta por segurança ──
-    if (!vinculosReady) {
-      toast.error('Aguarde o carregamento dos dados antes de excluir.')
-      setDeleteId(null)
-      return
-    }
-
-    // ── Barreira 1: estado local (síncrono — bloqueia ANTES de qualquer await) ──
-    const vLocal = vinculos[deleteId]
-    if ((vLocal?.colabs ?? 0) > 0 || (vLocal?.epis ?? 0) > 0) {
-      toast.error('Não é possível excluir: há colaboradores ou EPIs vinculados. Desvincule primeiro.')
-      setDeleteId(null)
-      return
-    }
-
     setDeleting(true)
 
-    // ── Barreira 2: verificação server-side (SELECT real, não count) ──
-    const [{ data: colabsVinc }, { data: episVinc }] = await Promise.all([
-      supabase.from('colaboradores').select('id').eq('funcao_id', deleteId).limit(1),
-      supabase.from('funcao_epi').select('id').eq('funcao_id', deleteId).limit(1),
-    ])
-    const temColabs = (colabsVinc?.length ?? 0) > 0
-    const temEpis   = (episVinc?.length   ?? 0) > 0
+    // 1. Verificar server-side se ainda há colaboradores
+    const { data: colabsVinc } = await supabase
+      .from('colaboradores').select('id').eq('funcao_id', deleteId).limit(1)
 
-    if (temColabs || temEpis) {
-      const partes: string[] = []
-      if (temColabs) partes.push('colaboradores vinculados')
-      if (temEpis)   partes.push('EPIs vinculados')
-      toast.error(`Não é possível excluir: há ${partes.join(' e ')}. Desvincule primeiro.`)
+    if ((colabsVinc?.length ?? 0) > 0) {
+      toast.error('Não é possível excluir: há colaboradores vinculados a esta função.')
       setDeleting(false)
       setDeleteId(null)
-      fetchData() // atualiza badges na UI
-      return
-    }
-
-    // ── Barreira 3: executa DELETE ──
-    const { error } = await supabase.from('funcoes').delete().eq('id', deleteId)
-    setDeleting(false)
-    setDeleteId(null)
-    if (error) {
-      // Qualquer FK restante vira mensagem amigável — jamais chega ao usuário como erro técnico
-      toast.error('Não é possível excluir: esta função está vinculada a registros no sistema.')
       fetchData()
       return
     }
+
+    // 2. Executar DELETE
+    const { error } = await supabase.from('funcoes').delete().eq('id', deleteId)
+    setDeleting(false)
+    setDeleteId(null)
+
+    if (error) {
+      toast.error('Não é possível excluir: função vinculada a registros no sistema.')
+      fetchData()
+      return
+    }
+
     toast.success('Função excluída!')
     fetchData()
   }
@@ -560,34 +538,27 @@ export default function Funcoes() {
         </DialogContent>
       </Dialog>
 
-      {/* AlertDialog de exclusão */}
+      {/* AlertDialog de exclusão — usa Dialog simples para ter controle total sobre o botão */}
       <AlertDialog open={!!deleteId} onOpenChange={open => !open && setDeleteId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Excluir função?</AlertDialogTitle>
             <AlertDialogDescription>
-              {(()=>{
-                if (!deleteId) return 'Esta ação não pode ser desfeita.'
-                const v = vinculos[deleteId]
-                const parts: string[] = []
-                if ((v?.colabs ?? 0) > 0) parts.push(`${v.colabs} colaborador${v.colabs !== 1 ? 'es' : ''} vinculado${v.colabs !== 1 ? 's' : ''}`)
-                if ((v?.epis   ?? 0) > 0) parts.push(`${v.epis} EPI${v.epis !== 1 ? 's' : ''} vinculado${v.epis !== 1 ? 's' : ''}`)
-                if (parts.length > 0) {
-                  return `⛔ Não é possível excluir: há ${parts.join(' e ')}. Desvincule primeiro.`
-                }
-                return 'Esta ação não pode ser desfeita.'
-              })()}
+              Esta ação não pode ser desfeita.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
+            {/* AlertDialogCancel fecha o diálogo normalmente */}
             <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
+
+            {/* Button normal — NÃO AlertDialogAction (o Radix ignora disabled nele) */}
+            <Button
+              variant="destructive"
+              disabled={deleting}
               onClick={handleDelete}
-              disabled={deleting || (deleteId ? ((vinculos[deleteId]?.colabs ?? 0) > 0 || (vinculos[deleteId]?.epis ?? 0) > 0) : false)}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {deleting ? 'Excluindo…' : 'Excluir'}
-            </AlertDialogAction>
+            </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
