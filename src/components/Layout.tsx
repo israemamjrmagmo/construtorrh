@@ -10,7 +10,7 @@ import {
   AlertTriangle, FileText, Clock, DollarSign, Award,
   Calculator, Bus, BarChart3, Settings, LogOut, Menu,
   HardHat, ChevronLeft, ChevronRight, UserCog,
-  ClipboardList, Lock } from 'lucide-react'
+  ClipboardList, Lock, CalendarDays } from 'lucide-react'
 
 // ── grupos de navegação ───────────────────────────────────────────────────────
 const NAV_GROUPS = [
@@ -26,6 +26,7 @@ const NAV_GROUPS = [
       { to: '/colaboradores',  label: 'Colaboradores',  icon: Users },
       { to: '/obras',          label: 'Obras',          icon: Building2 },
       { to: '/playbooks',      label: 'Playbooks',      icon: ClipboardList },
+      { to: '/feriados',       label: 'Feriados',       icon: CalendarDays },
     ],
   },
   {

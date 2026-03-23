@@ -24,6 +24,7 @@ const Provisoes      = React.lazy(() => import('@/pages/Provisoes'))
 const Relatorios     = React.lazy(() => import('@/pages/Relatorios'))
 const Configuracoes  = React.lazy(() => import('@/pages/Configuracoes'))
 const Playbooks         = React.lazy(() => import('@/pages/Playbooks'))
+const Feriados          = React.lazy(() => import('@/pages/Feriados'))
 const FechamentoPonto   = React.lazy(() => import('@/pages/FechamentoPonto'))
 const Usuarios       = React.lazy(() => import('@/pages/Usuarios'))
 
@@ -111,6 +112,16 @@ export default function App() {
                   <PrivateRoute>
                     <Layout>
                       <Playbooks />
+                    </Layout>
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/feriados"
+                element={
+                  <PrivateRoute>
+                    <Layout>
+                      <Feriados />
                     </Layout>
                   </PrivateRoute>
                 }
