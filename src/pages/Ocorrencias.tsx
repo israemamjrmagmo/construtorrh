@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/table'
 import { Plus, Pencil, Trash2, Stethoscope, AlertTriangle, FileWarning, Upload, FileText, X, ExternalLink, Link2 } from 'lucide-react'
 import { useProfile } from '@/hooks/useProfile'
+import { traduzirErro } from '@/lib/erros'
 
 // ─── TYPES ────────────────────────────────────────────────────────────────────
 type Colaborador = { id: string; nome: string; chapa: string }
@@ -363,7 +364,7 @@ export default function Ocorrencias() {
     if (!atestDeleteId) return
     const { error } = await supabase.from('atestados').delete().eq('id', atestDeleteId)
     setAtestDeleteId(null)
-    if (error) { toast.error(error.message); return }
+    if (error) { toast.error(traduzirErro(error.message)); return }
     toast.success('Atestado excluído'); fetchAtestados()
   }
 
@@ -409,7 +410,7 @@ export default function Ocorrencias() {
     if (!acidDeleteId) return
     const { error } = await supabase.from('acidentes').delete().eq('id', acidDeleteId)
     setAcidDeleteId(null)
-    if (error) { toast.error(error.message); return }
+    if (error) { toast.error(traduzirErro(error.message)); return }
     toast.success('Acidente excluído'); fetchAcidentes()
   }
 
@@ -453,7 +454,7 @@ export default function Ocorrencias() {
     if (!advDeleteId) return
     const { error } = await supabase.from('advertencias').delete().eq('id', advDeleteId)
     setAdvDeleteId(null)
-    if (error) { toast.error(error.message); return }
+    if (error) { toast.error(traduzirErro(error.message)); return }
     toast.success('Advertência excluída'); fetchAdvertencias()
   }
 

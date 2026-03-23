@@ -23,6 +23,7 @@ import {
   Calendar, Users, X, ChevronRight,
 } from 'lucide-react'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { traduzirErro } from '@/lib/erros'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 type ObraWithCount = Obra & { colaboradores_count?: number; has_horarios?: boolean }
@@ -196,7 +197,7 @@ export default function Obras() {
     let obraId = editId
     if (editId) {
       const { error } = await supabase.from('obras').update(payload).eq('id', editId)
-      if (error) { toast.error(error.message); setSaving(false); return }
+      if (error) { toast.error(traduzirErro(error.message)); setSaving(false); return }
     } else {
       const { data, error } = await supabase.from('obras').insert(payload).select('id').single()
       if (error || !data) { toast.error(error?.message ?? 'Erro'); setSaving(false); return }
@@ -248,7 +249,7 @@ export default function Obras() {
     setDeleting(true)
     const { error } = await supabase.from('obras').delete().eq('id', deleteId)
     setDeleting(false); setDeleteId(null)
-    if (error) { toast.error(error.message); return }
+    if (error) { toast.error(traduzirErro(error.message)); return }
     toast.success('Obra excluída!'); fetchData()
   }
 

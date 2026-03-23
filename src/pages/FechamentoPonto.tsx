@@ -9,6 +9,7 @@ import { formatCurrency } from '@/lib/utils'
 import { PageHeader, EmptyState, LoadingSkeleton } from '@/components/Shared'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { traduzirErro } from '@/lib/erros'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'

@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/select'
 import { toast } from 'sonner'
 import { Bus, Plus, Search, Pencil, Trash2 } from 'lucide-react'
+import { traduzirErro } from '@/lib/erros'
 
 // ─── tipos ───────────────────────────────────────────────────────────────────
 type ColaboradorComSalario = Pick<Colaborador, 'id' | 'nome' | 'chapa' | 'salario'>

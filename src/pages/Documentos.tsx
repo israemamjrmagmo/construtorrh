@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { FileText, ExternalLink, Search, Plus, Upload, X, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
+import { traduzirErro } from '@/lib/erros'
 
 type Colaborador = { id: string; nome: string; chapa: string }
 
@@ -192,7 +193,7 @@ export default function Documentos() {
       documento_url: form.documento_url, documento_nome: form.documento_nome,
     })
     setSaving(false)
-    if (error) { toast.error(error.message); return }
+    if (error) { toast.error(traduzirErro(error.message)); return }
     toast.success('Documento adicionado!')
     setModalOpen(false); setForm(EMPTY_FORM); fetchAll()
   }
@@ -202,7 +203,7 @@ export default function Documentos() {
     if (!deleteId || deleteSource !== 'avulso') return
     const { error } = await supabase.from('documentos_avulsos').delete().eq('id', deleteId)
     setDeleteId(null)
-    if (error) { toast.error(error.message); return }
+    if (error) { toast.error(traduzirErro(error.message)); return }
     toast.success('Documento excluído'); fetchAll()
   }
 

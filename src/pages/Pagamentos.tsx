@@ -21,6 +21,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import { toast } from 'sonner'
+import { traduzirErro } from '@/lib/erros'
 import {
   DollarSign, Plus, Search, Pencil, Trash2, CheckCircle,
 } from 'lucide-react'

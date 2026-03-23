@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Briefcase, Plus, Search, Pencil, Trash2, Clock, Tag } from 'lucide-react'
 import { toast } from 'sonner'
+import { traduzirErro } from '@/lib/erros'
 
 // ─── tipos ────────────────────────────────────────────────────────────────────
 const CATEGORIAS_FUNCAO = [
@@ -168,7 +169,7 @@ export default function Funcoes() {
       : await supabase.from('funcoes').insert(payload)
 
     setSaving(false)
-    if (error) { toast.error(error.message); return }
+    if (error) { toast.error(traduzirErro(error.message)); return }
     toast.success(editId ? 'Função atualizada!' : 'Função criada!')
     setModalOpen(false)
     fetchData()

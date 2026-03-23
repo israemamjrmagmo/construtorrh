@@ -21,6 +21,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
 import { useProfile } from '@/hooks/useProfile'
+import { traduzirErro } from '@/lib/erros'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 

@@ -20,6 +20,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
 import { useProfile } from '@/hooks/useProfile'
+import { traduzirErro } from '@/lib/erros'
 
 interface Feriado {
   id: string
@@ -103,7 +104,7 @@ export default function Feriados() {
       ? await supabase.from('feriados').update(form).eq('id', editId)
       : await supabase.from('feriados').insert(form)
     setSaving(false)
-    if (error) { toast.error(error.message); return }
+    if (error) { toast.error(traduzirErro(error.message)); return }
     toast.success(editId ? 'Feriado atualizado!' : 'Feriado criado!')
     setModal(false)
     fetchData()
@@ -116,7 +117,7 @@ export default function Feriados() {
     const { error } = await supabase.from('feriados').delete().eq('id', deleteId)
     setDeleting(false)
     setDeleteId(null)
-    if (error) { toast.error(error.message); return }
+    if (error) { toast.error(traduzirErro(error.message)); return }
     toast.success('Feriado excluído!')
     fetchData()
   }

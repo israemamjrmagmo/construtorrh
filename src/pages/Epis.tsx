@@ -27,6 +27,7 @@ import { toast } from 'sonner'
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import JSZip from 'jszip'
+import { traduzirErro } from '@/lib/erros'
 
 // ─── tipos ────────────────────────────────────────────────────────────────────
 
@@ -327,7 +328,7 @@ export default function Epis() {
       .select('*')
       .order('nome')
     setLoadingEpis(false)
-    if (error) { toast.error(error.message); return }
+    if (error) { toast.error(traduzirErro(error.message)); return }
     setEpis(data ?? [])
   }, [])
 
@@ -340,7 +341,7 @@ export default function Epis() {
       .eq('ativo', true)
       .order('nome')
     setLoadingFuncoes(false)
-    if (error) { toast.error(error.message); return }
+    if (error) { toast.error(traduzirErro(error.message)); return }
     setFuncoes((data as Funcao[]) ?? [])
   }, [])
 
@@ -366,7 +367,7 @@ export default function Epis() {
       .select('*, epi_catalogo(id, nome, categoria, requer_tamanho, requer_numero)')
       .eq('funcao_id', funcaoId)
     setLoadingVinculos(false)
-    if (error) { toast.error(error.message); return }
+    if (error) { toast.error(traduzirErro(error.message)); return }
     setVinculos((data as FuncaoEpi[]) ?? [])
   }, [])
 
@@ -379,7 +380,7 @@ export default function Epis() {
       .eq('status', 'ativo')
       .order('nome')
     setLoadingColaboradores(false)
-    if (error) { toast.error(error.message); return }
+    if (error) { toast.error(traduzirErro(error.message)); return }
     setColaboradores((data as Colaborador[]) ?? [])
   }, [])
 
@@ -391,7 +392,7 @@ export default function Epis() {
       .select('id, nome')
       .order('nome')
     setLoadingObras(false)
-    if (error) { toast.error(error.message); return }
+    if (error) { toast.error(traduzirErro(error.message)); return }
     setObras((data as Obra[]) ?? [])
   }, [])
 
@@ -461,7 +462,7 @@ export default function Epis() {
       ? await supabase.from('epi_catalogo').update(payload).eq('id', editId)
       : await supabase.from('epi_catalogo').insert(payload)
     setSaving(false)
-    if (error) { toast.error(error.message); return }
+    if (error) { toast.error(traduzirErro(error.message)); return }
     toast.success(editId ? 'EPI atualizado!' : 'EPI cadastrado!')
     setModalOpen(false)
     fetchEpis()
@@ -474,7 +475,7 @@ export default function Epis() {
     const { error } = await supabase.from('epi_catalogo').delete().eq('id', deleteId)
     setDeleting(false)
     setDeleteId(null)
-    if (error) { toast.error(error.message); return }
+    if (error) { toast.error(traduzirErro(error.message)); return }
     toast.success('EPI excluído!')
     fetchEpis()
   }
@@ -491,7 +492,7 @@ export default function Epis() {
       quantidade: parseInt(vinculoForm.quantidade, 10) || 1,
     })
     setSavingVinculo(false)
-    if (error) { toast.error(error.message); return }
+    if (error) { toast.error(traduzirErro(error.message)); return }
     toast.success('EPI vinculado à função!')
     setVinculoModalOpen(false)
     setVinculoForm(EMPTY_VINCULO_FORM)
@@ -528,7 +529,7 @@ export default function Epis() {
     const { error } = await supabase.from('funcao_epi').delete().eq('id', deleteVinculoId)
     setDeletingVinculo(false)
     setDeleteVinculoId(null)
-    if (error) { toast.error(error.message); return }
+    if (error) { toast.error(traduzirErro(error.message)); return }
     toast.success('Vínculo removido!')
     if (funcaoSelecionada) fetchVinculos(funcaoSelecionada.id)
     fetchEpisPorFuncao()
@@ -587,7 +588,7 @@ export default function Epis() {
         .from('colaborador_epi')
         .select('*, epi_catalogo(id, nome, categoria), colaboradores(id, nome, chapa)')
         .eq('colaborador_id', colaboradorSelecionado)
-      if (error) { toast.error(error.message); setLoadingItens(false); return }
+      if (error) { toast.error(traduzirErro(error.message)); setLoadingItens(false); return }
       rawData = (data as ColaboradorEpi[]) ?? []
     } else {
       // Por obra: busca todos os colaboradores da obra
@@ -603,7 +604,7 @@ export default function Epis() {
           .from('colaborador_epi')
           .select('*, epi_catalogo(id, nome, categoria), colaboradores(id, nome, chapa)')
           .in('colaborador_id', ids)
-        if (error) { toast.error(error.message); setLoadingItens(false); return }
+        if (error) { toast.error(traduzirErro(error.message)); setLoadingItens(false); return }
         rawData = (data as ColaboradorEpi[]) ?? []
       }
     }
@@ -635,7 +636,7 @@ export default function Epis() {
     const { error } = await supabase.from('funcao_epi').delete().in('id', ids)
     setExcluindoTodos(false)
     setExcluirTodosOpen(false)
-    if (error) { toast.error(error.message); return }
+    if (error) { toast.error(traduzirErro(error.message)); return }
     toast.success(`${ids.length} EPI${ids.length !== 1 ? 's removidos' : ' removido'} com sucesso!`)
     fetchVinculos(funcaoSelecionada.id)
     fetchEpisPorFuncao()

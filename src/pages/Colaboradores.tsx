@@ -26,6 +26,7 @@ import {
   Briefcase, Tag, Clock, AlertTriangle, CheckCircle2,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { traduzirErro } from '@/lib/erros'
 
 // ─── tipos ────────────────────────────────────────────────────────────────────
 type ColaboradorRow = Colaborador & {
@@ -231,7 +232,7 @@ function FuncoesTab() {
       ? await supabase.from('funcoes').update(payload).eq('id', editId)
       : await supabase.from('funcoes').insert(payload)
     setSaving(false)
-    if (error) { toast.error(error.message); return }
+    if (error) { toast.error(traduzirErro(error.message)); return }
     toast.success(editId ? 'Função atualizada!' : 'Função criada!')
     setModal(false); load()
   }
@@ -240,7 +241,7 @@ function FuncoesTab() {
     if (!deleteId) return
     const { error } = await supabase.from('funcoes').delete().eq('id', deleteId)
     setDeleteId(null)
-    if (error) { toast.error(error.message); return }
+    if (error) { toast.error(traduzirErro(error.message)); return }
     toast.success('Função excluída!'); load()
   }
 
@@ -830,7 +831,7 @@ export default function Colaboradores() {
 
     if (editId) {
       const { error } = await supabase.from('colaboradores').update(payloadFull).eq('id', editId)
-      if (error) { toast.error(error.message); setSaving(false); return }
+      if (error) { toast.error(traduzirErro(error.message)); setSaving(false); return }
     } else {
       const { data: inserted, error } = await supabase
         .from('colaboradores').insert(payloadFull).select('id').single()
@@ -889,7 +890,7 @@ export default function Colaboradores() {
     if (!deleteId) return
     const { error } = await supabase.from('colaboradores').delete().eq('id', deleteId)
     setDeleteId(null)
-    if (error) { toast.error(error.message); return }
+    if (error) { toast.error(traduzirErro(error.message)); return }
     toast.success('Colaborador excluído!'); fetchData()
   }
 

@@ -16,6 +16,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
 import { Pencil, UserPlus, ShieldCheck, ShieldX, Check, X } from 'lucide-react'
+import { traduzirErro } from '@/lib/erros'
 
 type UserRow = {
   id: string
@@ -140,7 +141,7 @@ export default function Usuarios() {
       nome: editNome, role: editRole, ativo: editAtivo,
     }).eq('id', editUser.id)
     setEditSaving(false)
-    if (error) { toast.error(error.message); return }
+    if (error) { toast.error(traduzirErro(error.message)); return }
     toast.success('Usuário atualizado!')
     setEditUser(null)
     fetchUsers()
