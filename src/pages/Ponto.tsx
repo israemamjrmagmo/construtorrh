@@ -425,12 +425,6 @@ export default function Ponto() {
     return fmtDecimal(min)*valorHora
   },[diasMap,diasComProd,valorHora])
 
-  const premioCLT = useMemo(()=>{
-    if(!colabSel||colabSel.tipo_contrato==='autonomo'||colabSel.tipo_contrato==='pj')return 0
-    const excedente=totalProd-totalHoras
-    return excedente>0?excedente:0
-  },[colabSel,totalProd,totalHoras])
-
   // DSR — só para CLT
   // Fórmula: DSR = (totalHoras × valorHora / diasUteis) × domingos
   // diasUteis = Seg-Sab do período · domingos = domingos + feriados
@@ -443,7 +437,6 @@ export default function Ponto() {
       totalDiasUteis+=diasUteisPeriodo(lanc.data_inicio,lanc.data_fim,feriados)
       totalDomingos+=domingosFeriadosPeriodo(lanc.data_inicio,lanc.data_fim,feriados)
     })
-    // Base = valor total das horas trabalhadas (normais + extras com adicional)
     const baseValor = fmtDecimal(totaisGlobais.normais)*valorHora
                     + fmtDecimal(totaisGlobais.extras50)*valorHora*1.5
     const dsr = totalDiasUteis>0 && totalDomingos>0
@@ -452,14 +445,25 @@ export default function Ponto() {
     return{valor:dsr,diasUteis:totalDiasUteis,domingos:totalDomingos,baseValor}
   },[colabSel,valorHora,lancamentos,totaisGlobais.normais,totaisGlobais.extras50,feriados])
 
+  // premioCLT = excedente da produção sobre o salário (horas + DSR)
+  const premioCLT = useMemo(()=>{
+    if(!colabSel||colabSel.tipo_contrato==='autonomo'||colabSel.tipo_contrato==='pj')return 0
+    const salario = totalHoras + dsrInfo.valor
+    const excedente = totalProd - salario
+    return excedente > 0 ? excedente : 0
+  },[colabSel,totalProd,totalHoras,dsrInfo])
+
   const totalReceber = useMemo(()=>{
     if(!colabSel)return totalProd
     if(colabSel.tipo_contrato==='autonomo'||colabSel.tipo_contrato==='pj'){
       return horasAutonomoSemProd + totalProd
     }
-    // CLT: salário base = horas trabalhadas + DSR (produção é separada)
-    return totalHoras + dsrInfo.valor
-  },[colabSel,horasAutonomoSemProd,totalProd,totalHoras,dsrInfo])
+    // CLT: salário = horas + DSR
+    // Se produção > salário → paga salário + prêmio (= produção - salário)
+    // Se salário >= produção → paga apenas salário
+    const salario = totalHoras + dsrInfo.valor
+    return salario + premioCLT   // premioCLT já é 0 quando salário >= produção
+  },[colabSel,horasAutonomoSemProd,totalProd,totalHoras,dsrInfo,premioCLT])
 
   // ── Toggle dia ────────────────────────────────────────────────────────────
   function togglePresente(lancId:string,idx:number,colab:ColabSimples){
@@ -784,8 +788,10 @@ export default function Ponto() {
                 const subProd=totalProd>0&&diasProd>0
                   ? `≈ ${formatCurrency(totalProd/diasProd)}/dia (${diasProd} dia${diasProd!==1?'s':''})`
                   : producoes.length>0?`${producoes.length} lançamento${producoes.length!==1?'s':''}`:'Nenhuma produção'
-                // Sub do total a receber
-                const subReceber=ehAuto
+                const salarioCLT = totalHoras + dsrInfo.valor
+
+                // Sub-labels
+                const subReceber = ehAuto
                   ? (totalProd>0||horasAutonomoSemProd>0
                       ? `Horas: ${formatCurrency(horasAutonomoSemProd)} + Prod: ${formatCurrency(totalProd)}`
                       : `Autônomo: R$ ${valorHora.toFixed(2)}/h`)
@@ -793,20 +799,25 @@ export default function Ponto() {
                       const partes:string[]=[]
                       if(totalHoras>0) partes.push(`Horas: ${formatCurrency(totalHoras)}`)
                       if(dsrInfo.valor>0) partes.push(`DSR: ${formatCurrency(dsrInfo.valor)}`)
+                      if(premioCLT>0) partes.push(`Prêmio: ${formatCurrency(premioCLT)}`)
                       return partes.length>0?partes.join(' + '):'Sem valor/hora cadastrado'
                     })()
+
                 const cards=[
                   {label:'⏱ Total de Horas',value:fmtHHMM(totaisGlobais.total),sub:`${fmtHHMM(totaisGlobais.normais)} norm + ${fmtHHMM(totaisGlobais.extras50)} extras`,color:'#1d4ed8'},
                   {label:'💰 Valor das Horas',value:valorHora>0?`R$ ${valorHora.toFixed(2)}/h`:'Sem tabela',sub:valorHora>0?formatCurrency(totalHoras)+' no período':'Cadastre em Funções → valor/hora',color:valorHora>0?'#15803d':'#9ca3af'},
                   {label:'🏗️ Produção',value:totalProd>0?formatCurrency(totalProd):'—',sub:subProd,color:'#b45309'},
                 ]
-                // Card DSR — só CLT e quando há dias úteis no período
+
+                // Card DSR — só CLT
                 if(!ehAuto&&dsrInfo.diasUteis>0){
                   const subDsr=dsrInfo.baseValor>0
                     ? `(${formatCurrency(dsrInfo.baseValor)} ÷ ${dsrInfo.diasUteis} du) × ${dsrInfo.domingos} dom`
                     : `${dsrInfo.diasUteis} dias úteis · ${dsrInfo.domingos} domingos`
                   cards.push({label:'📅 DSR',value:dsrInfo.valor>0?formatCurrency(dsrInfo.valor):'R$ 0,00',sub:subDsr,color:'#0369a1'})
                 }
+
+                // Card Salário (CLT) ou Total a Receber (autônomo)
                 cards.push({
                   label: ehAuto ? '💵 Total a Receber' : '💵 Salário',
                   value: formatCurrency(totalReceber),
@@ -822,10 +833,13 @@ export default function Ponto() {
                 </div>
               ))}
               {/* Card de performance — só aparece quando há produção e valor/hora */}
-              {totalProd>0&&valorHora>0&&(()=>{
-                const diff=totalProd-totalHoras
-                const bom=diff>=0
-                const pct=totalHoras>0?Math.abs(diff)/totalHoras*100:0
+              {totalProd>0&&valorHora>0&&colabSel&&(()=>{
+                const ehAutoPerf=colabSel.tipo_contrato==='autonomo'||colabSel.tipo_contrato==='pj'
+                // Para CLT: comparar produção vs salário (horas + DSR)
+                const baseComp = ehAutoPerf ? totalHoras : (totalHoras + dsrInfo.valor)
+                const diff = totalProd - baseComp
+                const bom  = diff >= 0
+                const pct  = baseComp > 0 ? Math.abs(diff)/baseComp*100 : 0
                 return(
                   <div style={{flex:1,minWidth:140,padding:'8px 12px',textAlign:'center',borderRight:'1px solid var(--border)',background:bom?'rgba(22,163,74,0.06)':'rgba(220,38,38,0.06)'}}>
                     <div style={{fontSize:10,fontWeight:700,marginBottom:2,color:bom?'#15803d':'#dc2626'}}>
@@ -836,11 +850,11 @@ export default function Ponto() {
                     </div>
                     <div style={{fontSize:10,color:bom?'#16a34a':'#b91c1c'}}>
                       {bom
-                        ? `${pct.toFixed(0)}% acima do valor hora`
-                        : `${pct.toFixed(0)}% abaixo do valor hora`}
+                        ? `Prêmio: Prod supera salário em ${pct.toFixed(0)}%`
+                        : `Pagar salário (${pct.toFixed(0)}% acima da prod)`}
                     </div>
                     <div style={{fontSize:9,color:'var(--muted-foreground)',marginTop:1}}>
-                      Hora: {formatCurrency(totalHoras)} · Prod: {formatCurrency(totalProd)}
+                      Salário: {formatCurrency(baseComp)} · Prod: {formatCurrency(totalProd)}
                     </div>
                   </div>
                 )
