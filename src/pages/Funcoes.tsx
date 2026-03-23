@@ -64,7 +64,8 @@ export default function Funcoes() {
   const [deleting, setDeleting] = useState(false)
 
   // vínculos: mapa funcao_id → { colabs, epis }
-  const [vinculos, setVinculos] = useState<Record<string, { colabs: number; epis: number }>>({})
+  const [vinculos, setVinculos]       = useState<Record<string, { colabs: number; epis: number }>>({})
+  const [vinculosReady, setVinculosReady] = useState(false) // true após primeiro fetch
 
   // ── fetch ─────────────────────────────────────────────────────────────────
   const fetchData = useCallback(async () => {
@@ -82,7 +83,7 @@ export default function Funcoes() {
     ;(colabsRaw ?? []).forEach((r: any) => { ensure(r.funcao_id); mapa[r.funcao_id].colabs++ })
     ;(episRaw   ?? []).forEach((r: any) => { ensure(r.funcao_id); mapa[r.funcao_id].epis++   })
     setVinculos(mapa)
-
+    setVinculosReady(true)
     setLoading(false)
   }, [])
 
@@ -176,6 +177,13 @@ export default function Funcoes() {
   // ── delete ────────────────────────────────────────────────────────────────
   const handleDelete = async () => {
     if (!deleteId) return
+
+    // ── Barreira 0: vinculos ainda não carregados → aborta por segurança ──
+    if (!vinculosReady) {
+      toast.error('Aguarde o carregamento dos dados antes de excluir.')
+      setDeleteId(null)
+      return
+    }
 
     // ── Barreira 1: estado local (síncrono — bloqueia ANTES de qualquer await) ──
     const vLocal = vinculos[deleteId]
@@ -357,35 +365,37 @@ export default function Funcoes() {
                         <Pencil size={14} />
                       </Button>
                       {(()=>{
+                        // Aguarda vinculos carregarem antes de mostrar qualquer botão excluir
+                        if (!vinculosReady) return <span style={{ width: 32, display: 'inline-block' }} />
+
                         const qtdColabs = vinculos[f.id]?.colabs ?? 0
+
+                        if (qtdColabs > 0) {
+                          // Tem colaboradores: mostra badge, OCULTA botão excluir
+                          return (
+                            <span
+                              title={`${qtdColabs} colaborador${qtdColabs !== 1 ? 'es vinculados' : ' vinculado'} — remova-os para poder excluir esta função`}
+                              style={{
+                                display: 'inline-flex', alignItems: 'center', gap: 3,
+                                fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999,
+                                background: 'rgba(37,99,235,0.1)', color: '#2563eb', cursor: 'default',
+                              }}
+                            >
+                              👷 {qtdColabs}
+                            </span>
+                          )
+                        }
+
+                        // Sem colaboradores: mostra botão excluir normalmente
                         return (
-                          <>
-                            {/* Contador de colaboradores — visível, clicável para info */}
-                            {qtdColabs > 0 && (
-                              <span
-                                title={`${qtdColabs} colaborador${qtdColabs !== 1 ? 'es' : ''} vinculado${qtdColabs !== 1 ? 's' : ''} — remova-os para poder excluir`}
-                                style={{
-                                  display: 'inline-flex', alignItems: 'center', gap: 3,
-                                  fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 999,
-                                  background: 'rgba(37,99,235,0.1)', color: '#2563eb', cursor: 'default',
-                                  marginRight: 4,
-                                }}
-                              >
-                                👷 {qtdColabs}
-                              </span>
-                            )}
-                            {/* Botão excluir — oculto quando há colaboradores vinculados */}
-                            {qtdColabs === 0 && (
-                              <Button
-                                variant="ghost" size="icon"
-                                className="h-8 w-8 text-destructive hover:text-destructive"
-                                title="Excluir função"
-                                onClick={() => setDeleteId(f.id)}
-                              >
-                                <Trash2 size={14} />
-                              </Button>
-                            )}
-                          </>
+                          <Button
+                            variant="ghost" size="icon"
+                            className="h-8 w-8 text-destructive hover:text-destructive"
+                            title="Excluir função"
+                            onClick={() => setDeleteId(f.id)}
+                          >
+                            <Trash2 size={14} />
+                          </Button>
                         )
                       })()}
                     </div>
