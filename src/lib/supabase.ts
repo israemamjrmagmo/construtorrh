@@ -247,7 +247,7 @@ export interface Pagamento {
   obra_id: string | null
   competencia: string
   data_pagamento: string | null
-  tipo: 'mensal' | 'quinzenal' | 'semanal' | 'adiantamento' | 'rescisao' | 'ferias' | 'decimo_terceiro' | 'bonus' | 'outro' | null
+  tipo: 'mensal' | 'quinzenal' | 'semanal' | 'adiantamento' | 'rescisao' | 'ferias' | 'decimo_terceiro' | 'bonus' | 'outro' | 'folha' | '13_salario' | 'vale_transporte' | null
   valor_bruto: number | null
   inss: number
   fgts: number

@@ -54,6 +54,7 @@ const TIPO_OPTIONS = [
   { value: '13_salario', label: '13º Salário' },
   { value: 'ferias', label: 'Férias' },
   { value: 'rescisao', label: 'Rescisão' },
+  { value: 'vale_transporte', label: 'Vale Transporte' },
 ]
 
 const STATUS_OPTIONS = [

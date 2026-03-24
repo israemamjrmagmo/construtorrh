@@ -465,16 +465,48 @@ export default function ValeTransportePage() {
   // ─── pagar VT individual ─────────────────────────────────────────────────
   async function handlePagar() {
     if (!pagarId) return
+    const row = vtRows.find(r => r.id === pagarId)
+    if (!row) return
+    const colab = colaboradores.find(c => c.id === row.colaborador_id)
     setSavingPagar(true)
     const hoje_str = new Date().toISOString().split('T')[0]
-    const { error } = await supabase
+
+    // 1. Atualizar status do VT
+    const { error: errVT } = await supabase
       .from('vale_transporte')
       .update({ status: 'pago', data_pagamento: hoje_str })
       .eq('id', pagarId)
+    if (errVT) {
+      setSavingPagar(false)
+      toast.error(`Erro ao atualizar VT: ${errVT.message}`)
+      return
+    }
+
+    // 2. Criar registro em pagamentos
+    const valorEmpresa = row.valor_empresa ?? row.valor ?? 0
+    const { error: errPag } = await supabase.from('pagamentos').insert({
+      colaborador_id: row.colaborador_id,
+      obra_id:        colab?.obra_id ?? null,
+      competencia:    row.competencia,
+      data_pagamento: hoje_str,
+      tipo:           'vale_transporte',
+      valor_bruto:    valorEmpresa,
+      inss:           0,
+      fgts:           0,
+      ir:             0,
+      vale_transporte: valorEmpresa,
+      adiantamento:   0,
+      valor_liquido:  valorEmpresa,
+      status:         'pago',
+      observacoes:    `VT ${row.data_inicio ?? ''} → ${row.data_fim ?? ''} | ${row.tipo ?? ''}`,
+    })
     setSavingPagar(false)
     setPagarId(null)
-    if (error) { toast.error(traduzirErro(error.message)); return }
-    toast.success('VT marcado como pago!')
+    if (errPag) {
+      toast.error(`VT pago, mas erro ao criar pagamento: ${errPag.message}`)
+    } else {
+      toast.success('✅ VT pago e registrado em Pagamentos!')
+    }
     fetchData()
     navigate('/pagamentos')
   }
@@ -512,13 +544,47 @@ export default function ValeTransportePage() {
     if (ids.length === 0) return toast.error('Selecione ao menos um lançamento')
     setSavingLote(true)
     const hoje_str = new Date().toISOString().split('T')[0]
-    const { error } = await supabase
+
+    // 1. Atualizar status dos VTs
+    const { error: errVT } = await supabase
       .from('vale_transporte')
       .update({ status: 'pago', data_pagamento: hoje_str })
       .in('id', ids)
+    if (errVT) {
+      setSavingLote(false)
+      toast.error(`Erro ao atualizar VTs: ${errVT.message}`)
+      return
+    }
+
+    // 2. Criar registros em pagamentos (um por VT)
+    const rowsSel = vtsPendentesLote.filter(r => ids.includes(r.id))
+    const pagamentos = rowsSel.map(r => {
+      const colab = colaboradores.find(c => c.id === r.colaborador_id)
+      const valorEmpresa = r.valor_empresa ?? r.valor ?? 0
+      return {
+        colaborador_id:  r.colaborador_id,
+        obra_id:         colab?.obra_id ?? null,
+        competencia:     r.competencia,
+        data_pagamento:  hoje_str,
+        tipo:            'vale_transporte',
+        valor_bruto:     valorEmpresa,
+        inss:            0,
+        fgts:            0,
+        ir:              0,
+        vale_transporte: valorEmpresa,
+        adiantamento:    0,
+        valor_liquido:   valorEmpresa,
+        status:          'pago',
+        observacoes:     `VT ${r.data_inicio ?? ''} → ${r.data_fim ?? ''} | ${r.tipo ?? ''}`,
+      }
+    })
+    const { error: errPag } = await supabase.from('pagamentos').insert(pagamentos)
     setSavingLote(false)
-    if (error) { toast.error(traduzirErro(error.message)); return }
-    toast.success(`${ids.length} VT(s) marcados como pagos!`)
+    if (errPag) {
+      toast.error(`VTs pagos, mas erro ao registrar pagamentos: ${errPag.message}`)
+    } else {
+      toast.success(`✅ ${ids.length} VT(s) pagos e registrados em Pagamentos!`)
+    }
     setModalLote(false)
     setSelecionados(new Set())
     fetchData()
