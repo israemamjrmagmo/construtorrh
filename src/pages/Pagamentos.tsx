@@ -249,12 +249,14 @@ export default function Pagamentos() {
 
   // ─── marcar pago (tabela pagamentos) ──────────────────────────────────────
   async function marcarPago(id: string) {
+    const hoje = new Date().toISOString().slice(0, 10)
     const { error } = await supabase
       .from('pagamentos')
-      .update({ status: 'pago', data_pagamento: new Date().toISOString().slice(0, 10) })
+      .update({ status: 'pago', data_pagamento: hoje })
       .eq('id', id)
-    if (error) toast.error('Erro ao marcar como pago')
-    else { toast.success('Pagamento marcado como pago!'); fetchData() }
+    if (error) { toast.error('Erro ao confirmar pagamento: ' + error.message); return }
+    toast.success('✅ Pagamento de VT confirmado!')
+    fetchData()
   }
 
   // ─── efetivar pagamento de lançamento liberado ─────────────────────────────
@@ -408,15 +410,13 @@ export default function Pagamentos() {
 
       {/* ══ ABA AGENDADOS ══ */}
       {aba === 'agendados' && (
-        loadingLancs ? <LoadingSkeleton /> :
-        lancsAgendados.length === 0 ? (
-          <EmptyState
-            icon={<Clock size={32} />}
-            title="Nenhum pagamento agendado"
-            description="Libere lançamentos no Fechamento para aparecerem aqui."
-          />
-        ) : (
-          <div style={{ border:'1px solid var(--border)', borderRadius:10, overflow:'hidden' }}>
+        loadingLancs ? <LoadingSkeleton /> : <>
+
+          {/* ── Lançamentos da Folha ── */}
+          {lancsAgendados.length > 0 && (
+          <div style={{ marginBottom: 24 }}>
+            <h3 style={{ fontSize: 13, fontWeight: 700, marginBottom: 8, color: 'var(--muted-foreground)', textTransform: 'uppercase', letterSpacing: 1 }}>📄 Folha de Ponto</h3>
+            <div style={{ border:'1px solid var(--border)', borderRadius:10, overflow:'hidden' }}>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -462,8 +462,81 @@ export default function Pagamentos() {
                 </TableRow>
               </TableFooter>
             </Table>
+            </div>
           </div>
-        )
+          )}
+
+          {/* ── Pagamentos Pendentes (VT e Avulsos) ── */}
+          {(() => {
+            const pendentes = rows.filter(r =>
+              (r.status === 'pendente') &&
+              (filtroNomeLanc ? r.colaboradores?.nome?.toLowerCase().includes(filtroNomeLanc.toLowerCase()) : true) &&
+              (filtroMesLanc ? r.competencia === filtroMesLanc : true)
+            )
+            if (pendentes.length === 0 && lancsAgendados.length === 0) return (
+              <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--muted-foreground)', fontSize: 14 }}>
+                Nenhum pagamento pendente de confirmação.
+              </div>
+            )
+            if (pendentes.length === 0) return null
+            return (
+              <div>
+                <h3 style={{ fontSize: 13, fontWeight: 700, marginBottom: 8, color: 'var(--muted-foreground)', textTransform: 'uppercase', letterSpacing: 1 }}>🚌 Pendente de Pagamento</h3>
+                <div style={{ border:'1px solid var(--border)', borderRadius:10, overflow:'hidden' }}>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Colaborador</TableHead>
+                      <TableHead>Tipo</TableHead>
+                      <TableHead className="text-center">Competência</TableHead>
+                      <TableHead>Observação</TableHead>
+                      <TableHead className="text-right">💵 Valor</TableHead>
+                      <TableHead className="text-right">Ações</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {pendentes.map((r) => (
+                      <TableRow key={r.id}>
+                        <TableCell>
+                          <div className="font-semibold text-sm">{r.colaboradores?.nome ?? '—'}</div>
+                          <div className="text-xs text-muted-foreground">{r.colaboradores?.chapa}</div>
+                        </TableCell>
+                        <TableCell>
+                          <span style={{ background:'#ede9fe', color:'#7c3aed', borderRadius:99, padding:'2px 10px', fontSize:11, fontWeight:700 }}>
+                            {r.tipo === 'vale_transporte' ? '🚌 Vale Transporte' : r.tipo ?? '—'}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-center text-sm">{r.competencia?.slice(5)}/{r.competencia?.slice(0,4)}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">{r.observacoes ?? '—'}</TableCell>
+                        <TableCell className="text-right font-bold text-sm" style={{ color:'#15803d' }}>
+                          {formatCurrency(r.valor_liquido ?? r.valor_bruto ?? 0)}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div style={{ display:'flex', gap:6, justifyContent:'flex-end' }}>
+                            <Button size="sm" className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
+                              onClick={() => marcarPago(r.id)}>
+                              ✅ Confirmar Pagamento
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                  <TableFooter>
+                    <TableRow>
+                      <TableCell colSpan={4} className="text-sm font-semibold">Pendente — {pendentes.length} registro(s)</TableCell>
+                      <TableCell className="text-right font-bold text-sm" style={{ color:'#15803d' }}>
+                        {formatCurrency(pendentes.reduce((s, r) => s + (r.valor_liquido ?? r.valor_bruto ?? 0), 0))}
+                      </TableCell>
+                      <TableCell />
+                    </TableRow>
+                  </TableFooter>
+                </Table>
+                </div>
+              </div>
+            )
+          })()}
+        </>
       )}
 
       {/* ══ ABA REALIZADOS ══ */}

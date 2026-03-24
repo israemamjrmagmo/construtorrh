@@ -37,6 +37,7 @@ export const STATUS_COLORS = {
   cancelada: 'bg-red-100 text-red-800',
   pendente: 'bg-yellow-100 text-yellow-800',
   pago: 'bg-emerald-100 text-emerald-800',
+  aguardando_pagamento: 'bg-blue-100 text-blue-800',
   em_investigacao: 'bg-orange-100 text-orange-800',
   concluido: 'bg-emerald-100 text-emerald-800',
   arquivado: 'bg-gray-100 text-gray-600',
@@ -47,7 +48,7 @@ export const STATUS_COLORS = {
 export const STATUS_LABELS: Record<string, string> = {
   ativo: 'Ativo', inativo: 'Inativo', afastado: 'Afastado', ferias: 'Férias',
   em_andamento: 'Em Andamento', concluida: 'Concluída', pausada: 'Pausada', cancelada: 'Cancelada',
-  pendente: 'Pendente', pago: 'Pago', em_investigacao: 'Em Investigação',
+  pendente: 'Pendente', pago: 'Pago', aguardando_pagamento: '⏳ Ag. Pagamento', em_investigacao: 'Em Investigação',
   concluido: 'Concluído', arquivado: 'Arquivado', vencido: 'Vencido', renovar: 'A Renovar',
   clt: 'CLT', pj: 'PJ', temporario: 'Temporário', aprendiz: 'Aprendiz', estagiario: 'Estagiário',
   tipico: 'Típico', trajeto: 'Trajeto', doenca_ocupacional: 'Doença Ocupacional',

@@ -469,12 +469,11 @@ export default function ValeTransportePage() {
     if (!row) return
     const colab = colaboradores.find(c => c.id === row.colaborador_id)
     setSavingPagar(true)
-    const hoje_str = new Date().toISOString().split('T')[0]
 
-    // 1. Atualizar status do VT
+    // 1. Marcar VT como aguardando pagamento
     const { error: errVT } = await supabase
       .from('vale_transporte')
-      .update({ status: 'pago', data_pagamento: hoje_str })
+      .update({ status: 'aguardando_pagamento' })
       .eq('id', pagarId)
     if (errVT) {
       setSavingPagar(false)
@@ -482,30 +481,30 @@ export default function ValeTransportePage() {
       return
     }
 
-    // 2. Criar registro em pagamentos
+    // 2. Criar registro em pagamentos com status PENDENTE
     const valorEmpresa = row.valor_empresa ?? row.valor ?? 0
     const { error: errPag } = await supabase.from('pagamentos').insert({
-      colaborador_id: row.colaborador_id,
-      obra_id:        colab?.obra_id ?? null,
-      competencia:    row.competencia,
-      data_pagamento: hoje_str,
-      tipo:           'vale_transporte',
-      valor_bruto:    valorEmpresa,
-      inss:           0,
-      fgts:           0,
-      ir:             0,
+      colaborador_id:  row.colaborador_id,
+      obra_id:         colab?.obra_id ?? null,
+      competencia:     row.competencia,
+      data_pagamento:  null,
+      tipo:            'vale_transporte',
+      valor_bruto:     valorEmpresa,
+      inss:            0,
+      fgts:            0,
+      ir:              0,
       vale_transporte: valorEmpresa,
-      adiantamento:   0,
-      valor_liquido:  valorEmpresa,
-      status:         'pago',
-      observacoes:    `VT ${row.data_inicio ?? ''} → ${row.data_fim ?? ''} | ${row.tipo ?? ''}`,
+      adiantamento:    0,
+      valor_liquido:   valorEmpresa,
+      status:          'pendente',
+      observacoes:     `VT ${row.data_inicio ?? ''} → ${row.data_fim ?? ''} | ${row.tipo ?? ''}`,
     })
     setSavingPagar(false)
     setPagarId(null)
     if (errPag) {
-      toast.error(`VT pago, mas erro ao criar pagamento: ${errPag.message}`)
+      toast.error(`Erro ao criar registro em Pagamentos: ${errPag.message}`)
     } else {
-      toast.success('✅ VT pago e registrado em Pagamentos!')
+      toast.success('📋 VT enviado para Pagamentos — confirme o pagamento lá!')
     }
     fetchData()
     navigate('/pagamentos')
@@ -515,7 +514,8 @@ export default function ValeTransportePage() {
   const vtsPendentesLote = useMemo(() => {
     return vtRows.filter(r => {
       if (r.competencia !== competencia) return false
-      if ((r.status as string | undefined) === 'pago') return false
+      const st = r.status as string | undefined
+      if (st === 'pago' || st === 'aguardando_pagamento') return false
       if (obraLote === 'todas') return true
       const colab = colaboradores.find(c => c.id === r.colaborador_id)
       return colab?.obra_id === obraLote
@@ -545,10 +545,10 @@ export default function ValeTransportePage() {
     setSavingLote(true)
     const hoje_str = new Date().toISOString().split('T')[0]
 
-    // 1. Atualizar status dos VTs
+    // 1. Marcar VTs como aguardando pagamento
     const { error: errVT } = await supabase
       .from('vale_transporte')
-      .update({ status: 'pago', data_pagamento: hoje_str })
+      .update({ status: 'aguardando_pagamento' })
       .in('id', ids)
     if (errVT) {
       setSavingLote(false)
@@ -556,7 +556,7 @@ export default function ValeTransportePage() {
       return
     }
 
-    // 2. Criar registros em pagamentos (um por VT)
+    // 2. Criar registros em pagamentos com status PENDENTE (um por VT)
     const rowsSel = vtsPendentesLote.filter(r => ids.includes(r.id))
     const pagamentos = rowsSel.map(r => {
       const colab = colaboradores.find(c => c.id === r.colaborador_id)
@@ -565,8 +565,8 @@ export default function ValeTransportePage() {
         colaborador_id:  r.colaborador_id,
         obra_id:         colab?.obra_id ?? null,
         competencia:     r.competencia,
-        data_pagamento:  hoje_str,
-        tipo:            'vale_transporte',
+        data_pagamento:  null as string | null,
+        tipo:            'vale_transporte' as string,
         valor_bruto:     valorEmpresa,
         inss:            0,
         fgts:            0,
@@ -574,16 +574,16 @@ export default function ValeTransportePage() {
         vale_transporte: valorEmpresa,
         adiantamento:    0,
         valor_liquido:   valorEmpresa,
-        status:          'pago',
+        status:          'pendente' as string,
         observacoes:     `VT ${r.data_inicio ?? ''} → ${r.data_fim ?? ''} | ${r.tipo ?? ''}`,
       }
     })
     const { error: errPag } = await supabase.from('pagamentos').insert(pagamentos)
     setSavingLote(false)
     if (errPag) {
-      toast.error(`VTs pagos, mas erro ao registrar pagamentos: ${errPag.message}`)
+      toast.error(`Erro ao registrar em Pagamentos: ${errPag.message}`)
     } else {
-      toast.success(`✅ ${ids.length} VT(s) pagos e registrados em Pagamentos!`)
+      toast.success(`📋 ${ids.length} VT(s) enviados para Pagamentos — confirme o pagamento lá!`)
     }
     setModalLote(false)
     setSelecionados(new Set())
@@ -819,14 +819,16 @@ export default function ValeTransportePage() {
                               <td style={{ padding: '10px 14px', textAlign: 'center' }}>
                                 {(r.status as string | undefined) === 'pago'
                                   ? <span style={{ background: '#dcfce7', color: '#15803d', borderRadius: 99, padding: '2px 10px', fontSize: 11, fontWeight: 700 }}>✓ Pago</span>
+                                  : (r.status as string | undefined) === 'aguardando_pagamento'
+                                  ? <span style={{ background: '#dbeafe', color: '#1d4ed8', borderRadius: 99, padding: '2px 10px', fontSize: 11, fontWeight: 700 }}>⏳ Ag. Pagamento</span>
                                   : <span style={{ background: '#fef3c7', color: '#b45309', borderRadius: 99, padding: '2px 10px', fontSize: 11, fontWeight: 700 }}>Pendente</span>}
                                 {r.data_pagamento && <div style={{ fontSize: 10, color: 'var(--muted-foreground)', marginTop: 2 }}>{fmtData(r.data_pagamento)}</div>}
                               </td>
                               <td style={{ padding: '10px 14px', textAlign: 'right' }}>
                                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 4 }}>
-                                  {(r.status as string | undefined) !== 'pago' && (
-                                    <Button size="sm" variant="outline" className="h-7 gap-1 text-green-700 border-green-300 hover:bg-green-50" onClick={() => setPagarId(r.id)}>
-                                      <CreditCard size={12} /> Pagar
+                                  {(r.status as string | undefined) === 'pendente' && (
+                                    <Button size="sm" variant="outline" className="h-7 gap-1 text-blue-700 border-blue-300 hover:bg-blue-50" onClick={() => setPagarId(r.id)}>
+                                      <CreditCard size={12} /> Enviar p/ Pag.
                                     </Button>
                                   )}
                                   <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(r)}><Pencil size={13} /></Button>
@@ -1015,10 +1017,10 @@ export default function ValeTransportePage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <CreditCard size={18} style={{ color: '#15803d' }} /> Confirmar Pagamento de VT
+              <CreditCard size={18} style={{ color: '#1d4ed8' }} /> Enviar VT para Pagamentos
             </AlertDialogTitle>
             <AlertDialogDescription>
-              O lançamento será marcado como <strong>Pago</strong> com data de hoje e você será redirecionado para a tela de Pagamentos.
+              O lançamento será marcado como <strong>Aguardando Pagamento</strong> e um registro <strong>Pendente</strong> será criado na aba de Pagamentos para confirmação.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1026,9 +1028,9 @@ export default function ValeTransportePage() {
             <AlertDialogAction
               disabled={savingPagar}
               onClick={handlePagar}
-              style={{ background: '#15803d', color: '#fff' }}
+              style={{ background: '#1d4ed8', color: '#fff' }}
             >
-              {savingPagar ? <><Loader2 size={14} className="animate-spin" /> Pagando…</> : '✓ Confirmar Pagamento'}
+              {savingPagar ? <><Loader2 size={14} className="animate-spin" /> Enviando…</> : '📋 Enviar para Pagamentos'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -1139,7 +1141,7 @@ export default function ValeTransportePage() {
               >
                 {savingLote
                   ? <><Loader2 size={14} className="animate-spin" /> Processando…</>
-                  : <><CreditCard size={14} /> Pagar {selecionados.size} VT(s) — ir para Pagamentos</>}
+                  : <><CreditCard size={14} /> Enviar {selecionados.size} VT(s) para Pagamentos</>}
               </Button>
             </div>
           </div>
