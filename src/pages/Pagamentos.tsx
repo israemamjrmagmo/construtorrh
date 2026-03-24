@@ -345,6 +345,7 @@ export default function Pagamentos() {
   // ─── render ────────────────────────────────────────────────────────────────
   // ─── aba ativa ──────────────────────────────────────────────────────────────
   const [aba, setAba] = useState<'agendados'|'realizados'>('agendados')
+  const [abaReal, setAbaReal] = useState<'folha'|'vt'|'outros'>('folha')
 
   // ─── filtros avulsos ─────────────────────────────────────────────────────────
   const [filtroNomeLanc, setFiltroNomeLanc]       = useState('')
@@ -591,156 +592,218 @@ export default function Pagamentos() {
 
       {/* ══ ABA REALIZADOS ══ */}
       {aba === 'realizados' && (() => {
-        // ── Folha de ponto paga ──────────────────────────────────────────────
+        // ── dados filtrados ──────────────────────────────────────────────────
         const folhaPaga = lancsRealizados
 
-        // ── Pagamentos avulsos pagos (VT, adiantamentos, etc.) ───────────────
         const avulsosPagos = rows.filter(r => {
           if (r.status !== 'pago') return false
-          const matchNome = filtroNomeLanc
-            ? r.colaboradores?.nome?.toLowerCase().includes(filtroNomeLanc.toLowerCase())
-            : true
-          const matchMes = filtroMesLanc ? r.competencia === filtroMesLanc : true
-          const matchDtIni = filtroDataIni ? (r.data_pagamento ?? '') >= filtroDataIni : true
-          const matchDtFim = filtroDataFim ? (r.data_pagamento ?? '') <= filtroDataFim : true
+          const matchNome  = filtroNomeLanc ? r.colaboradores?.nome?.toLowerCase().includes(filtroNomeLanc.toLowerCase()) : true
+          const matchMes   = filtroMesLanc  ? r.competencia === filtroMesLanc : true
+          const matchDtIni = filtroDataIni  ? (r.data_pagamento ?? '') >= filtroDataIni : true
+          const matchDtFim = filtroDataFim  ? (r.data_pagamento ?? '') <= filtroDataFim : true
           return matchNome && matchMes && matchDtIni && matchDtFim
         })
+        const vtPagos     = avulsosPagos.filter(r => r.tipo === 'vale_transporte')
+        const outrosPagos = avulsosPagos.filter(r => r.tipo !== 'vale_transporte')
 
-        const totalFolha   = folhaPaga.reduce((s: number, l: any) => s + (l.snap_liquido ?? 0), 0)
-        const totalAvulsos = avulsosPagos.reduce((s, r) => s + (r.valor_liquido ?? r.valor_bruto ?? 0), 0)
-        const totalGeral   = totalFolha + totalAvulsos
+        const totalFolha  = folhaPaga.reduce((s: number, l: any) => s + (l.snap_liquido ?? 0), 0)
+        const totalVT     = vtPagos.reduce((s, r) => s + (r.valor_liquido ?? r.valor_bruto ?? 0), 0)
+        const totalOutros = outrosPagos.reduce((s, r) => s + (r.valor_liquido ?? r.valor_bruto ?? 0), 0)
+        const totalGeral  = totalFolha + totalVT + totalOutros
 
-        if (folhaPaga.length === 0 && avulsosPagos.length === 0) return (
-          <EmptyState
-            icon={<CheckCircle size={32} />}
-            title="Nenhum pagamento realizado no período"
-            description="Pagamentos efetivados aparecerão aqui."
-          />
-        )
+        const subAbas = [
+          { key: 'folha'  as const, label: '📄 Folha de Ponto',   count: folhaPaga.length,   total: totalFolha  },
+          { key: 'vt'     as const, label: '🚌 Vale Transporte',  count: vtPagos.length,     total: totalVT     },
+          { key: 'outros' as const, label: '📋 Outros',           count: outrosPagos.length, total: totalOutros },
+        ]
 
         return (
-          <div style={{ display:'flex', flexDirection:'column', gap:24 }}>
+          <div>
+            {/* ── Sub-abas ─────────────────────────────────────────────── */}
+            <div style={{ display:'flex', gap:0, borderBottom:'2px solid var(--border)', marginBottom:20 }}>
+              {subAbas.map(sa => (
+                <button key={sa.key} onClick={() => setAbaReal(sa.key)}
+                  style={{
+                    padding:'10px 22px', fontSize:13, fontWeight: abaReal === sa.key ? 700 : 500,
+                    border:'none', background:'transparent', cursor:'pointer',
+                    borderBottom: abaReal === sa.key ? '2px solid #15803d' : '2px solid transparent',
+                    color: abaReal === sa.key ? '#15803d' : 'var(--muted-foreground)',
+                    marginBottom:-2, display:'flex', alignItems:'center', gap:6,
+                  }}>
+                  {sa.label}
+                  <span style={{ background: abaReal === sa.key ? '#dcfce7' : 'var(--muted)', color: abaReal === sa.key ? '#15803d' : 'var(--muted-foreground)', borderRadius:99, padding:'1px 8px', fontSize:11, fontWeight:700 }}>
+                    {sa.count}
+                  </span>
+                </button>
+              ))}
+              <div style={{ flex:1 }} />
+              <span style={{ alignSelf:'center', paddingRight:8, fontSize:13, fontWeight:800, color:'#15803d' }}>
+                Total geral: {formatCurrency(totalGeral)}
+              </span>
+            </div>
 
-            {/* ── Histórico Folha de Ponto ─────────────────────────── */}
-            {folhaPaga.length > 0 && (
-              <div>
-                <h3 style={{ fontSize:13, fontWeight:700, marginBottom:8, color:'var(--muted-foreground)', textTransform:'uppercase', letterSpacing:1 }}>📄 Folha de Ponto</h3>
-                <div style={{ border:'1px solid var(--border)', borderRadius:10, overflow:'hidden' }}>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Colaborador</TableHead>
-                        <TableHead>Obra</TableHead>
-                        <TableHead className="text-center">Período</TableHead>
-                        <TableHead className="text-center">Data Pgto</TableHead>
-                        <TableHead>Obs</TableHead>
-                        <TableHead className="text-right">💵 Líquido</TableHead>
-                        <TableHead className="text-right">Ações</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {folhaPaga.map((l: any) => (
-                        <TableRow key={l.id}>
-                          <TableCell>
-                            <div className="font-semibold text-sm">{l.colaboradores?.nome ?? '—'}</div>
-                            <div className="text-xs text-muted-foreground">{l.colaboradores?.chapa} · {l.colaboradores?.tipo_contrato?.toUpperCase()}</div>
-                          </TableCell>
-                          <TableCell className="text-sm">{l.obras?.nome ?? '—'}</TableCell>
-                          <TableCell className="text-center text-xs text-muted-foreground">
-                            {l.data_inicio?.slice(8)}/{l.data_inicio?.slice(5,7)} → {l.data_fim?.slice(8)}/{l.data_fim?.slice(5,7)}
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <span className="text-sm font-semibold" style={{ color:'#15803d' }}>
-                              {l.data_pagamento ? formatDate(l.data_pagamento) : '—'}
-                            </span>
-                          </TableCell>
-                          <TableCell className="text-xs text-muted-foreground max-w-[160px] truncate">{l.obs_pagamento ?? '—'}</TableCell>
-                          <TableCell className="text-right font-bold text-sm" style={{ color:'#15803d' }}>
-                            {l.snap_liquido ? formatCurrency(l.snap_liquido) : '—'}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <Button size="sm" variant="outline" className="h-7 text-xs text-destructive border-destructive/40 hover:bg-destructive/5"
-                              onClick={() => { setModalEstornar(l); setMotivoEstorno('') }}>
-                              ↩ Estornar
-                            </Button>
-                          </TableCell>
+            {/* ── 📄 Folha de Ponto ──────────────────────────────────── */}
+            {abaReal === 'folha' && (
+              folhaPaga.length === 0
+                ? <EmptyState icon={<CheckCircle size={32}/>} title="Nenhum pagamento de folha realizado" description="Lançamentos aprovados e pagos aparecerão aqui." />
+                : <div style={{ border:'1px solid var(--border)', borderRadius:10, overflow:'hidden' }}>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Colaborador</TableHead>
+                          <TableHead>Obra</TableHead>
+                          <TableHead className="text-center">Período</TableHead>
+                          <TableHead className="text-center">Data Pgto</TableHead>
+                          <TableHead>Obs</TableHead>
+                          <TableHead className="text-right">💵 Líquido</TableHead>
+                          <TableHead className="text-right">Ações</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                    <TableFooter>
-                      <TableRow>
-                        <TableCell colSpan={5} className="text-sm font-semibold">Total — {folhaPaga.length} lançamento(s)</TableCell>
-                        <TableCell className="text-right font-bold text-sm" style={{ color:'#15803d' }}>{formatCurrency(totalFolha)}</TableCell>
-                        <TableCell />
-                      </TableRow>
-                    </TableFooter>
-                  </Table>
-                </div>
-              </div>
+                      </TableHeader>
+                      <TableBody>
+                        {folhaPaga.map((l: any) => (
+                          <TableRow key={l.id}>
+                            <TableCell>
+                              <div className="font-semibold text-sm">{l.colaboradores?.nome ?? '—'}</div>
+                              <div className="text-xs text-muted-foreground">{l.colaboradores?.chapa} · {l.colaboradores?.tipo_contrato?.toUpperCase()}</div>
+                            </TableCell>
+                            <TableCell className="text-sm">{l.obras?.nome ?? '—'}</TableCell>
+                            <TableCell className="text-center text-xs text-muted-foreground">
+                              {l.data_inicio?.slice(8)}/{l.data_inicio?.slice(5,7)} → {l.data_fim?.slice(8)}/{l.data_fim?.slice(5,7)}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <span className="text-sm font-semibold" style={{ color:'#15803d' }}>
+                                {l.data_pagamento ? formatDate(l.data_pagamento) : '—'}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground max-w-[160px] truncate">{l.obs_pagamento ?? '—'}</TableCell>
+                            <TableCell className="text-right font-bold text-sm" style={{ color:'#15803d' }}>
+                              {l.snap_liquido ? formatCurrency(l.snap_liquido) : '—'}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Button size="sm" variant="outline" className="h-7 text-xs text-destructive border-destructive/40 hover:bg-destructive/5"
+                                onClick={() => { setModalEstornar(l); setMotivoEstorno('') }}>
+                                ↩ Estornar
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                      <TableFooter>
+                        <TableRow>
+                          <TableCell colSpan={5} className="text-sm font-semibold">Total — {folhaPaga.length} lançamento(s)</TableCell>
+                          <TableCell className="text-right font-bold text-sm" style={{ color:'#15803d' }}>{formatCurrency(totalFolha)}</TableCell>
+                          <TableCell />
+                        </TableRow>
+                      </TableFooter>
+                    </Table>
+                  </div>
             )}
 
-            {/* ── Histórico Pagamentos Avulsos (VT, etc.) ──────────── */}
-            {avulsosPagos.length > 0 && (
-              <div>
-                <h3 style={{ fontSize:13, fontWeight:700, marginBottom:8, color:'var(--muted-foreground)', textTransform:'uppercase', letterSpacing:1 }}>🚌 Vale Transporte e Avulsos</h3>
-                <div style={{ border:'1px solid var(--border)', borderRadius:10, overflow:'hidden' }}>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Colaborador</TableHead>
-                        <TableHead>Tipo</TableHead>
-                        <TableHead className="text-center">Competência</TableHead>
-                        <TableHead className="text-center">Data Pgto</TableHead>
-                        <TableHead>Observação</TableHead>
-                        <TableHead className="text-right">💵 Valor</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {avulsosPagos.map(r => (
-                        <TableRow key={r.id}>
-                          <TableCell>
-                            <div className="font-semibold text-sm">{r.colaboradores?.nome ?? '—'}</div>
-                            <div className="text-xs text-muted-foreground">{r.colaboradores?.chapa}</div>
-                          </TableCell>
-                          <TableCell>
-                            <span style={{ background: r.tipo === 'vale_transporte' ? '#dbeafe' : '#ede9fe', color: r.tipo === 'vale_transporte' ? '#1d4ed8' : '#7c3aed', borderRadius:99, padding:'2px 10px', fontSize:11, fontWeight:700 }}>
-                              {r.tipo === 'vale_transporte' ? '🚌 Vale Transporte'
-                                : r.tipo === 'adiantamento' ? '💵 Adiantamento'
-                                : r.tipo === '13_salario'   ? '🎄 13º Salário'
-                                : r.tipo === 'ferias'       ? '🏖️ Férias'
-                                : r.tipo === 'rescisao'     ? '📋 Rescisão'
-                                : r.tipo ?? '—'}
-                            </span>
-                          </TableCell>
-                          <TableCell className="text-center text-sm">{r.competencia?.slice(5)}/{r.competencia?.slice(0,4)}</TableCell>
-                          <TableCell className="text-center">
-                            <span className="text-sm font-semibold" style={{ color:'#15803d' }}>
-                              {r.data_pagamento ? formatDate(r.data_pagamento) : '—'}
-                            </span>
-                          </TableCell>
-                          <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">{r.observacoes ?? '—'}</TableCell>
-                          <TableCell className="text-right font-bold text-sm" style={{ color:'#15803d' }}>
-                            {formatCurrency(r.valor_liquido ?? r.valor_bruto ?? 0)}
-                          </TableCell>
+            {/* ── 🚌 Vale Transporte ─────────────────────────────────── */}
+            {abaReal === 'vt' && (
+              vtPagos.length === 0
+                ? <EmptyState icon={<CheckCircle size={32}/>} title="Nenhum VT pago no período" description="VTs confirmados aparecerão aqui." />
+                : <div style={{ border:'1px solid var(--border)', borderRadius:10, overflow:'hidden' }}>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Colaborador</TableHead>
+                          <TableHead className="text-center">Competência</TableHead>
+                          <TableHead className="text-center">Período</TableHead>
+                          <TableHead className="text-center">Data Pgto</TableHead>
+                          <TableHead>Observação</TableHead>
+                          <TableHead className="text-right">💵 Valor</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                    <TableFooter>
-                      <TableRow>
-                        <TableCell colSpan={5} className="text-sm font-semibold">Total — {avulsosPagos.length} registro(s)</TableCell>
-                        <TableCell className="text-right font-bold text-sm" style={{ color:'#15803d' }}>{formatCurrency(totalAvulsos)}</TableCell>
-                      </TableRow>
-                    </TableFooter>
-                  </Table>
-                </div>
-              </div>
+                      </TableHeader>
+                      <TableBody>
+                        {vtPagos.map(r => (
+                          <TableRow key={r.id}>
+                            <TableCell>
+                              <div className="font-semibold text-sm">{r.colaboradores?.nome ?? '—'}</div>
+                              <div className="text-xs text-muted-foreground">{r.colaboradores?.chapa}</div>
+                            </TableCell>
+                            <TableCell className="text-center text-sm font-medium">
+                              {r.competencia?.slice(5)}/{r.competencia?.slice(0,4)}
+                            </TableCell>
+                            <TableCell className="text-center text-xs text-muted-foreground">
+                              {r.observacoes?.match(/VT (\S+) → (\S+)/)?.[1]?.slice(8)}/{r.observacoes?.match(/VT (\S+) → (\S+)/)?.[1]?.slice(5,7)} → {r.observacoes?.match(/VT (\S+) → (\S+)/)?.[2]?.slice(8)}/{r.observacoes?.match(/VT (\S+) → (\S+)/)?.[2]?.slice(5,7)}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <span className="text-sm font-semibold" style={{ color:'#15803d' }}>
+                                {r.data_pagamento ? formatDate(r.data_pagamento) : '—'}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground max-w-[220px] truncate">{r.observacoes ?? '—'}</TableCell>
+                            <TableCell className="text-right font-bold text-sm" style={{ color:'#15803d' }}>
+                              {formatCurrency(r.valor_liquido ?? r.valor_bruto ?? 0)}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                      <TableFooter>
+                        <TableRow>
+                          <TableCell colSpan={5} className="text-sm font-semibold">Total — {vtPagos.length} registro(s)</TableCell>
+                          <TableCell className="text-right font-bold text-sm" style={{ color:'#15803d' }}>{formatCurrency(totalVT)}</TableCell>
+                        </TableRow>
+                      </TableFooter>
+                    </Table>
+                  </div>
             )}
 
-            {/* ── Rodapé geral ─────────────────────────────────────── */}
-            {(folhaPaga.length > 0 || avulsosPagos.length > 0) && (
-              <div style={{ textAlign:'right', fontWeight:800, fontSize:15, color:'#15803d', paddingRight:4 }}>
-                Total geral pago: {formatCurrency(totalGeral)}
-              </div>
+            {/* ── 📋 Outros ──────────────────────────────────────────── */}
+            {abaReal === 'outros' && (
+              outrosPagos.length === 0
+                ? <EmptyState icon={<CheckCircle size={32}/>} title="Nenhum outro pagamento realizado" description="Adiantamentos, 13º, férias e rescisões pagas aparecerão aqui." />
+                : <div style={{ border:'1px solid var(--border)', borderRadius:10, overflow:'hidden' }}>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Colaborador</TableHead>
+                          <TableHead>Tipo</TableHead>
+                          <TableHead className="text-center">Competência</TableHead>
+                          <TableHead className="text-center">Data Pgto</TableHead>
+                          <TableHead>Observação</TableHead>
+                          <TableHead className="text-right">💵 Valor</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {outrosPagos.map(r => (
+                          <TableRow key={r.id}>
+                            <TableCell>
+                              <div className="font-semibold text-sm">{r.colaboradores?.nome ?? '—'}</div>
+                              <div className="text-xs text-muted-foreground">{r.colaboradores?.chapa}</div>
+                            </TableCell>
+                            <TableCell>
+                              <span style={{ background:'#ede9fe', color:'#7c3aed', borderRadius:99, padding:'2px 10px', fontSize:11, fontWeight:700 }}>
+                                {r.tipo === 'adiantamento' ? '💵 Adiantamento'
+                                  : r.tipo === '13_salario' ? '🎄 13º Salário'
+                                  : r.tipo === 'ferias'     ? '🏖️ Férias'
+                                  : r.tipo === 'rescisao'   ? '📋 Rescisão'
+                                  : r.tipo === 'folha'      ? '📄 Folha'
+                                  : r.tipo ?? '—'}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-center text-sm">{r.competencia?.slice(5)}/{r.competencia?.slice(0,4)}</TableCell>
+                            <TableCell className="text-center">
+                              <span className="text-sm font-semibold" style={{ color:'#15803d' }}>
+                                {r.data_pagamento ? formatDate(r.data_pagamento) : '—'}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">{r.observacoes ?? '—'}</TableCell>
+                            <TableCell className="text-right font-bold text-sm" style={{ color:'#15803d' }}>
+                              {formatCurrency(r.valor_liquido ?? r.valor_bruto ?? 0)}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                      <TableFooter>
+                        <TableRow>
+                          <TableCell colSpan={5} className="text-sm font-semibold">Total — {outrosPagos.length} registro(s)</TableCell>
+                          <TableCell className="text-right font-bold text-sm" style={{ color:'#15803d' }}>{formatCurrency(totalOutros)}</TableCell>
+                        </TableRow>
+                      </TableFooter>
+                    </Table>
+                  </div>
             )}
           </div>
         )
