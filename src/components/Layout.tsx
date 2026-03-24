@@ -40,14 +40,14 @@ const NAV_GROUPS = [
   {
     label: 'Financeiro',
     items: [
-      { to: '/ponto',          label: 'Ponto',           icon: Clock },
-      { to: '/fechamento-ponto', label: 'Fechamento',    icon: Lock },
-      { to: '/pagamentos',     label: 'Pagamentos',      icon: DollarSign },
-      { to: '/adiantamentos',  label: 'Adiantamentos',    icon: Wallet },
-      { to: '/premios',        label: 'Prêmios',          icon: Award },
-      { to: '/vt',             label: 'Vale Transporte',  icon: Bus },
-      { to: '/provisoes',      label: 'Provisões FGTS',   icon: Calculator },
-      { to: '/encargos',       label: 'Encargos',          icon: Briefcase },
+      { to: '/ponto',            label: 'Ponto',           icon: Clock },
+      { to: '/vt',               label: 'Vale Transporte',  icon: Bus },
+      { to: '/adiantamentos',    label: 'Adiantamentos',    icon: Wallet },
+      { to: '/premios',          label: 'Prêmios',          icon: Award },
+      { to: '/fechamento-ponto', label: 'Fechamento',       icon: Lock },
+      { to: '/pagamentos',       label: 'Pagamentos',       icon: DollarSign },
+      { to: '/encargos',         label: 'Encargos',         icon: Briefcase },
+      { to: '/provisoes',        label: 'Provisões FGTS',   icon: Calculator },
     ],
   },
   {
