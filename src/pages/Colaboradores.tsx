@@ -539,6 +539,17 @@ function SolicitacoesPortalTab({ obras, funcoes }: { obras: Obra[]; funcoes: Fun
   async function aprovar() {
     if (!modalApr || !ed.nome.trim()) return
     setAprovando(prev => new Set([...prev, modalApr.id]))
+
+    // VT — tudo dentro de vt_dados (JSONB), igual ao sistema
+    const vtDados = ed.vt_modalidade === 'nenhum' ? null : {
+      modalidade:        ed.vt_modalidade,
+      gasolina_valor_dia: ed.vt_gasolina_valor_dia ? parseFloat(ed.vt_gasolina_valor_dia) : null,
+      cartao_tipo:       ed.vt_cartao_tipo   || null,
+      cartao_numero:     ed.vt_cartao_numero || null,
+      trechos_ida:       edVtTrechosIda,
+      trechos_volta:     edVtTrechosVolta,
+    }
+
     const { data: novoColab, error } = await supabase.from('colaboradores').insert({
       nome: ed.nome, cpf: ed.cpf || null, rg: ed.rg || null,
       pis_nit: ed.pis_nit || null, data_nascimento: ed.data_nascimento || null,
@@ -553,12 +564,8 @@ function SolicitacoesPortalTab({ obras, funcoes }: { obras: Obra[]; funcoes: Fun
       banco: ed.banco || null, agencia: ed.agencia || null, conta: ed.conta || null,
       tipo_conta: ed.tipo_conta || null, pix_tipo: ed.pix_tipo || null, pix_chave: ed.pix_chave || null,
       vt_modalidade: ed.vt_modalidade || 'nenhum',
-      vt_gasolina_valor_dia: ed.vt_gasolina_valor_dia ? parseFloat(ed.vt_gasolina_valor_dia) : null,
-      vt_cartao_tipo: ed.vt_cartao_tipo || null, vt_cartao_numero: ed.vt_cartao_numero || null,
-      // Salva VT dados estruturados igual ao sistema
-      vt_dados: (ed.vt_modalidade === 'transporte' && (edVtTrechosIda.length > 0 || edVtTrechosVolta.length > 0))
-        ? { trechos_ida: edVtTrechosIda, trechos_volta: edVtTrechosVolta }
-        : null,
+      vale_transporte: ed.vt_modalidade !== 'nenhum',
+      vt_dados: vtDados,
       observacoes: ed.observacoes || null,
       status: 'ativo',
     }).select('id').single()
