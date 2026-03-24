@@ -825,15 +825,31 @@ export default function ValeTransportePage() {
                                 {r.data_pagamento && <div style={{ fontSize: 10, color: 'var(--muted-foreground)', marginTop: 2 }}>{fmtData(r.data_pagamento)}</div>}
                               </td>
                               <td style={{ padding: '10px 14px', textAlign: 'right' }}>
-                                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 4 }}>
-                                  {(r.status as string | undefined) === 'pendente' && (
-                                    <Button size="sm" variant="outline" className="h-7 gap-1 text-blue-700 border-blue-300 hover:bg-blue-50" onClick={() => setPagarId(r.id)}>
-                                      <CreditCard size={12} /> Enviar p/ Pag.
-                                    </Button>
-                                  )}
-                                  <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(r)}><Pencil size={13} /></Button>
-                                  <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => setDeleteId(r.id)}><Trash2 size={13} /></Button>
-                                </div>
+                                {(() => {
+                                  const st = r.status as string | undefined
+                                  if (st === 'pago') {
+                                    // Pago: sem ações
+                                    return <span style={{ fontSize: 11, color: 'var(--muted-foreground)' }}>—</span>
+                                  }
+                                  if (st === 'aguardando_pagamento') {
+                                    // Aguardando: bloqueado — só mostra aviso
+                                    return (
+                                      <span style={{ fontSize: 11, color: '#1d4ed8', fontStyle: 'italic' }}>
+                                        🔒 Enviado p/ pagamento
+                                      </span>
+                                    )
+                                  }
+                                  // Pendente: pode enviar, editar e excluir
+                                  return (
+                                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 4 }}>
+                                      <Button size="sm" variant="outline" className="h-7 gap-1 text-blue-700 border-blue-300 hover:bg-blue-50" onClick={() => setPagarId(r.id)}>
+                                        <CreditCard size={12} /> Enviar p/ Pag.
+                                      </Button>
+                                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(r)}><Pencil size={13} /></Button>
+                                      <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => setDeleteId(r.id)}><Trash2 size={13} /></Button>
+                                    </div>
+                                  )
+                                })()}
                               </td>
                             </tr>
                           )

@@ -250,12 +250,47 @@ export default function Pagamentos() {
   // ─── marcar pago (tabela pagamentos) ──────────────────────────────────────
   async function marcarPago(id: string) {
     const hoje = new Date().toISOString().slice(0, 10)
+    // Busca o registro para saber se é VT
+    const row = rows.find(r => r.id === id)
     const { error } = await supabase
       .from('pagamentos')
       .update({ status: 'pago', data_pagamento: hoje })
       .eq('id', id)
     if (error) { toast.error('Erro ao confirmar pagamento: ' + error.message); return }
-    toast.success('✅ Pagamento de VT confirmado!')
+    // Se for VT, marca o vale_transporte como pago também
+    if (row?.tipo === 'vale_transporte' && row.colaborador_id && row.competencia) {
+      await supabase
+        .from('vale_transporte')
+        .update({ status: 'pago', data_pagamento: hoje })
+        .eq('colaborador_id', row.colaborador_id)
+        .eq('competencia', row.competencia)
+        .eq('status', 'aguardando_pagamento')
+    }
+    toast.success('✅ Pagamento confirmado!')
+    fetchData()
+  }
+
+  // ─── recusar pagamento de VT (devolve para pendente) ─────────────────────
+  const [modalRecusarVT, setModalRecusarVT] = useState<PagamentoRow | null>(null)
+  async function recusarPagamentoVT() {
+    if (!modalRecusarVT) return
+    setSavingPgto(true)
+    // Exclui o registro de pagamento
+    const { error: errDel } = await supabase
+      .from('pagamentos').delete().eq('id', modalRecusarVT.id)
+    if (errDel) { setSavingPgto(false); toast.error('Erro ao recusar: ' + errDel.message); return }
+    // Devolve o VT para pendente
+    if (modalRecusarVT.colaborador_id && modalRecusarVT.competencia) {
+      await supabase
+        .from('vale_transporte')
+        .update({ status: 'pendente' })
+        .eq('colaborador_id', modalRecusarVT.colaborador_id)
+        .eq('competencia', modalRecusarVT.competencia)
+        .eq('status', 'aguardando_pagamento')
+    }
+    setSavingPgto(false)
+    setModalRecusarVT(null)
+    toast.success('↩ Pagamento recusado — VT voltou para Pendente')
     fetchData()
   }
 
@@ -290,10 +325,21 @@ export default function Pagamentos() {
   // ─── delete ────────────────────────────────────────────────────────────────
   async function handleDelete() {
     if (!deleteId) return
+    const rowDel = rows.find(r => r.id === deleteId)
     const { error } = await supabase.from('pagamentos').delete().eq('id', deleteId)
     setDeleteId(null)
-    if (error) toast.error('Erro ao excluir')
-    else { toast.success('Pagamento excluído!'); fetchData() }
+    if (error) { toast.error('Erro ao excluir'); return }
+    // Se era VT aguardando, devolve para pendente
+    if (rowDel?.tipo === 'vale_transporte' && rowDel.status === 'pendente' && rowDel.colaborador_id && rowDel.competencia) {
+      await supabase
+        .from('vale_transporte')
+        .update({ status: 'pendente' })
+        .eq('colaborador_id', rowDel.colaborador_id)
+        .eq('competencia', rowDel.competencia)
+        .eq('status', 'aguardando_pagamento')
+    }
+    toast.success('Pagamento excluído!')
+    fetchData()
   }
 
   // ─── render ────────────────────────────────────────────────────────────────
@@ -515,7 +561,11 @@ export default function Pagamentos() {
                           <div style={{ display:'flex', gap:6, justifyContent:'flex-end' }}>
                             <Button size="sm" className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
                               onClick={() => marcarPago(r.id)}>
-                              ✅ Confirmar Pagamento
+                              ✅ Confirmar
+                            </Button>
+                            <Button size="sm" variant="outline" className="h-7 text-xs text-red-600 border-red-300 hover:bg-red-50"
+                              onClick={() => setModalRecusarVT(r)}>
+                              ✕ Recusar
                             </Button>
                           </div>
                         </TableCell>
@@ -771,6 +821,31 @@ export default function Pagamentos() {
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground">
               Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ══ MODAL RECUSAR PAGAMENTO VT ══ */}
+      <AlertDialog open={!!modalRecusarVT} onOpenChange={(o) => !o && setModalRecusarVT(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle style={{ display:'flex', alignItems:'center', gap:8 }}>
+              ✕ Recusar pagamento de VT?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              O registro de pagamento será <strong>excluído</strong> e o lançamento de Vale Transporte
+              voltará para status <strong>Pendente</strong>, permitindo edição e reenvio.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={savingPgto}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={savingPgto}
+              onClick={recusarPagamentoVT}
+              className="bg-destructive text-destructive-foreground"
+            >
+              {savingPgto ? 'Processando…' : '↩ Recusar e devolver VT'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
