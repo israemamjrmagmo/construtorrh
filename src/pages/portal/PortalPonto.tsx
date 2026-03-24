@@ -7,7 +7,7 @@ import { ChevronLeft, ChevronRight, Check, X, Clock, Minus, Plus, Save, Loader2 
 
 type StatusPonto = 'presente' | 'falta' | 'meio_periodo' | 'falta_justificada'
 
-interface ColabRow { id: string; nome: string; chapa?: string; funcao?: string }
+interface ColabRow { id: string; nome: string; chapa?: string; funcao?: string; data_admissao?: string | null }
 interface PontoRow {
   id?: string; colaborador_id: string; data: string; status: StatusPonto
   hora_entrada?: string; hora_saida?: string
@@ -47,12 +47,13 @@ export default function PortalPonto() {
     if (!obraId) return
     const { data } = await supabase
       .from('colaboradores')
-      .select('id, nome, chapa, funcoes(nome)')
+      .select('id, nome, chapa, data_admissao, funcoes(nome)')
       .eq('obra_id', obraId)
       .eq('status', 'ativo')
       .order('nome')
     if (data) setColaboradores(data.map((c: any) => ({
       id: c.id, nome: c.nome, chapa: c.chapa, funcao: c.funcoes?.nome,
+      data_admissao: c.data_admissao ?? null,
     })))
   }, [obraId])
 
@@ -105,9 +106,15 @@ export default function PortalPonto() {
     return dt.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })
   }, [dataSel])
 
-  const totalPresentes = colaboradores.filter(c => pontos[c.id]?.status === 'presente').length
-  const totalFaltas    = colaboradores.filter(c => pontos[c.id]?.status === 'falta' || pontos[c.id]?.status === 'falta_justificada').length
-  const semLancamento  = colaboradores.filter(c => !pontos[c.id]).length
+  // Filtra colaboradores elegíveis para a data selecionada:
+  // só aparece se data_admissao <= dataSel (ou se não tiver data_admissao cadastrada)
+  const colaboradoresVisiveis = colaboradores.filter(c =>
+    !c.data_admissao || c.data_admissao <= dataSel
+  )
+
+  const totalPresentes = colaboradoresVisiveis.filter(c => pontos[c.id]?.status === 'presente').length
+  const totalFaltas    = colaboradoresVisiveis.filter(c => pontos[c.id]?.status === 'falta' || pontos[c.id]?.status === 'falta_justificada').length
+  const semLancamento  = colaboradoresVisiveis.filter(c => !pontos[c.id]).length
 
   return (
     <PortalLayout>
@@ -160,11 +167,11 @@ export default function PortalPonto() {
             <Loader2 size={24} className="animate-spin" style={{ margin: '0 auto 8px', display: 'block' }} />
             Carregando…
           </div>
-        ) : colaboradores.length === 0 ? (
+        ) : colaboradoresVisiveis.length === 0 ? (
           <div style={{ background: '#fff', borderRadius: 12, padding: 24, textAlign: 'center', color: '#9ca3af' }}>
-            Nenhum colaborador ativo nesta obra
+            Nenhum colaborador ativo nesta obra para esta data
           </div>
-        ) : colaboradores.map(c => {
+        ) : colaboradoresVisiveis.map(c => {
           const p = pontos[c.id]
           const isSaving = saving.has(c.id)
           const isEdit = editandoId === c.id
