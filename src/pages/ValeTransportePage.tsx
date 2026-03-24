@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import type { ValeTransporte, Colaborador } from '@/lib/supabase'
 import { formatCurrency } from '@/lib/utils'
@@ -18,6 +19,7 @@ import { traduzirErro } from '@/lib/erros'
 import {
   Bus, Plus, Pencil, Trash2, Search, ChevronLeft, ChevronRight,
   CheckCircle2, AlertCircle, X, ToggleLeft, ToggleRight,
+  CreditCard, Building2, CheckSquare, Square, Loader2,
 } from 'lucide-react'
 
 // ─── tipos ───────────────────────────────────────────────────────────────────
@@ -145,6 +147,7 @@ function vtMensalColab(colab: ColaboradorVT, comp: string, contarSabado: boolean
 // ─── componente ──────────────────────────────────────────────────────────────
 export default function ValeTransportePage() {
   const hoje = new Date()
+  const navigate = useNavigate()
   const [ano, setAno]       = useState(hoje.getFullYear())
   const [mes, setMes]       = useState(hoje.getMonth() + 1)
   const [busca, setBusca]   = useState('')
@@ -163,6 +166,16 @@ export default function ValeTransportePage() {
   const [deleteId, setDeleteId]   = useState<string | null>(null)
   // Taxa diária "congelada" no momento do lançamento — usada ao editar para não recalcular da base atual
   const [vtDiarioSnap, setVtDiarioSnap] = useState<number | null>(null)
+
+  // ── Pagar VT individual ──────────────────────────────────────────────────
+  const [pagarId, setPagarId]     = useState<string | null>(null)
+  const [savingPagar, setSavingPagar] = useState(false)
+
+  // ── Fechamento em lote por obra ──────────────────────────────────────────
+  const [modalLote, setModalLote] = useState(false)
+  const [obraLote, setObraLote]   = useState('todas')
+  const [selecionados, setSelecionados] = useState<Set<string>>(new Set())
+  const [savingLote, setSavingLote] = useState(false)
 
   const competencia = `${ano}-${String(mes).padStart(2, '0')}`
 
@@ -449,6 +462,69 @@ export default function ValeTransportePage() {
     else { toast.success('Registro excluído!'); fetchData() }
   }
 
+  // ─── pagar VT individual ─────────────────────────────────────────────────
+  async function handlePagar() {
+    if (!pagarId) return
+    setSavingPagar(true)
+    const hoje_str = new Date().toISOString().split('T')[0]
+    const { error } = await supabase
+      .from('vale_transporte')
+      .update({ status: 'pago', data_pagamento: hoje_str })
+      .eq('id', pagarId)
+    setSavingPagar(false)
+    setPagarId(null)
+    if (error) { toast.error(traduzirErro(error.message)); return }
+    toast.success('VT marcado como pago!')
+    fetchData()
+    navigate('/pagamentos')
+  }
+
+  // ─── fechamento em lote por obra ─────────────────────────────────────────
+  const vtsPendentesLote = useMemo(() => {
+    return vtRows.filter(r => {
+      if (r.competencia !== competencia) return false
+      if ((r.status as string | undefined) === 'pago') return false
+      if (obraLote === 'todas') return true
+      const colab = colaboradores.find(c => c.id === r.colaborador_id)
+      return colab?.obra_id === obraLote
+    })
+  }, [vtRows, competencia, obraLote, colaboradores])
+
+  function toggleSel(id: string) {
+    setSelecionados(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  function toggleAll() {
+    const ids = vtsPendentesLote.map(r => r.id)
+    if (ids.every(id => selecionados.has(id))) {
+      setSelecionados(prev => { const n = new Set(prev); ids.forEach(id => n.delete(id)); return n })
+    } else {
+      setSelecionados(prev => { const n = new Set(prev); ids.forEach(id => n.add(id)); return n })
+    }
+  }
+
+  async function handlePagarLote() {
+    const ids = [...selecionados].filter(id => vtsPendentesLote.some(r => r.id === id))
+    if (ids.length === 0) return toast.error('Selecione ao menos um lançamento')
+    setSavingLote(true)
+    const hoje_str = new Date().toISOString().split('T')[0]
+    const { error } = await supabase
+      .from('vale_transporte')
+      .update({ status: 'pago', data_pagamento: hoje_str })
+      .in('id', ids)
+    setSavingLote(false)
+    if (error) { toast.error(traduzirErro(error.message)); return }
+    toast.success(`${ids.length} VT(s) marcados como pagos!`)
+    setModalLote(false)
+    setSelecionados(new Set())
+    fetchData()
+    navigate('/pagamentos')
+  }
+
   // ─── totais gerais do mês ─────────────────────────────────────────────────
   const vtDoMes = vtRows.filter(r => r.competencia === competencia)
   const totalEmpresaMes = vtDoMes.reduce((s, r) => s + (r.valor_empresa ?? 0), 0)
@@ -598,9 +674,14 @@ export default function ValeTransportePage() {
                       {vtMensalColab_ > 0 && <span>6% do VT ≈ <strong>{formatCurrency(vtMensalColab_ * 0.06)}</strong>/mês</span>}
                     </div>
                   </div>
-                  <Button onClick={openCreate} disabled={!pode} title={motivo} className="gap-2 shrink-0">
-                    <Plus size={15} /> Novo Lançamento
-                  </Button>
+                  <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                    <Button variant="outline" onClick={() => { setObraLote(colabSel?.obra_id ?? 'todas'); setSelecionados(new Set()); setModalLote(true) }} className="gap-2">
+                      <Building2 size={15} /> Fechar em Lote
+                    </Button>
+                    <Button onClick={openCreate} disabled={!pode} title={motivo} className="gap-2">
+                      <Plus size={15} /> Novo Lançamento
+                    </Button>
+                  </div>
                 </div>
 
                 {!pode && (
@@ -641,6 +722,7 @@ export default function ValeTransportePage() {
                           <th style={{ padding: '9px 14px', textAlign: 'right', fontWeight: 700 }}>Valor Bruto</th>
                           <th style={{ padding: '9px 14px', textAlign: 'right', fontWeight: 700 }}>Desc. 6%</th>
                           <th style={{ padding: '9px 14px', textAlign: 'right', fontWeight: 700 }}>Empresa</th>
+                          <th style={{ padding: '9px 14px', textAlign: 'center', fontWeight: 700 }}>Status</th>
                           <th style={{ padding: '9px 14px', textAlign: 'right', fontWeight: 700 }}>Ações</th>
                         </tr>
                       </thead>
@@ -668,8 +750,19 @@ export default function ValeTransportePage() {
                               <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: '#1d4ed8' }}>
                                 {formatCurrency(r.valor_empresa)}
                               </td>
+                              <td style={{ padding: '10px 14px', textAlign: 'center' }}>
+                                {(r.status as string | undefined) === 'pago'
+                                  ? <span style={{ background: '#dcfce7', color: '#15803d', borderRadius: 99, padding: '2px 10px', fontSize: 11, fontWeight: 700 }}>✓ Pago</span>
+                                  : <span style={{ background: '#fef3c7', color: '#b45309', borderRadius: 99, padding: '2px 10px', fontSize: 11, fontWeight: 700 }}>Pendente</span>}
+                                {r.data_pagamento && <div style={{ fontSize: 10, color: 'var(--muted-foreground)', marginTop: 2 }}>{fmtData(r.data_pagamento)}</div>}
+                              </td>
                               <td style={{ padding: '10px 14px', textAlign: 'right' }}>
                                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 4 }}>
+                                  {(r.status as string | undefined) !== 'pago' && (
+                                    <Button size="sm" variant="outline" className="h-7 gap-1 text-green-700 border-green-300 hover:bg-green-50" onClick={() => setPagarId(r.id)}>
+                                      <CreditCard size={12} /> Pagar
+                                    </Button>
+                                  )}
                                   <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(r)}><Pencil size={13} /></Button>
                                   <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => setDeleteId(r.id)}><Trash2 size={13} /></Button>
                                 </div>
@@ -850,6 +943,142 @@ export default function ValeTransportePage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* ── Modal confirmar pagamento individual ── */}
+      <AlertDialog open={!!pagarId} onOpenChange={o => !o && setPagarId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <CreditCard size={18} style={{ color: '#15803d' }} /> Confirmar Pagamento de VT
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              O lançamento será marcado como <strong>Pago</strong> com data de hoje e você será redirecionado para a tela de Pagamentos.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={savingPagar}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={savingPagar}
+              onClick={handlePagar}
+              style={{ background: '#15803d', color: '#fff' }}
+            >
+              {savingPagar ? <><Loader2 size={14} className="animate-spin" /> Pagando…</> : '✓ Confirmar Pagamento'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ── Modal fechamento em lote ── */}
+      {modalLote && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div style={{ background: 'var(--card)', borderRadius: 16, width: '100%', maxWidth: 700, maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 25px 50px rgba(0,0,0,0.3)' }}>
+            {/* header */}
+            <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <Building2 size={20} style={{ color: '#7c3aed' }} />
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: 17 }}>Fechar VT em Lote</div>
+                  <div style={{ fontSize: 12, color: 'var(--muted-foreground)' }}>{fmtMes(competencia)} — selecione os lançamentos a pagar</div>
+                </div>
+              </div>
+              <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setModalLote(false)}><X size={16} /></Button>
+            </div>
+
+            {/* filtro obra */}
+            <div style={{ padding: '12px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 12 }}>
+              <Label style={{ fontSize: 13, whiteSpace: 'nowrap' }}>Filtrar por obra:</Label>
+              <Select value={obraLote} onValueChange={v => { setObraLote(v); setSelecionados(new Set()) }}>
+                <SelectTrigger style={{ width: 220, height: 34, fontSize: 13 }}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todas">Todas as obras</SelectItem>
+                  {obras.map(o => <SelectItem key={o.id} value={o.id}>{o.nome}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <span style={{ fontSize: 12, color: 'var(--muted-foreground)', marginLeft: 'auto' }}>
+                {vtsPendentesLote.length} pendente(s) · {selecionados.size} selecionado(s)
+              </span>
+            </div>
+
+            {/* tabela */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '0 24px' }}>
+              {vtsPendentesLote.length === 0 ? (
+                <div style={{ padding: 40, textAlign: 'center', color: 'var(--muted-foreground)', fontSize: 14 }}>
+                  ✓ Nenhum VT pendente {obraLote !== 'todas' ? 'nesta obra' : ''} em {fmtMes(competencia)}
+                </div>
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ background: 'var(--muted)' }}>
+                      <th style={{ padding: '9px 8px', width: 36 }}>
+                        <button onClick={toggleAll} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+                          {vtsPendentesLote.every(r => selecionados.has(r.id))
+                            ? <CheckSquare size={16} style={{ color: '#7c3aed' }} />
+                            : <Square size={16} style={{ color: 'var(--muted-foreground)' }} />}
+                        </button>
+                      </th>
+                      <th style={{ padding: '9px 8px', textAlign: 'left', fontWeight: 700 }}>Colaborador</th>
+                      <th style={{ padding: '9px 8px', textAlign: 'left', fontWeight: 700 }}>Período</th>
+                      <th style={{ padding: '9px 8px', textAlign: 'right', fontWeight: 700 }}>Valor Empresa</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {vtsPendentesLote.map((r, i) => {
+                      const colab = colaboradores.find(c => c.id === r.colaborador_id)
+                      const sel = selecionados.has(r.id)
+                      return (
+                        <tr key={r.id}
+                          onClick={() => toggleSel(r.id)}
+                          style={{ borderBottom: '1px solid var(--border)', background: sel ? 'rgba(124,58,237,0.07)' : i % 2 === 0 ? 'var(--card)' : 'transparent', cursor: 'pointer' }}>
+                          <td style={{ padding: '9px 8px' }}>
+                            {sel ? <CheckSquare size={15} style={{ color: '#7c3aed' }} /> : <Square size={15} style={{ color: 'var(--muted-foreground)' }} />}
+                          </td>
+                          <td style={{ padding: '9px 8px', fontWeight: 600 }}>
+                            {colab?.nome ?? r.colaborador_id}
+                            {colab?.chapa && <span style={{ fontSize: 10, color: 'var(--muted-foreground)', marginLeft: 6 }}>{colab.chapa}</span>}
+                            {colab?.obra_nome && <div style={{ fontSize: 10, color: 'var(--muted-foreground)' }}>{colab.obra_nome}</div>}
+                          </td>
+                          <td style={{ padding: '9px 8px', color: 'var(--muted-foreground)' }}>
+                            {fmtData(r.data_inicio)} → {fmtData(r.data_fim)}
+                          </td>
+                          <td style={{ padding: '9px 8px', textAlign: 'right', fontWeight: 700, color: '#1d4ed8' }}>
+                            {formatCurrency(r.valor_empresa)}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr style={{ borderTop: '2px solid var(--border)', background: 'var(--muted)' }}>
+                      <td colSpan={3} style={{ padding: '9px 8px', fontWeight: 700 }}>
+                        Total selecionado ({selecionados.size} VT)
+                      </td>
+                      <td style={{ padding: '9px 8px', textAlign: 'right', fontWeight: 800, color: '#15803d', fontSize: 15 }}>
+                        {formatCurrency(vtsPendentesLote.filter(r => selecionados.has(r.id)).reduce((s, r) => s + (r.valor_empresa ?? 0), 0))}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              )}
+            </div>
+
+            {/* footer */}
+            <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <Button variant="outline" onClick={() => setModalLote(false)} disabled={savingLote}>Cancelar</Button>
+              <Button
+                disabled={selecionados.size === 0 || savingLote}
+                onClick={handlePagarLote}
+                style={{ background: '#15803d', color: '#fff', gap: 6 }}
+              >
+                {savingLote
+                  ? <><Loader2 size={14} className="animate-spin" /> Processando…</>
+                  : <><CreditCard size={14} /> Pagar {selecionados.size} VT(s) — ir para Pagamentos</>}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

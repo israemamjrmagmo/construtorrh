@@ -287,6 +287,8 @@ export interface ValeTransporte {
   desconto_colaborador: number | null
   valor_empresa: number | null
   descontar_6pct: boolean      // empresa desconta 6% do salário?
+  status: 'pendente' | 'pago' | 'cancelado'
+  data_pagamento: string | null
   observacoes: string | null
   colaboradores?: Pick<Colaborador, 'id' | 'nome' | 'chapa'> & { salario?: number | null; vt_dados?: Record<string,unknown> | null }
 }
