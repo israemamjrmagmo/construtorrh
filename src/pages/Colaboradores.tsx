@@ -891,9 +891,18 @@ export default function Colaboradores() {
       const { error } = await supabase.from('colaboradores').update(payloadFull).eq('id', editId)
       if (error) { toast.error(traduzirErro(error.message)); setSaving(false); return }
     } else {
+      // ✅ Regerar chapa no momento exato do INSERT para evitar race condition / duplicata
+      // (o usuário pode ter demorado no formulário enquanto outro colaborador era criado)
+      const fn = funcoes.find(f => f.id === form.funcao_id)
+      if (fn?.sigla) {
+        const chapaFinal = await gerarChapa(fn.sigla, form.data_admissao || undefined)
+        payloadFull.chapa = chapaFinal
+        setChapaGerada(chapaFinal)
+      }
+
       const { data: inserted, error } = await supabase
         .from('colaboradores').insert(payloadFull).select('id').single()
-      if (error || !inserted) { toast.error(error?.message ?? 'Erro ao criar colaborador'); setSaving(false); return }
+      if (error || !inserted) { toast.error(traduzirErro(error?.message ?? 'Erro ao criar colaborador')); setSaving(false); return }
       colaboradorId = inserted.id
     }
 
