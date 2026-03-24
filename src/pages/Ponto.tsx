@@ -33,6 +33,7 @@ interface Lancamento {
   mes_referencia: string; data_inicio: string; data_fim: string
   status: 'rascunho'|'aguardando_aprovacao'|'em_fechamento'|'aprovado'|'recusado'|'liberado'|'pago'
   motivo_recusa: string | null
+  valor_hora_snapshot: number | null  // valor/hora gravado ao aprovar — imutável
 }
 type TipoEvento = 'atestado' | 'suspensao' | 'outro_lancamento' | null
 interface DiaRegistro {
@@ -158,7 +159,8 @@ export default function Ponto() {
   const [savingProd, setSavingProd] = useState(false)
 
   const [saving, setSaving] = useState(false)
-  const [valorHora, setValorHora] = useState(0)
+  const [valorHora, setValorHora] = useState(0)       // valor AO VIVO da função (para novos rascunhos)
+  const [valorHoraCongelado, setValorHoraCongelado] = useState<number|null>(null)  // valor gravado no lançamento
   const [loadingDias, setLoadingDias] = useState(false)
 
   // Modal recusa
@@ -214,8 +216,16 @@ export default function Ponto() {
       id:l.id,obra_id:l.obra_id,obra_nome:l.obras?.nome??'Obra',
       mes_referencia:l.mes_referencia,data_inicio:l.data_inicio,data_fim:l.data_fim,
       status:l.status??'rascunho',motivo_recusa:l.motivo_recusa??null,
+      valor_hora_snapshot:l.valor_hora_snapshot??null,
     }))
     setLancamentos(list)
+    // Se existe algum lançamento não-rascunho com snapshot, expõe para uso na view
+    const snapShot = list.find(l => l.valor_hora_snapshot != null)
+    if(snapShot?.valor_hora_snapshot){
+      setValorHoraCongelado(snapShot.valor_hora_snapshot)
+    } else {
+      setValorHoraCongelado(null)
+    }
     return list
   },[])
 
@@ -414,7 +424,11 @@ export default function Ponto() {
     return{normais,extras50,total:normais+extras50,presentes}
   },[diasMap])
 
-  const totalHoras = valorHora>0?(fmtDecimal(totaisGlobais.normais)*valorHora + fmtDecimal(totaisGlobais.extras50)*valorHora*1.5):0
+  // valorHoraEfetivo: usa snapshot se existir (lançamento aprovado/fechado),
+  // caso contrário usa o valor ao vivo da função. Garante imutabilidade pós-aprovação.
+  const valorHoraEfetivo: number = valorHoraCongelado ?? valorHora
+
+  const totalHoras = valorHoraEfetivo>0?(fmtDecimal(totaisGlobais.normais)*valorHoraEfetivo + fmtDecimal(totaisGlobais.extras50)*valorHoraEfetivo*1.5):0
   const totalProd  = producoes.reduce((s,p)=>s+p.valor_total,0)
 
   // Valor a receber com regra CLT/autônomo
@@ -427,14 +441,14 @@ export default function Ponto() {
     Object.values(diasMap).forEach(dias=>dias.forEach(d=>{
       if(!diasComProd.has(d.data)){const cl=calcDia(d);min+=cl.normais+cl.extras50}
     }))
-    return fmtDecimal(min)*valorHora
-  },[diasMap,diasComProd,valorHora])
+    return fmtDecimal(min)*valorHoraEfetivo
+  },[diasMap,diasComProd,valorHoraEfetivo])
 
   // DSR — só para CLT
-  // Fórmula: DSR = (totalHoras × valorHora / diasUteis) × domingos
+  // Fórmula: DSR = (totalHoras × valorHoraEfetivo / diasUteis) × domingos
   // diasUteis = Seg-Sab do período · domingos = domingos + feriados
   const dsrInfo = useMemo(()=>{
-    if(!colabSel||colabSel.tipo_contrato!=='clt'||valorHora===0){
+    if(!colabSel||colabSel.tipo_contrato!=='clt'||valorHoraEfetivo===0){
       return{valor:0,diasUteis:0,domingos:0,baseValor:0}
     }
     let totalDiasUteis=0,totalDomingos=0
@@ -442,13 +456,13 @@ export default function Ponto() {
       totalDiasUteis+=diasUteisPeriodo(lanc.data_inicio,lanc.data_fim,feriados)
       totalDomingos+=domingosFeriadosPeriodo(lanc.data_inicio,lanc.data_fim,feriados)
     })
-    const baseValor = fmtDecimal(totaisGlobais.normais)*valorHora
-                    + fmtDecimal(totaisGlobais.extras50)*valorHora*1.5
+    const baseValor = fmtDecimal(totaisGlobais.normais)*valorHoraEfetivo
+                    + fmtDecimal(totaisGlobais.extras50)*valorHoraEfetivo*1.5
     const dsr = totalDiasUteis>0 && totalDomingos>0
       ? (baseValor / totalDiasUteis) * totalDomingos
       : 0
     return{valor:dsr,diasUteis:totalDiasUteis,domingos:totalDomingos,baseValor}
-  },[colabSel,valorHora,lancamentos,totaisGlobais.normais,totaisGlobais.extras50,feriados])
+  },[colabSel,valorHoraEfetivo,lancamentos,totaisGlobais.normais,totaisGlobais.extras50,feriados])
 
   // premioCLT = excedente da produção sobre o salário (horas + DSR)
   const premioCLT = useMemo(()=>{
@@ -606,9 +620,12 @@ export default function Ponto() {
 
   // ── Aprovação de ponto ───────────────────────────────────────────────────
   async function mudarStatus(id:string,status:Lancamento['status'],motivo?:string){
-    const{error}=await supabase.from('ponto_lancamentos').update({
-      status,motivo_recusa:motivo??null
-    }).eq('id',id)
+    // Ao enviar para aprovação: gravar valor_hora como snapshot imutável
+    const payload: Record<string,unknown> = { status, motivo_recusa:motivo??null }
+    if(status==='aguardando_aprovacao' && valorHora>0){
+      payload.valor_hora_snapshot = valorHora
+    }
+    const{error}=await supabase.from('ponto_lancamentos').update(payload).eq('id',id)
     if(error){toast.error('Erro: '+error.message);return}
     const msgs:Record<string,string>={
       aguardando_aprovacao:'Enviado para aprovação!',
@@ -801,7 +818,7 @@ export default function Ponto() {
                 const subReceber = ehAuto
                   ? (totalProd>0||horasAutonomoSemProd>0
                       ? `Horas: ${formatCurrency(horasAutonomoSemProd)} + Prod: ${formatCurrency(totalProd)}`
-                      : `Autônomo: R$ ${valorHora.toFixed(2)}/h`)
+                      : `Autônomo: R$ ${valorHoraEfetivo.toFixed(2)}/h`)
                   : (()=>{
                       const partes:string[]=[]
                       if(totalHoras>0) partes.push(`Horas: ${formatCurrency(totalHoras)}`)
@@ -812,7 +829,7 @@ export default function Ponto() {
 
                 const cards=[
                   {label:'⏱ Total de Horas',value:fmtHHMM(totaisGlobais.total),sub:`${fmtHHMM(totaisGlobais.normais)} norm + ${fmtHHMM(totaisGlobais.extras50)} extras`,color:'#1d4ed8'},
-                  {label:'💰 Valor das Horas',value:valorHora>0?`R$ ${valorHora.toFixed(2)}/h`:'Sem tabela',sub:valorHora>0?formatCurrency(totalHoras)+' no período':'Cadastre em Funções → valor/hora',color:valorHora>0?'#15803d':'#9ca3af'},
+                  {label:'💰 Valor das Horas',value:valorHoraEfetivo>0?`R$ ${valorHoraEfetivo.toFixed(2)}/h`:'Sem tabela',sub:valorHoraEfetivo>0?(valorHoraCongelado!=null?`🔒 Valor congelado · ${formatCurrency(totalHoras)} no período`:formatCurrency(totalHoras)+' no período'):'Cadastre em Funções → valor/hora',color:valorHoraEfetivo>0?'#15803d':'#9ca3af'},
                   {label:'🏗️ Produção',value:totalProd>0?formatCurrency(totalProd):'—',sub:subProd,color:'#b45309'},
                 ]
 
@@ -840,7 +857,7 @@ export default function Ponto() {
                 </div>
               ))}
               {/* Card de performance — só aparece quando há produção e valor/hora */}
-              {totalProd>0&&valorHora>0&&colabSel&&(()=>{
+              {totalProd>0&&valorHoraEfetivo>0&&colabSel&&(()=>{
                 const ehAutoPerf=colabSel.tipo_contrato==='autonomo'||colabSel.tipo_contrato==='pj'
                 // Para CLT: comparar produção vs salário (horas + DSR)
                 const baseComp = ehAutoPerf ? totalHoras : (totalHoras + dsrInfo.valor)
@@ -911,8 +928,8 @@ export default function Ponto() {
                       </div>
                     </div>
                     {/* Mini totais */}
-                    {valorHora>0&&<div style={{fontSize:12,fontWeight:700,color:'#15803d',textAlign:'right'}}>
-                      {formatCurrency((fmtDecimal(tot.normais)*valorHora)+(fmtDecimal(tot.extras50)*valorHora*1.5))}
+                    {valorHoraEfetivo>0&&<div style={{fontSize:12,fontWeight:700,color:'#15803d',textAlign:'right'}}>
+                      {formatCurrency((fmtDecimal(tot.normais)*valorHoraEfetivo)+(fmtDecimal(tot.extras50)*valorHoraEfetivo*1.5))}
                     </div>}
                     {/* Badge status */}
                     {(() => {
@@ -1043,7 +1060,7 @@ export default function Ponto() {
                                     : d.presente&&calc.total>0
                                     ? (() => {
                                         const ehAuto=colabSel?.tipo_contrato==='autonomo'||colabSel?.tipo_contrato==='pj'
-                                        const vHoras=fmtDecimal(calc.normais)*valorHora + fmtDecimal(calc.extras50)*valorHora*1.5
+                                        const vHoras=fmtDecimal(calc.normais)*valorHoraEfetivo + fmtDecimal(calc.extras50)*valorHoraEfetivo*1.5
                                         // Autônomo: se este dia foi marcado na produção → mostra prod proporcional; senão → horas
                                         if(ehAuto&&diasComProd.has(d.data)&&prodPorDia>0){
                                           return <span title={`Dia marcado na produção: ${formatCurrency(prodPorDia)}`} style={{cursor:'default',color:'#b45309',fontWeight:700}}>
@@ -1053,10 +1070,10 @@ export default function Ponto() {
                                         }
                                         // CLT ou autônomo sem prod neste dia: mostra horas
                                         return <span title={`Horas: ${formatCurrency(vHoras)}`} style={{cursor:'default'}}>
-                                          {valorHora>0?formatCurrency(vHoras):'—'}
+                                          {valorHoraEfetivo>0?formatCurrency(vHoras):'—'}
                                         </span>
                                       })()
-                                    : <span style={{color:'#d1d5db',fontSize:9}}>{valorHora===0?'s/val':'—'}</span>
+                                    : <span style={{color:'#d1d5db',fontSize:9}}>{valorHoraEfetivo===0?'s/val':'—'}</span>
                                   }
                                 </td>
                                 <td style={{...TD,fontSize:10}}>
@@ -1074,13 +1091,13 @@ export default function Ponto() {
                               {tot.presentes} dia{tot.presentes!==1?'s':''} trabalhado{tot.presentes!==1?'s':''}
                               {tot.faltas>0&&<span style={{color:'#fca5a5',marginLeft:8}}>· {tot.faltas} falta{tot.faltas!==1?'s':''}</span>}
                             </td>
-                            <td colSpan={6} style={{padding:'7px 12px',textAlign:'right',fontSize:10,opacity:0.7}}>{valorHora>0&&`R$ ${valorHora.toFixed(4)}/h`}</td>
+                            <td colSpan={6} style={{padding:'7px 12px',textAlign:'right',fontSize:10,opacity:0.7}}>{valorHoraEfetivo>0&&`R$ ${valorHoraEfetivo.toFixed(4)}/h`}</td>
                             <td style={{padding:'7px 6px',textAlign:'center',background:'rgba(22,163,74,0.3)'}}>{fmtHHMM(tot.normais)}</td>
                             <td style={{padding:'7px 6px',textAlign:'center',background:'rgba(45,90,158,0.4)'}}>{fmtHHMM(tot.extras50)}</td>
                             <td style={{padding:'7px 6px',textAlign:'center',background:'rgba(0,0,0,0.2)'}}>{fmtHHMM(tot.total)}</td>
                             <td style={{padding:'7px 8px',textAlign:'right',background:'rgba(74,26,122,0.4)',color:'#e9d5ff',fontWeight:700,fontSize:11}}>
                               {(() => {
-                                const vHoras=fmtDecimal(tot.normais)*valorHora + fmtDecimal(tot.extras50)*valorHora*1.5
+                                const vHoras=fmtDecimal(tot.normais)*valorHoraEfetivo + fmtDecimal(tot.extras50)*valorHoraEfetivo*1.5
                                 const ehAuto=colabSel?.tipo_contrato==='autonomo'||colabSel?.tipo_contrato==='pj'
                                 if(vHoras===0&&totalProdLancamento===0)return '—'
                                 if(ehAuto){
@@ -1090,7 +1107,7 @@ export default function Ponto() {
                                   diasLancamento.forEach(d=>{
                                     if(!diasComProd.has(d.data)){const cl=calcDia(d);minSemProdLanc+=cl.normais+cl.extras50}
                                   })
-                                  const horasLancSemProd=fmtDecimal(minSemProdLanc)*valorHora
+                                  const horasLancSemProd=fmtDecimal(minSemProdLanc)*valorHoraEfetivo
                                   const vTotalAuto=horasLancSemProd+totalProdLancamento
                                   return <span title={`Horas(sem prod): ${formatCurrency(horasLancSemProd)} + Prod: ${formatCurrency(totalProdLancamento)}`}>
                                     {formatCurrency(vTotalAuto)}
@@ -1100,7 +1117,7 @@ export default function Ponto() {
                                 // CLT: horas + DSR proporcional do lançamento
                                 const duLanc=diasUteisPeriodo(lanc.data_inicio,lanc.data_fim,feriados)
                                 const domLanc=domingosFeriadosPeriodo(lanc.data_inicio,lanc.data_fim,feriados)
-                                const extrasLanc=fmtDecimal(tot.extras50)*valorHora*1.5
+                                const extrasLanc=fmtDecimal(tot.extras50)*valorHoraEfetivo*1.5
                                 const dsrLanc=duLanc>0&&domLanc>0&&extrasLanc>0?(extrasLanc/duLanc)*domLanc:0
                                 const totalLanc=vHoras+dsrLanc
                                 return <span title={`Horas: ${formatCurrency(vHoras)}${dsrLanc>0?' + DSR: '+formatCurrency(dsrLanc):''}`}>
