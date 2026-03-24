@@ -250,7 +250,7 @@ export default function Ponto() {
     lanc:Lancamento,colab:ColabSimples,
     horMapa:Record<string,Record<string,HorarioDia>>,
     diasAtestado:Set<string>,diasSuspensao:Set<string>,
-    diasUsados:Set<string>
+    diasUsados:Map<string,string>   // data → nomeObra
   ):Promise<DiaRegistro[]>=>{
     const{data:pontosRaw}=await supabase.from('registro_ponto').select('*')
       .eq('lancamento_id',lanc.id)
@@ -262,14 +262,15 @@ export default function Ponto() {
       const r=mapaP[d]
       const isAtestado=diasAtestado.has(d)
       const isSuspensao=diasSuspensao.has(d)
-      const bloqOutroLanc=diasUsados.has(d)  // qualquer dia já lançado em outra obra fica bloqueado
+      const obraConflito=diasUsados.get(d)   // nome da obra que já ocupa este dia
+      const bloqOutroLanc=!!obraConflito
       const evento:TipoEvento=isSuspensao?'suspensao':isAtestado?'atestado':null
       const diaSem=DIAS_KEY[new Date(d+'T12:00:00').getDay()]
       const hor=horObra[diaSem]
 
       if(!r){
         const base=emptyDia(colab.id,lanc.id,lanc.obra_id,d)
-        if(bloqOutroLanc)return{...base,evento:'outro_lancamento',bloqueado:true}
+        if(bloqOutroLanc)return{...base,evento:'outro_lancamento',bloqueado:true,justificativa:obraConflito??'outra obra'}
         if(isAtestado)return{...base,presente:true,evento,bloqueado:true,
           hora_entrada:hor?.hora_entrada??'',saida_almoco:hor?.saida_almoco??'',
           retorno_almoco:hor?.retorno_almoco??'',hora_saida:hor?.hora_saida??''}
@@ -291,7 +292,7 @@ export default function Ponto() {
         hora_entrada:r.hora_entrada??'',saida_almoco:r.saida_almoco??'',
         retorno_almoco:r.retorno_almoco??'',hora_saida:r.hora_saida??'',
         he_entrada:r.he_entrada??'',he_saida:r.he_saida??'',
-        justificativa:r.justificativa??'',evento,bloqueado:isSuspensao||bloqOutroLanc,
+        justificativa:bloqOutroLanc?(obraConflito??'outra obra'):(r.justificativa??''),evento,bloqueado:isSuspensao||bloqOutroLanc,
       }
     })
   },[])
@@ -367,12 +368,16 @@ export default function Ponto() {
     // Dias de cada lançamento — sequencial p/ calcular bloqueios entre lançamentos
     const newDiasMap:Record<string,DiaRegistro[]>={}
     for(const lanc of list){
-      const diasUsados=new Set<string>()
+      const diasUsados=new Map<string,string>()   // data → nomeObra
       for(const [outroId,outroDias] of Object.entries(newDiasMap)){
         if(outroId===lanc.id)continue
-        // Bloqueia apenas dias que JÁ TÊM registro salvo (d.id) ou afastamento/suspensão
-        // Dias no range sem presença ficam livres para outras obras
-        outroDias.forEach(d=>{ if(d.id||(d.evento==='atestado'||d.evento==='suspensao'))diasUsados.add(d.data) })
+        // TRAVA ANTI-DUPLICIDADE: qualquer data dentro do range de outro lançamento
+        // fica bloqueada com o nome da obra de origem — independente de ter registro.
+        const outroLanc=list.find(l=>l.id===outroId)
+        const nomeOutraObra=outroLanc?.obra_nome??'outra obra'
+        outroDias.forEach(d=>{
+          if(!diasUsados.has(d.data))diasUsados.set(d.data,nomeOutraObra)
+        })
       }
       newDiasMap[lanc.id]=await fetchDiasLanc(lanc,colab,horMapFull,diasAtestado,diasSuspensao,diasUsados)
     }
@@ -1008,7 +1013,7 @@ export default function Ponto() {
                                 <td style={{...TD,textAlign:'center'}}>
                                   {d.evento==='atestado'?<span title="Afastamento">🩺</span>
                                   :d.evento==='suspensao'?<span title="Suspensão">⛔</span>
-                                  :d.evento==='outro_lancamento'?<span title="Pertence a outro lançamento">🔒</span>
+                                  :d.evento==='outro_lancamento'?<span title={`🔒 Dia lançado em: ${d.justificativa||'outra obra'}`} style={{cursor:'default'}}>🔒</span>
                                   :<button onClick={()=>!lancBloq&&togglePresente(lanc.id,idx,colabSel!)} style={{border:'none',background:'none',cursor:lancBloq?'not-allowed':'pointer',padding:2,color:d.presente?'#16a34a':'#9ca3af',opacity:lancBloq?0.5:1}}>
                                     {d.presente?<CheckCircle2 size={16}/>:<span style={{fontSize:16,opacity:0.3}}>○</span>}
                                   </button>}
@@ -1052,7 +1057,7 @@ export default function Ponto() {
                                 <td style={{...TD,fontSize:10}}>
                                   {d.evento==='atestado'&&<span style={{color:'#1d4ed8',fontWeight:600}}>Afastamento</span>}
                                   {d.evento==='suspensao'&&<span style={{color:'#b91c1c',fontWeight:600}}>Suspensão</span>}
-                                  {d.evento==='outro_lancamento'&&<span style={{color:'#6b7280',fontSize:10}}>🔒 outro lanç.</span>}
+                                  {d.evento==='outro_lancamento'&&<span style={{color:'#6b7280',fontSize:10}}>🔒 {d.justificativa||'outra obra'}</span>}
                                 </td>
                               </tr>
                             )
