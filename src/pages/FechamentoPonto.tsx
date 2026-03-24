@@ -105,12 +105,37 @@ export default function FechamentoPonto() {
     ])
 
     const funcaoIds = [...new Set(lancsRaw.map((l: any) => l.colaboradores?.funcao_id).filter(Boolean))]
-    const { data: valorHoraRaw } = funcaoIds.length
-      ? await supabase.from('funcao_valores').select('funcao_id,tipo_contrato,valor_hora').in('funcao_id', funcaoIds)
-      : { data: [] as {funcao_id:string;tipo_contrato:string;valor_hora:number}[] }
+    // Buscar valor/hora: funcao_valores (por tipo_contrato) + fallback em funcoes
+    const [{ data: valorHoraRaw }, { data: funcoesRaw }] = await Promise.all([
+      funcaoIds.length
+        ? supabase.from('funcao_valores').select('funcao_id,tipo_contrato,valor_hora').in('funcao_id', funcaoIds)
+        : Promise.resolve({ data: [] as {funcao_id:string;tipo_contrato:string;valor_hora:number}[] }),
+      funcaoIds.length
+        ? supabase.from('funcoes').select('id,valor_hora_clt,valor_hora_autonomo').in('id', funcaoIds)
+        : Promise.resolve({ data: [] as {id:string;valor_hora_clt:number|null;valor_hora_autonomo:number|null}[] }),
+    ])
 
+    // Mapa funcao_valores: chave "funcao_id_tipo_contrato"
     const mapaValorH: Record<string, number> = {}
     ;(valorHoraRaw ?? []).forEach((v: any) => { mapaValorH[`${v.funcao_id}_${v.tipo_contrato}`] = v.valor_hora })
+
+    // Mapa fallback funcoes: chave "funcao_id_clt" / "funcao_id_autonomo"
+    const mapaFuncaoFallback: Record<string, number> = {}
+    ;(funcoesRaw ?? []).forEach((f: any) => {
+      if (f.valor_hora_clt)      mapaFuncaoFallback[`${f.id}_clt`]      = f.valor_hora_clt
+      if (f.valor_hora_autonomo) mapaFuncaoFallback[`${f.id}_autonomo`]  = f.valor_hora_autonomo
+      if (f.valor_hora_clt)      mapaFuncaoFallback[`${f.id}_pj`]        = f.valor_hora_autonomo ?? f.valor_hora_clt
+    })
+
+    // Helper: busca vh com fallback
+    function getVH(funcaoId: string | null, tipoContrato: string): number {
+      if (!funcaoId) return 0
+      return mapaValorH[`${funcaoId}_${tipoContrato}`]
+          ?? mapaFuncaoFallback[`${funcaoId}_${tipoContrato}`]
+          ?? mapaValorH[`${funcaoId}_clt`]
+          ?? mapaFuncaoFallback[`${funcaoId}_clt`]
+          ?? 0
+    }
 
     // Feriados do período
     const feriadosSet = new Set<string>((feriadosRaw ?? []).map((f: any) => f.data as string))
@@ -170,7 +195,7 @@ export default function FechamentoPonto() {
     const lista: LancItem[] = lancsRaw.map((l: any) => {
       const colab = l.colaboradores
       const horasAgg = mapaHoras[l.id] ?? { norm: 0, extra: 0, dias: 0, diasDatas: new Set() }
-      const vh = mapaValorH[`${colab?.funcao_id}_${colab?.tipo_contrato}`] ?? 0
+      const vh = getVH(colab?.funcao_id ?? null, colab?.tipo_contrato ?? 'clt')
       const valorHoras = horasAgg.norm * vh + horasAgg.extra * vh * 1.5
       const valorProd  = mapaProd[l.id] ?? 0
       const tipo = colab?.tipo_contrato ?? 'clt'
