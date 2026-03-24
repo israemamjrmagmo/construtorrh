@@ -184,6 +184,7 @@ export default function Ponto() {
   const [importandoPortal, setImportandoPortal]     = useState<Set<string>>(new Set())
   const [criandoEmLote, setCriandoEmLote]           = useState(false)
   const [progressoLote, setProgressoLote]           = useState('')
+  const [progressoLoteNum, setProgressoLoteNum]     = useState({ feitos: 0, total: 0 })
 
   // ── Painel Portal Produção ─────────────────────────────────────────────────
   const [modalPortalProd, setModalPortalProd]     = useState(false)
@@ -331,25 +332,67 @@ export default function Ponto() {
 
   async function importarDiaPortal(portalId: string, colabId: string, data: string, status: string, heExtra: number, hfFalta: number, obs: string|null, obraId?: string) {
     const obraRef = obraId ?? portalObraFiltro
-    const lancColab = lancamentos.filter(l => l.obra_id === obraRef)
-    const lanc = lancColab.find(l => l.data_inicio <= data && data <= l.data_fim)
-    if (!lanc) { toast.error(`Sem lançamento para ${data} — use "Criar Tudo em Lote" primeiro`); return }
 
     setImportandoPortal(prev => new Set([...prev, portalId]))
-    const { data: existing } = await supabase.from('registro_ponto')
-      .select('id').eq('lancamento_id', lanc.id).eq('colaborador_id', colabId).eq('data', data).single()
+
+    // 1. Busca lançamento direto no banco (cobre qualquer obra, não só o colaborador selecionado)
+    let lancId: string | null = null
+    const { data: lancs } = await supabase
+      .from('ponto_lancamentos')
+      .select('id,data_inicio,data_fim')
+      .eq('colaborador_id', colabId)
+      .eq('obra_id', obraRef)
+      .lte('data_inicio', data)
+      .gte('data_fim', data)
+      .limit(1)
+    lancId = lancs?.[0]?.id ?? null
+
+    // 2. Se não existe, cria automaticamente
+    if (!lancId) {
+      const mr = data.slice(0, 7)
+      const { data: novoLanc, error: errL } = await supabase
+        .from('ponto_lancamentos')
+        .insert({
+          colaborador_id: colabId, obra_id: obraRef,
+          mes_referencia: mr,
+          data_inicio: `${mr}-01`, data_fim: `${mr}-31`,
+          status: 'rascunho',
+        })
+        .select('id').single()
+      if (errL || !novoLanc) {
+        toast.error(`Erro ao criar lançamento para ${data}`)
+        setImportandoPortal(prev => { const s = new Set(prev); s.delete(portalId); return s })
+        return
+      }
+      lancId = novoLanc.id
+    }
+
+    // 3. Verifica duplicata em registro_ponto
+    const { data: existing } = await supabase
+      .from('registro_ponto')
+      .select('id')
+      .eq('lancamento_id', lancId)
+      .eq('colaborador_id', colabId)
+      .eq('data', data)
+      .single()
+
     const presente = status === 'presente' || status === 'meio_periodo'
     const falta    = status === 'falta' || status === 'falta_justificada'
     const payload  = {
-      lancamento_id: lanc.id, colaborador_id: colabId, obra_id: lanc.obra_id,
+      lancamento_id: lancId, colaborador_id: colabId, obra_id: obraRef,
       data, presente, falta,
       he_entrada: '', he_saida: String(heExtra || 0),
       hora_entrada: '', saida_almoco: '', retorno_almoco: '', hora_saida: '',
       justificativa: obs ?? '',
     }
-    if (existing?.id) await supabase.from('registro_ponto').update(payload).eq('id', existing.id)
-    else              await supabase.from('registro_ponto').insert(payload)
-    await supabase.from('portal_ponto_diario').update({ sincronizado_em: new Date().toISOString(), lancamento_id: lanc.id }).eq('id', portalId)
+
+    if (existing?.id) {
+      await supabase.from('registro_ponto').update(payload).eq('id', existing.id)
+    } else {
+      await supabase.from('registro_ponto').insert(payload)
+    }
+
+    await supabase.from('portal_ponto_diario').update({ sincronizado_em: new Date().toISOString(), lancamento_id: lancId }).eq('id', portalId)
     setImportandoPortal(prev => { const s = new Set(prev); s.delete(portalId); return s })
     toast.success(`Dia ${data.slice(8)}/${data.slice(5,7)} importado!`)
     fetchPortalPonto(portalInicio, portalFim, portalObraFiltro || undefined)
@@ -362,6 +405,11 @@ export default function Ponto() {
     if (!pendentes.length) { toast.error('Nenhum registro pendente'); return }
     setCriandoEmLote(true)
 
+    const total = pendentes.length
+    let feitos = 0
+    let criados = 0; let erros = 0
+    setProgressoLoteNum({ feitos: 0, total })
+
     // Agrupa por obra_id
     const porObra: Record<string, typeof pendentes> = {}
     for (const r of pendentes) {
@@ -369,24 +417,42 @@ export default function Ponto() {
       porObra[r.obra_id].push(r)
     }
 
-    let criados = 0; let erros = 0
     for (const [obraId, registros] of Object.entries(porObra)) {
-      // Agrupa colaboradores únicos desta obra
       const colabIds = [...new Set(registros.map(r => r.colaborador_id))]
-      setProgressoLote(`Obra ${obraId.slice(0,8)}… (${colabIds.length} colaboradores)`)
+      const obraNome = obras.find(o => o.id === obraId)?.nome ?? obraId.slice(0,8)
 
       for (const colabId of colabIds) {
         const diasColab = registros.filter(r => r.colaborador_id === colabId)
         const diasDatas = diasColab.map(r => r.data).sort()
         const inicioColab = diasDatas[0]; const fimColab = diasDatas[diasDatas.length-1]
 
-        // Verifica se existe lançamento que cobre os dias
-        let lancId = lancamentos.find(l =>
-          l.obra_id === obraId && l.data_inicio <= inicioColab && fimColab <= l.data_fim
-        )?.id
+        // Verifica se já existe lançamento que cobre o período (banco, não estado)
+        const { data: lancExist } = await supabase
+          .from('ponto_lancamentos')
+          .select('id,data_inicio,data_fim')
+          .eq('colaborador_id', colabId)
+          .eq('obra_id', obraId)
+          .lte('data_inicio', inicioColab)
+          .gte('data_fim', fimColab)
+          .limit(1)
+
+        let lancId: string | null = lancExist?.[0]?.id ?? null
 
         if (!lancId) {
-          // Cria lançamento automaticamente usando o 1º colaborador disponível
+          // Verifica se existe lançamento PARCIAL que cubra pelo menos um dia
+          const { data: lancParcial } = await supabase
+            .from('ponto_lancamentos')
+            .select('id')
+            .eq('colaborador_id', colabId)
+            .eq('obra_id', obraId)
+            .lte('data_inicio', fimColab)
+            .gte('data_fim', inicioColab)
+            .limit(1)
+          lancId = lancParcial?.[0]?.id ?? null
+        }
+
+        if (!lancId) {
+          // Cria lançamento para o período completo
           const { data: novoLanc, error: errL } = await supabase
             .from('ponto_lancamentos')
             .insert({
@@ -396,16 +462,22 @@ export default function Ponto() {
               status: 'rascunho',
             })
             .select('id').single()
-          if (errL || !novoLanc) { erros++; continue }
+          if (errL || !novoLanc) { erros += diasColab.length; feitos += diasColab.length; setProgressoLote(`${feitos}/${total}`); setProgressoLoteNum({ feitos, total }); continue }
           lancId = novoLanc.id
         }
 
-        // Insere cada dia
+        // Insere cada dia — com check de duplicata
         for (const reg of diasColab) {
+          const { data: existing } = await supabase
+            .from('registro_ponto')
+            .select('id')
+            .eq('lancamento_id', lancId)
+            .eq('colaborador_id', colabId)
+            .eq('data', reg.data)
+            .single()
+
           const presente = reg.status === 'presente' || reg.status === 'meio_periodo'
           const falta    = reg.status === 'falta' || reg.status === 'falta_justificada'
-          const { data: existing } = await supabase.from('registro_ponto')
-            .select('id').eq('lancamento_id', lancId).eq('colaborador_id', colabId).eq('data', reg.data).single()
           const payload = {
             lancamento_id: lancId, colaborador_id: colabId, obra_id: obraId,
             data: reg.data, presente, falta,
@@ -413,17 +485,25 @@ export default function Ponto() {
             hora_entrada: '', saida_almoco: '', retorno_almoco: '', hora_saida: '',
             justificativa: reg.observacoes ?? '',
           }
-          if (existing?.id) await supabase.from('registro_ponto').update(payload).eq('id', existing.id)
-          else               await supabase.from('registro_ponto').insert(payload)
+
+          if (existing?.id) {
+            await supabase.from('registro_ponto').update(payload).eq('id', existing.id)
+          } else {
+            await supabase.from('registro_ponto').insert(payload)
+          }
           await supabase.from('portal_ponto_diario').update({ sincronizado_em: new Date().toISOString(), lancamento_id: lancId }).eq('id', reg.id)
           criados++
+          feitos++
+          setProgressoLote(`${feitos}/${total} — ${obraNome}`)
+          setProgressoLoteNum({ feitos, total })
         }
       }
     }
 
-    setCriandoEmLote(false); setProgressoLote('')
-    toast.success(`✅ ${criados} registros criados!${erros ? ` (${erros} erros)` : ''}`)
+    setCriandoEmLote(false); setProgressoLote(''); setProgressoLoteNum({ feitos: 0, total: 0 })
+    toast.success(`✅ ${criados} registros importados!${erros ? ` (${erros} erros)` : ''}`)
     fetchPortalPonto(portalInicio, portalFim, portalObraFiltro || undefined)
+    loadObrasPendPortal()
     if (colabSel) fetchTudo(colabSel, ano, mes)
   }
 
@@ -436,6 +516,8 @@ export default function Ponto() {
 
   // Contagem de lançamentos por colaborador no mês (para sidebar)
   const [contadoresLanc, setContadoresLanc] = useState<Record<string,number>>({})
+  // Obras com pontos pendentes no portal (badge no filtro de obras)
+  const [obrasPendPortal, setObrasPendPortal] = useState<Record<string,number>>({})
 
   const mesRef = `${ano}-${String(mes).padStart(2,'0')}`
 
@@ -474,6 +556,24 @@ export default function Ponto() {
     }
     loadContadores()
   },[ano,mes])
+
+  // ── Obras com ponto pendente no portal (atualiza ao abrir modal e ao sincronizar) ──
+  const loadObrasPendPortal = useCallback(async () => {
+    const mr = `${ano}-${String(mes).padStart(2,'0')}`
+    const { data } = await supabase
+      .from('portal_ponto_diario')
+      .select('obra_id')
+      .is('sincronizado_em', null)
+      .gte('data', `${mr}-01`)
+      .lte('data', `${mr}-31`)
+    const map: Record<string,number> = {}
+    ;(data ?? []).forEach((r: any) => {
+      map[r.obra_id] = (map[r.obra_id] ?? 0) + 1
+    })
+    setObrasPendPortal(map)
+  }, [ano, mes])
+
+  useEffect(() => { loadObrasPendPortal() }, [loadObrasPendPortal])
 
   // ── Fetch lançamentos do mês ─────────────────────────────────────────────
   const fetchLancamentos = useCallback(async(colabId:string,mr:string)=>{
@@ -1042,8 +1142,29 @@ export default function Ponto() {
           <Select value={obraFiltro} onValueChange={setObraFiltro}>
             <SelectTrigger style={{fontSize:12,height:30}}><SelectValue placeholder="Todas as obras"/></SelectTrigger>
             <SelectContent>
-              <SelectItem value="todas">Todas as obras</SelectItem>
-              {obras.map(o=><SelectItem key={o.id} value={o.id}>{o.nome}</SelectItem>)}
+              <SelectItem value="todas">
+                Todas as obras
+                {Object.values(obrasPendPortal).reduce((a,b)=>a+b,0)>0&&(
+                  <span style={{marginLeft:6,background:'#f97316',color:'#fff',borderRadius:10,padding:'0 6px',fontSize:10,fontWeight:800}}>
+                    {Object.values(obrasPendPortal).reduce((a,b)=>a+b,0)}
+                  </span>
+                )}
+              </SelectItem>
+              {obras.map(o=>{
+                const pend = obrasPendPortal[o.id] ?? 0
+                return(
+                  <SelectItem key={o.id} value={o.id}>
+                    <span style={{display:'flex',alignItems:'center',gap:6,width:'100%'}}>
+                      <span style={{flex:1}}>{o.nome}</span>
+                      {pend>0&&(
+                        <span style={{background:'#f97316',color:'#fff',borderRadius:10,padding:'0 6px',fontSize:10,fontWeight:800,flexShrink:0}}>
+                          📲 {pend}
+                        </span>
+                      )}
+                    </span>
+                  </SelectItem>
+                )
+              })}
             </SelectContent>
           </Select>
           <div style={{position:'relative'}}>
@@ -1802,6 +1923,22 @@ export default function Ponto() {
                 </Button>
               )}
             </div>
+
+            {/* Barra de progresso do lote */}
+            {criandoEmLote && progressoLoteNum.total > 0 && (()=>{
+              const pct = Math.round((progressoLoteNum.feitos / progressoLoteNum.total) * 100)
+              return (
+                <div style={{padding:'8px 22px',borderBottom:'1px solid var(--border)',background:'#f0fdf4'}}>
+                  <div style={{display:'flex',justifyContent:'space-between',marginBottom:4,fontSize:11,fontWeight:700,color:'#15803d'}}>
+                    <span>⚡ Importando… {progressoLote.split('—')[1]?.trim() ?? ''}</span>
+                    <span>{progressoLoteNum.feitos}/{progressoLoteNum.total} ({pct}%)</span>
+                  </div>
+                  <div style={{background:'#dcfce7',borderRadius:20,height:8,overflow:'hidden'}}>
+                    <div style={{background:'#16a34a',height:'100%',borderRadius:20,width:`${pct}%`,transition:'width 0.3s ease'}}/>
+                  </div>
+                </div>
+              )
+            })()}
 
             {/* Tabela de registros */}
             <div style={{overflowY:'auto',flex:1,padding:'12px 22px 20px'}}>
