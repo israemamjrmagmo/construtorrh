@@ -241,9 +241,10 @@ export default function ValeTransportePage() {
 
   // ─── recalcula valor+dias ao mudar período/tick sábado ────────────────────
   // vtDiarioFixo: se informado (modo edição), usa essa taxa em vez de buscar do cadastro atual
+  // desconto_colaborador NÃO é calculado aqui — o 6% sobre salário bruto é apurado no Fechamento
   function recalcularPeriodo(
     dataIni: string, dataFim: string, contarSab: boolean,
-    comp: string, colab: ColaboradorVT | null, descontar: boolean,
+    comp: string, colab: ColaboradorVT | null,
     vtDiarioFixo?: number | null
   ) {
     const diasUtil = contarDiasUteis(dataIni, dataFim, contarSab)
@@ -255,14 +256,12 @@ export default function ValeTransportePage() {
       const vtMen = colab ? vtMensalColab(colab, comp, contarSab) : 0
       valorBruto  = vtMen > 0 ? calcValorProporcional(vtMen, dataIni, dataFim, comp, contarSab) : 0
     }
-    const salario  = colab?.salario_mensal_calc ?? colab?.salario ?? 0
-    const desconto = descontar ? salario * 0.06 : 0
-    const valorEmp = Math.max(0, valorBruto - desconto)
+    // Valor empresa = valor bruto do VT (desconto 6% salário bruto apurado no Fechamento)
     return {
       dias_trabalhados: String(diasUtil),
       valor: valorBruto > 0 ? valorBruto.toFixed(2) : '',
-      desconto_colaborador: desconto.toFixed(2),
-      valor_empresa: valorEmp.toFixed(2),
+      desconto_colaborador: '0',
+      valor_empresa: valorBruto > 0 ? valorBruto.toFixed(2) : '0',
     }
   }
 
@@ -286,7 +285,7 @@ export default function ValeTransportePage() {
     const tipoAuto   = modalidadeParaTipo(vtDados?.modalidade)
     const contarSab  = false
     const descontar  = true
-    const calc       = recalcularPeriodo(primeiroDia(competencia), ultimoDia(competencia), contarSab, competencia, colabSel, descontar)
+    const calc       = recalcularPeriodo(primeiroDia(competencia), ultimoDia(competencia), contarSab, competencia, colabSel)
 
     setEditando(null)
     setVtDiarioSnap(null)   // novo lançamento sempre usa base atual do colaborador
@@ -340,7 +339,7 @@ export default function ValeTransportePage() {
         const desc   = key === 'descontar_6pct' ? Boolean(value) : next.descontar_6pct
         // Em modo edição: usa taxa diária congelada do lançamento original (vtDiarioSnap)
         // Em novo lançamento: usa base atual do colaborador (vtDiarioSnap = null)
-        const calc   = recalcularPeriodo(ini, fim, contSab, next.competencia, colabSel, desc, vtDiarioSnap)
+        const calc   = recalcularPeriodo(ini, fim, contSab, next.competencia, colabSel, vtDiarioSnap)
         return { ...next, ...calc }
       }
 
@@ -538,7 +537,7 @@ export default function ValeTransportePage() {
                         {vtDiario_ > 0 && <span>Valor/dia: <strong>{formatCurrency(vtDiario_)}</strong></span>}
                         {vtMensalColab_ > 0 && <span>Mês estimado: <strong>{formatCurrency(vtMensalColab_)}</strong></span>}
                       </> : <span style={{ color: '#b45309' }}>⚠ VT não configurado no cadastro</span>}
-                      {(colabSel.salario_mensal_calc ?? colabSel.salario) && <span>Salário: <strong>{formatCurrency(colabSel.salario_mensal_calc ?? colabSel.salario ?? 0)}</strong> → 6% = <strong>{formatCurrency((colabSel.salario_mensal_calc ?? colabSel.salario ?? 0) * 0.06)}</strong></span>}
+                      {vtMensalColab_ > 0 && <span>6% do VT ≈ <strong>{formatCurrency(vtMensalColab_ * 0.06)}</strong>/mês</span>}
                     </div>
                   </div>
                   <Button onClick={openCreate} disabled={!pode} title={motivo} className="gap-2 shrink-0">
@@ -733,47 +732,35 @@ export default function ValeTransportePage() {
                 </div>
               </div>
 
-              {/* Toggle desconto 6% */}
+              {/* Toggle desconto 6% — apenas flag, cálculo real no Fechamento */}
               <div className="col-span-2">
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: form.descontar_6pct ? '#fef3c7' : 'var(--muted)', borderRadius: 8, padding: '10px 14px', border: `1px solid ${form.descontar_6pct ? '#fde68a' : 'var(--border)'}` }}>
                   <div>
                     <div style={{ fontSize: 13, fontWeight: 600, color: form.descontar_6pct ? '#92400e' : 'var(--foreground)' }}>
-                      Descontar 6% do salário do colaborador
+                      Descontar 6% do salário bruto do colaborador
                     </div>
-                    <div style={{ fontSize: 11, color: 'var(--muted-foreground)', marginTop: 2 }}>
+                    <div style={{ fontSize: 11, color: form.descontar_6pct ? '#b45309' : 'var(--muted-foreground)', marginTop: 2 }}>
                       {form.descontar_6pct
-                        ? `Desconto: ${formatCurrency(parseFloat(form.desconto_colaborador) || 0)} (6% de ${formatCurrency(colabSel.salario_mensal_calc ?? colabSel.salario ?? 0)})`
-                        : 'Empresa arca com 100% do VT — sem desconto no holerite'}
+                        ? '⚠ O desconto de 6% sobre o salário bruto será aplicado no Fechamento de Ponto'
+                        : 'Empresa arca com 100% do VT — nenhum desconto no holerite'}
                     </div>
                   </div>
                   <button onClick={() => setField('descontar_6pct', !form.descontar_6pct)}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: form.descontar_6pct ? '#b45309' : 'var(--muted-foreground)' }}>
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: form.descontar_6pct ? '#b45309' : 'var(--muted-foreground)', flexShrink: 0 }}>
                     {form.descontar_6pct ? <ToggleRight size={32} /> : <ToggleLeft size={32} />}
                   </button>
                 </div>
               </div>
 
-              {/* Desconto colaborador — somente leitura (calculado pelo toggle) */}
-              <div>
+              {/* Valor empresa = valor bruto do VT (desconto apurado no Fechamento) */}
+              <div className="col-span-2">
                 <Label className="text-xs" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  Desconto colaborador (R$)
-                  <span style={{ fontSize: 9, background: 'var(--muted)', color: 'var(--muted-foreground)', borderRadius: 3, padding: '1px 4px', fontWeight: 600 }}>AUTO</span>
-                </Label>
-                <div style={{ marginTop: 4, height: 36, display: 'flex', alignItems: 'center', padding: '0 12px', background: 'var(--muted)', border: '1px solid var(--border)', borderRadius: 6, fontSize: 14, fontWeight: 700, color: form.descontar_6pct ? '#dc2626' : 'var(--muted-foreground)' }}>
-                  {form.descontar_6pct
-                    ? `− ${formatCurrency(parseFloat(form.desconto_colaborador) || 0)}`
-                    : <span style={{ fontWeight: 400, fontSize: 12 }}>isento (toggle desativado)</span>}
-                </div>
-              </div>
-
-              {/* Valor empresa — somente leitura */}
-              <div>
-                <Label className="text-xs" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  Valor empresa (calculado)
+                  Valor total do VT (empresa)
                   <span style={{ fontSize: 9, background: '#dbeafe', color: '#1d4ed8', borderRadius: 3, padding: '1px 4px', fontWeight: 600 }}>AUTO</span>
                 </Label>
                 <div style={{ marginTop: 4, height: 36, display: 'flex', alignItems: 'center', padding: '0 12px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 6, fontSize: 14, fontWeight: 800, color: '#1d4ed8' }}>
-                  {formatCurrency(parseFloat(form.valor_empresa) || 0)}
+                  {formatCurrency(parseFloat(form.valor) || 0)}
+                  {form.descontar_6pct && <span style={{ marginLeft: 8, fontSize: 10, color: '#b45309', fontWeight: 600 }}>(-6% sal. bruto no fechamento)</span>}
                 </div>
               </div>
 

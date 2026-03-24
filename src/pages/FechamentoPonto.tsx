@@ -134,9 +134,9 @@ export default function FechamentoPonto() {
       colabIds.length
         ? supabase.from('adiantamentos').select('colaborador_id,valor').eq('competencia', mr).eq('status','pago').is('descontado_em', null).in('colaborador_id', colabIds)
         : Promise.resolve({ data: [] }),
-      // VT com desconto 6% no mês
+      // Colaboradores com flag descontar_6pct = true no mês (o valor será calculado no loop)
       colabIds.length
-        ? supabase.from('vale_transporte').select('colaborador_id,desconto_colaborador,descontar_6pct').eq('competencia', mr).eq('descontar_6pct', true).in('colaborador_id', colabIds)
+        ? supabase.from('vale_transporte').select('colaborador_id').eq('competencia', mr).eq('descontar_6pct', true).in('colaborador_id', colabIds)
         : Promise.resolve({ data: [] }),
     ])
 
@@ -146,11 +146,11 @@ export default function FechamentoPonto() {
       mapaAdiant[a.colaborador_id] = (mapaAdiant[a.colaborador_id] ?? 0) + a.valor
     })
 
-    // Somar desconto VT (6%) por colaborador — apenas registros com descontar_6pct=true
-    const mapaDescontoVT6: Record<string, number> = {}
-    ;(vtDescRaw ?? []).forEach((v: any) => {
-      mapaDescontoVT6[v.colaborador_id] = (mapaDescontoVT6[v.colaborador_id] ?? 0) + (v.desconto_colaborador ?? 0)
-    })
+    // Set de colaboradores que têm desconto VT 6% ativo no mês
+    // O valor (6% salário bruto) será calculado dentro do loop de cada lançamento
+    const setDescontoVT6: Set<string> = new Set(
+      (vtDescRaw ?? []).map((v: any) => v.colaborador_id)
+    )
 
     const funcaoIds = [...new Set(lancsRaw.map((l: any) => l.colaboradores?.funcao_id).filter(Boolean))]
     // Buscar valor/hora: funcao_valores (por tipo_contrato) + fallback em funcoes
@@ -331,17 +331,19 @@ export default function FechamentoPonto() {
       // ── Adiantamento: desconto de adiantamentos pagos não descontados ─────
       const descontoAdiant = mapaAdiant[l.colaborador_id] ?? 0
 
-      // ── VT: desconto por faltas + desconto 6% do salário (se configurado no VT) ──
+      // ── VT: desconto por faltas + desconto 6% sobre salário bruto (se configurado no VT) ──
       const faltas     = (horasAgg as any).faltas ?? 0
       const vtDiario   = (colab?.vale_transporte && colab?.vt_dados) ? vtDia(colab.vt_dados) : 0
       const descontoVTFaltas = vtDiario * faltas          // desconta passagem por dia de falta
-      const descontoVT6pct   = mapaDescontoVT6[l.colaborador_id] ?? 0  // desconto 6% sal do lançamento VT
-      const descontoVT       = descontoVTFaltas + descontoVT6pct
 
       // ── Base de desconto: CLT = horas+DSR / Autônomo = total recebido ───────
       // CLT: desconto sobre salário (horas+DSR), NÃO sobre prêmio de produção
       // Autônomo: desconto sobre total (horas + produção)
       const baseDesconto = tipo === 'clt' ? (valorHoras + dsr) : valorTotal
+
+      // 6% do salário bruto (baseDesconto) — aplicado somente se descontar_6pct=true no VT do mês
+      const descontoVT6pct = setDescontoVT6.has(l.colaborador_id) ? baseDesconto * 0.06 : 0
+      const descontoVT     = descontoVTFaltas + descontoVT6pct
       const inss = tipo === 'clt'
         ? calcINSS(baseDesconto, tabelaInss.length ? tabelaInss : undefined)
         : 0   // autônomo não tem INSS retido (é MEI/PJ/autônomo)
