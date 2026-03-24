@@ -312,14 +312,41 @@ export default function Pagamentos() {
   async function estornarPagamento() {
     if (!modalEstornar) return
     setSavingPgto(true)
-    const { error } = await supabase.from('ponto_lancamentos')
-      .update({ status: 'liberado', data_pagamento: null, obs_pagamento: motivoEstorno || 'Estornado' })
-      .eq('id', modalEstornar.id)
-    setSavingPgto(false)
-    if (error) { toast.error('Erro ao estornar: ' + error.message); return }
-    toast.success('↩ Pagamento estornado — voltou para Ag. Pagamento')
-    setModalEstornar(null); setMotivoEstorno('')
-    fetchLancsPendentes()
+
+    const isAvulso = !!modalEstornar._avulso   // veio da tabela pagamentos
+
+    if (isAvulso) {
+      // ── Pagamento avulso (VT, adiantamento, etc.) ──────────────────────────
+      const { error: errPag } = await supabase
+        .from('pagamentos')
+        .update({ status: 'pendente', data_pagamento: null, observacoes: motivoEstorno ? `[ESTORNADO] ${motivoEstorno}` : '[ESTORNADO]' })
+        .eq('id', modalEstornar.id)
+      if (errPag) { setSavingPgto(false); toast.error('Erro ao estornar: ' + errPag.message); return }
+
+      // Se for VT, volta status para pendente na tabela vale_transporte
+      if (modalEstornar.tipo === 'vale_transporte') {
+        await supabase
+          .from('vale_transporte')
+          .update({ status: 'pendente' })
+          .eq('colaborador_id', modalEstornar.colaborador_id)
+          .eq('competencia', modalEstornar.competencia)
+          .eq('status', 'pago')
+      }
+      setSavingPgto(false)
+      toast.success('↩ Pagamento estornado — voltou para Pendente')
+      setModalEstornar(null); setMotivoEstorno('')
+      fetchData()
+    } else {
+      // ── Folha de ponto ─────────────────────────────────────────────────────
+      const { error } = await supabase.from('ponto_lancamentos')
+        .update({ status: 'liberado', data_pagamento: null, obs_pagamento: motivoEstorno || 'Estornado' })
+        .eq('id', modalEstornar.id)
+      setSavingPgto(false)
+      if (error) { toast.error('Erro ao estornar: ' + error.message); return }
+      toast.success('↩ Pagamento estornado — voltou para Ag. Pagamento')
+      setModalEstornar(null); setMotivoEstorno('')
+      fetchLancsPendentes()
+    }
   }
 
   // ─── delete ────────────────────────────────────────────────────────────────
@@ -713,6 +740,7 @@ export default function Pagamentos() {
                           <TableHead className="text-center">Data Pgto</TableHead>
                           <TableHead>Observação</TableHead>
                           <TableHead className="text-right">💵 Valor</TableHead>
+                          <TableHead className="text-right">Ações</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -733,16 +761,22 @@ export default function Pagamentos() {
                                 {r.data_pagamento ? formatDate(r.data_pagamento) : '—'}
                               </span>
                             </TableCell>
-                            <TableCell className="text-xs text-muted-foreground max-w-[220px] truncate">{r.observacoes ?? '—'}</TableCell>
+                            <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">{r.observacoes ?? '—'}</TableCell>
                             <TableCell className="text-right font-bold text-sm" style={{ color:'#15803d' }}>
                               {formatCurrency(r.valor_liquido ?? r.valor_bruto ?? 0)}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Button size="sm" variant="outline" className="h-7 text-xs text-destructive border-destructive/40 hover:bg-destructive/5"
+                                onClick={() => { setModalEstornar({ ...r, _avulso: true }); setMotivoEstorno('') }}>
+                                ↩ Estornar
+                              </Button>
                             </TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
                       <TableFooter>
                         <TableRow>
-                          <TableCell colSpan={5} className="text-sm font-semibold">Total — {vtPagos.length} registro(s)</TableCell>
+                          <TableCell colSpan={6} className="text-sm font-semibold">Total — {vtPagos.length} registro(s)</TableCell>
                           <TableCell className="text-right font-bold text-sm" style={{ color:'#15803d' }}>{formatCurrency(totalVT)}</TableCell>
                         </TableRow>
                       </TableFooter>
@@ -764,6 +798,7 @@ export default function Pagamentos() {
                           <TableHead className="text-center">Data Pgto</TableHead>
                           <TableHead>Observação</TableHead>
                           <TableHead className="text-right">💵 Valor</TableHead>
+                          <TableHead className="text-right">Ações</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -793,12 +828,18 @@ export default function Pagamentos() {
                             <TableCell className="text-right font-bold text-sm" style={{ color:'#15803d' }}>
                               {formatCurrency(r.valor_liquido ?? r.valor_bruto ?? 0)}
                             </TableCell>
+                            <TableCell className="text-right">
+                              <Button size="sm" variant="outline" className="h-7 text-xs text-destructive border-destructive/40 hover:bg-destructive/5"
+                                onClick={() => { setModalEstornar({ ...r, _avulso: true }); setMotivoEstorno('') }}>
+                                ↩ Estornar
+                              </Button>
+                            </TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
                       <TableFooter>
                         <TableRow>
-                          <TableCell colSpan={5} className="text-sm font-semibold">Total — {outrosPagos.length} registro(s)</TableCell>
+                          <TableCell colSpan={6} className="text-sm font-semibold">Total — {outrosPagos.length} registro(s)</TableCell>
                           <TableCell className="text-right font-bold text-sm" style={{ color:'#15803d' }}>{formatCurrency(totalOutros)}</TableCell>
                         </TableRow>
                       </TableFooter>
@@ -854,7 +895,21 @@ export default function Pagamentos() {
               <h3 style={{ fontWeight: 800, fontSize: 16, margin: 0, color: '#dc2626' }}>Estornar Pagamento</h3>
               <p style={{ fontSize: 13, color: 'var(--muted-foreground)', marginTop: 8 }}>
                 <strong>{modalEstornar.colaboradores?.nome}</strong><br />
-                {modalEstornar.obras?.nome} — pago em {(modalEstornar as any).data_pagamento ?? '—'}
+                {modalEstornar._avulso
+                  ? <>
+                      <span style={{ background:'#dbeafe', color:'#1d4ed8', borderRadius:99, padding:'1px 8px', fontSize:11, fontWeight:700 }}>
+                        {modalEstornar.tipo === 'vale_transporte' ? '🚌 Vale Transporte'
+                          : modalEstornar.tipo === 'adiantamento' ? '💵 Adiantamento'
+                          : modalEstornar.tipo === '13_salario'   ? '🎄 13º Salário'
+                          : modalEstornar.tipo === 'ferias'       ? '🏖️ Férias'
+                          : modalEstornar.tipo === 'rescisao'     ? '📋 Rescisão'
+                          : modalEstornar.tipo ?? '—'}
+                      </span>
+                      {' '}— competência {modalEstornar.competencia?.slice(5)}/{modalEstornar.competencia?.slice(0,4)}
+                      <br />pago em {modalEstornar.data_pagamento ? formatDate(modalEstornar.data_pagamento) : '—'}
+                    </>
+                  : <>{modalEstornar.obras?.nome} — pago em {(modalEstornar as any).data_pagamento ?? '—'}</>
+                }
               </p>
             </div>
             <div style={{ marginBottom: 20 }}>
