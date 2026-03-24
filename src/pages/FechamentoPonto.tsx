@@ -204,7 +204,7 @@ export default function FechamentoPonto() {
     function diasUteisPeriodo(ini: string, fim: string): number {
       return expandRange(ini, fim).filter(d => {
         const dow = new Date(d + 'T12:00:00').getDay()
-        return dow >= 1 && dow <= 6 && !feriadosSet.has(d)
+        return dow >= 1 && dow <= 5 && !feriadosSet.has(d)  // Seg-Sex apenas
       }).length
     }
     function domingosFeriadosPeriodo(ini: string, fim: string): number {
