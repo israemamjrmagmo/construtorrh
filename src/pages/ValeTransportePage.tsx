@@ -470,24 +470,12 @@ export default function ValeTransportePage() {
     const colab = colaboradores.find(c => c.id === row.colaborador_id)
     setSavingPagar(true)
 
-    // 1. Marcar VT como aguardando pagamento
-    const { error: errVT } = await supabase
-      .from('vale_transporte')
-      .update({ status: 'aguardando_pagamento' })
-      .eq('id', pagarId)
-    if (errVT) {
-      setSavingPagar(false)
-      toast.error(`Erro ao atualizar VT: ${errVT.message}`)
-      return
-    }
-
-    // 2. Criar registro em pagamentos com status PENDENTE
+    // 1. Criar registro em pagamentos com status PENDENTE
     const valorEmpresa = row.valor_empresa ?? row.valor ?? 0
     const { error: errPag } = await supabase.from('pagamentos').insert({
       colaborador_id:  row.colaborador_id,
       obra_id:         colab?.obra_id ?? null,
       competencia:     row.competencia,
-      data_pagamento:  null,
       tipo:            'vale_transporte',
       valor_bruto:     valorEmpresa,
       inss:            0,
@@ -499,10 +487,22 @@ export default function ValeTransportePage() {
       status:          'pendente',
       observacoes:     `VT ${row.data_inicio ?? ''} → ${row.data_fim ?? ''} | ${row.tipo ?? ''}`,
     })
+
+    if (errPag) {
+      setSavingPagar(false)
+      toast.error(`Erro ao registrar em Pagamentos: ${errPag.message}`)
+      return
+    }
+
+    // 2. Só muda status do VT se o pagamento foi criado com sucesso
+    const { error: errVT } = await supabase
+      .from('vale_transporte')
+      .update({ status: 'aguardando_pagamento' })
+      .eq('id', pagarId)
     setSavingPagar(false)
     setPagarId(null)
-    if (errPag) {
-      toast.error(`Erro ao criar registro em Pagamentos: ${errPag.message}`)
+    if (errVT) {
+      toast.error(`Pagamento criado, mas erro ao atualizar VT: ${errVT.message}`)
     } else {
       toast.success('📋 VT enviado para Pagamentos — confirme o pagamento lá!')
     }
@@ -545,27 +545,15 @@ export default function ValeTransportePage() {
     setSavingLote(true)
     const hoje_str = new Date().toISOString().split('T')[0]
 
-    // 1. Marcar VTs como aguardando pagamento
-    const { error: errVT } = await supabase
-      .from('vale_transporte')
-      .update({ status: 'aguardando_pagamento' })
-      .in('id', ids)
-    if (errVT) {
-      setSavingLote(false)
-      toast.error(`Erro ao atualizar VTs: ${errVT.message}`)
-      return
-    }
-
-    // 2. Criar registros em pagamentos com status PENDENTE (um por VT)
+    // 1. Criar registros em pagamentos com status PENDENTE (um por VT)
     const rowsSel = vtsPendentesLote.filter(r => ids.includes(r.id))
-    const pagamentos = rowsSel.map(r => {
+    const inserts = rowsSel.map(r => {
       const colab = colaboradores.find(c => c.id === r.colaborador_id)
       const valorEmpresa = r.valor_empresa ?? r.valor ?? 0
       return {
         colaborador_id:  r.colaborador_id,
         obra_id:         colab?.obra_id ?? null,
         competencia:     r.competencia,
-        data_pagamento:  null as string | null,
         tipo:            'vale_transporte' as string,
         valor_bruto:     valorEmpresa,
         inss:            0,
@@ -578,10 +566,21 @@ export default function ValeTransportePage() {
         observacoes:     `VT ${r.data_inicio ?? ''} → ${r.data_fim ?? ''} | ${r.tipo ?? ''}`,
       }
     })
-    const { error: errPag } = await supabase.from('pagamentos').insert(pagamentos)
-    setSavingLote(false)
+    const { error: errPag } = await supabase.from('pagamentos').insert(inserts)
     if (errPag) {
+      setSavingLote(false)
       toast.error(`Erro ao registrar em Pagamentos: ${errPag.message}`)
+      return
+    }
+
+    // 2. Só muda status dos VTs se os pagamentos foram criados
+    const { error: errVT } = await supabase
+      .from('vale_transporte')
+      .update({ status: 'aguardando_pagamento' })
+      .in('id', ids)
+    setSavingLote(false)
+    if (errVT) {
+      toast.error(`Pagamentos criados, mas erro ao atualizar VTs: ${errVT.message}`)
     } else {
       toast.success(`📋 ${ids.length} VT(s) enviados para Pagamentos — confirme o pagamento lá!`)
     }
