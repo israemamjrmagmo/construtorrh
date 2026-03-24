@@ -77,7 +77,6 @@ export default function FechamentoPonto() {
   const [tabelaIR, setTabelaIR]     = useState<FaixaIR[]>([])
 
   // Modal confirmar pagamento
-  const [modalPagar, setModalPagar] = useState<string | null>(null)
 
   const mesRef = `${ano}-${String(mes).padStart(2, '0')}`
 
@@ -91,7 +90,7 @@ export default function FechamentoPonto() {
         colaboradores(nome, chapa, tipo_contrato, funcao_id, vale_transporte, vt_dados, funcoes(nome)),
         obras(nome)
       `)
-      .in('status', ['aprovado', 'em_fechamento', 'pago'])
+      .in('status', ['em_fechamento', 'aprovado', 'liberado', 'pago'])
       .eq('mes_referencia', mr)
       .order('data_inicio')
 
@@ -314,8 +313,28 @@ export default function FechamentoPonto() {
   }, [lancamentos, busca])
 
   const totalGeral = useMemo(() => lancamentos.reduce((s, l) => s + l.valor_total, 0), [lancamentos])
-  const pendentes   = lancamentos.filter(l => l.status === 'aprovado')
+  const pendentes   = lancamentos.filter(l => ['em_fechamento','aprovado','liberado'].includes(l.status))
   const pagos       = lancamentos.filter(l => l.status === 'pago')
+
+  // ── Aprovar lançamento (em_fechamento → aprovado) ────────────────────────
+  async function aprovarLanc(id: string) {
+    setSaving(true)
+    const { error } = await supabase.from('ponto_lancamentos')
+      .update({ status: 'aprovado' }).eq('id', id)
+    setSaving(false)
+    if (error) toast.error('Erro ao aprovar')
+    else { toast.success('Lançamento aprovado!'); fetchLancamentos(mesRef) }
+  }
+
+  // ── Liberar para pagamento (aprovado → liberado) ───────────────────────────
+  async function liberarParaPagamento(id: string) {
+    setSaving(true)
+    const { error } = await supabase.from('ponto_lancamentos')
+      .update({ status: 'liberado' }).eq('id', id)
+    setSaving(false)
+    if (error) toast.error('Erro ao liberar')
+    else { toast.success('Liberado para pagamento! Vá até Pagamentos para efetivar.'); fetchLancamentos(mesRef) }
+  }
 
   // ── Recusar lançamento ────────────────────────────────────────────────────
   async function recusarLanc(id: string) {
@@ -332,33 +351,12 @@ export default function FechamentoPonto() {
   }
 
   // ── Liberar para pagamento (direto, sem fechamento intermediário) ──────────
-  async function liberarPagamento(lancId: string) {
-    setSaving(true)
-    const { error } = await supabase.from('ponto_lancamentos')
-      .update({ status: 'pago' }).eq('id', lancId)
-    setSaving(false)
-    if (error) { toast.error('Erro: ' + error.message); return }
-    toast.success('✅ Lançamento liberado para pagamento!')
-    setModalPagar(null)
-    fetchLancamentos(mesRef)
-  }
-
-  // ── Liberar todos aprovados de um colaborador ─────────────────────────────
-  async function liberarTodosColab(colabId: string) {
-    const ids = lancamentos.filter(l => l.colaborador_id === colabId && l.status === 'aprovado').map(l => l.id)
-    if (!ids.length) return
-    setSaving(true)
-    const { error } = await supabase.from('ponto_lancamentos').update({ status: 'pago' }).in('id', ids)
-    setSaving(false)
-    if (error) { toast.error('Erro: ' + error.message); return }
-    toast.success(`${ids.length} lançamento(s) liberado(s) para pagamento!`)
-    fetchLancamentos(mesRef)
-  }
-
-  const STATUS_BADGE: Record<string, { bg: string; color: string; label: string }> = {
+    const STATUS_BADGE: Record<string, { bg: string; color: string; label: string }> = {
+    em_fechamento:{ bg: '#dbeafe', color: '#1d4ed8', label: '🔒 Em Fechamento' },
     aprovado:     { bg: '#dcfce7', color: '#15803d', label: '✅ Aprovado' },
+    liberado:     { bg: '#fef3c7', color: '#b45309', label: '💜 Ag. Pagamento' },
     pago:         { bg: '#ede9fe', color: '#6d28d9', label: '💰 Pago' },
-    em_fechamento:{ bg: '#dbeafe', color: '#1d4ed8', label: '🔒 Fechamento' },
+    recusado:     { bg: '#fee2e2', color: '#dc2626', label: '❌ Recusado' },
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -419,7 +417,6 @@ export default function FechamentoPonto() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {porColaborador.map(colab => {
             const exp = expandidos.has(colab.id)
-            const todosAprovados = colab.lancs.every(l => l.status === 'aprovado')
             return (
               <div key={colab.id} style={{ border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', background: 'var(--card)' }}>
                 {/* Header colaborador */}
@@ -437,13 +434,7 @@ export default function FechamentoPonto() {
                       {colab.totalLiquido !== colab.totalValor && <> · Líquido: <strong style={{color:'#15803d'}}>{formatCurrency(colab.totalLiquido)}</strong></>}
                     </div>
                   </div>
-                  {todosAprovados && (
-                    <Button size="sm" style={{ background: '#7c3aed', color: '#fff', height: 28, fontSize: 11, gap: 4 }}
-                      disabled={saving}
-                      onClick={e => { e.stopPropagation(); liberarTodosColab(colab.id) }}>
-                      💰 Liberar Todos
-                    </Button>
-                  )}
+
                 </div>
 
                 {/* Lançamentos expandidos */}
@@ -572,11 +563,25 @@ export default function FechamentoPonto() {
                             </TableCell>
                             <TableCell>
                               <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
+                                {lanc.status === 'em_fechamento' && (
+                                  <>
+                                    <Button size="sm" style={{ height: 26, fontSize: 11, background: '#15803d', color: '#fff' }}
+                                      disabled={saving}
+                                      onClick={() => aprovarLanc(lanc.id)}>
+                                      ✅ Aprovar
+                                    </Button>
+                                    <Button size="sm" variant="outline" style={{ height: 26, fontSize: 11, borderColor: '#dc2626', color: '#dc2626' }}
+                                      onClick={() => { setModalRecusar(lanc.id); setMotivoRecusa('') }}>
+                                      ✕ Recusar
+                                    </Button>
+                                  </>
+                                )}
                                 {lanc.status === 'aprovado' && (
                                   <>
-                                    <Button size="sm" style={{ height: 26, fontSize: 11, background: '#7c3aed', color: '#fff' }}
-                                      onClick={() => setModalPagar(lanc.id)}>
-                                      💰 Pagar
+                                    <Button size="sm" variant="outline" style={{ height: 26, fontSize: 11, borderColor: '#7c3aed', color: '#7c3aed' }}
+                                      disabled={saving}
+                                      onClick={() => liberarParaPagamento(lanc.id)}>
+                                      💜 Liberar p/ Pgto
                                     </Button>
                                     <Button size="sm" variant="outline" style={{ height: 26, fontSize: 11, borderColor: '#dc2626', color: '#dc2626' }}
                                       onClick={() => { setModalRecusar(lanc.id); setMotivoRecusa('') }}>
@@ -598,32 +603,7 @@ export default function FechamentoPonto() {
         </div>
       )}
 
-      {/* ═══ MODAL CONFIRMAR PAGAMENTO ═══ */}
-      {modalPagar && (() => {
-        const lanc = lancamentos.find(l => l.id === modalPagar)
-        return (
-          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 70, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <div style={{ background: 'var(--background)', borderRadius: 12, width: 400, padding: 28, boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
-              <div style={{ textAlign: 'center', marginBottom: 20 }}>
-                <div style={{ fontSize: 36, marginBottom: 8 }}>💰</div>
-                <h3 style={{ fontWeight: 800, fontSize: 15, margin: 0 }}>Liberar para Pagamento</h3>
-                <p style={{ fontSize: 13, color: 'var(--muted-foreground)', marginTop: 8 }}>
-                  <strong>{lanc?.obra_nome}</strong><br />
-                  {lanc?.data_inicio.slice(8)}/{lanc?.data_inicio.slice(5,7)} → {lanc?.data_fim.slice(8)}/{lanc?.data_fim.slice(5,7)}<br />
-                  Valor: <strong>{formatCurrency(lanc?.valor_total ?? 0)}</strong>
-                </p>
-              </div>
-              <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
-                <Button variant="outline" onClick={() => setModalPagar(null)}>Cancelar</Button>
-                <Button disabled={saving} style={{ background: '#7c3aed', color: '#fff' }}
-                  onClick={() => liberarPagamento(modalPagar)}>
-                  {saving ? 'Processando…' : '💰 Confirmar Pagamento'}
-                </Button>
-              </div>
-            </div>
-          </div>
-        )
-      })()}
+
 
       {/* ═══ MODAL RECUSAR ═══ */}
       {modalRecusar && (

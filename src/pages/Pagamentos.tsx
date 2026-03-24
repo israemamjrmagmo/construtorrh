@@ -23,7 +23,7 @@ import {
 import { toast } from 'sonner'
 import { traduzirErro } from '@/lib/erros'
 import {
-  DollarSign, Plus, Search, Pencil, Trash2, CheckCircle,
+  DollarSign, Plus, Search, Pencil, Trash2, CheckCircle, RotateCcw, Calendar, Building2, Clock,
 } from 'lucide-react'
 
 // ─── tipos ───────────────────────────────────────────────────────────────────
@@ -111,6 +111,20 @@ export default function Pagamentos() {
   // delete
   const [deleteId, setDeleteId] = useState<string | null>(null)
 
+  // ── lançamentos liberados do Fechamento ────────────────────────────────────
+  const [lancsPendentes, setLancsPendentes] = useState<any[]>([])
+  const [loadingLancs, setLoadingLancs] = useState(false)
+
+  // ── modal pagar lançamento ─────────────────────────────────────────────────
+  const [modalPagarLanc, setModalPagarLanc] = useState<any | null>(null)
+  const [dataPagamento, setDataPagamento] = useState(new Date().toISOString().slice(0, 10))
+  const [obsPagamento, setObsPagamento] = useState('')
+  const [savingPgto, setSavingPgto] = useState(false)
+
+  // ── modal estornar ─────────────────────────────────────────────────────────
+  const [modalEstornar, setModalEstornar] = useState<any | null>(null)
+  const [motivoEstorno, setMotivoEstorno] = useState('')
+
   // ─── fetch ─────────────────────────────────────────────────────────────────
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -133,7 +147,19 @@ export default function Pagamentos() {
     setLoading(false)
   }, [])
 
-  useEffect(() => { fetchData() }, [fetchData])
+  // ─── fetch lançamentos liberados ───────────────────────────────────────────
+  const fetchLancsPendentes = useCallback(async () => {
+    setLoadingLancs(true)
+    const { data } = await supabase
+      .from('ponto_lancamentos')
+      .select('id, colaborador_id, obra_id, mes_referencia, data_inicio, data_fim, status, motivo_recusa, colaboradores(nome, chapa, tipo_contrato), obras(nome)')
+      .in('status', ['liberado', 'pago'])
+      .order('mes_referencia', { ascending: false })
+    setLancsPendentes(data ?? [])
+    setLoadingLancs(false)
+  }, [])
+
+  useEffect(() => { fetchData(); fetchLancsPendentes() }, [fetchData, fetchLancsPendentes])
 
   // ─── filtrar ───────────────────────────────────────────────────────────────
   const filtered = rows.filter((r) => {
@@ -220,7 +246,7 @@ export default function Pagamentos() {
     fetchData()
   }
 
-  // ─── marcar pago ───────────────────────────────────────────────────────────
+  // ─── marcar pago (tabela pagamentos) ──────────────────────────────────────
   async function marcarPago(id: string) {
     const { error } = await supabase
       .from('pagamentos')
@@ -228,6 +254,34 @@ export default function Pagamentos() {
       .eq('id', id)
     if (error) toast.error('Erro ao marcar como pago')
     else { toast.success('Pagamento marcado como pago!'); fetchData() }
+  }
+
+  // ─── efetivar pagamento de lançamento liberado ─────────────────────────────
+  async function efetivarPagamento() {
+    if (!modalPagarLanc) return
+    setSavingPgto(true)
+    const { error } = await supabase.from('ponto_lancamentos')
+      .update({ status: 'pago', data_pagamento: dataPagamento, obs_pagamento: obsPagamento || null })
+      .eq('id', modalPagarLanc.id)
+    setSavingPgto(false)
+    if (error) { toast.error('Erro ao efetivar: ' + error.message); return }
+    toast.success('💰 Pagamento efetivado!')
+    setModalPagarLanc(null); setObsPagamento('')
+    fetchLancsPendentes()
+  }
+
+  // ─── estornar pagamento ────────────────────────────────────────────────────
+  async function estornarPagamento() {
+    if (!modalEstornar) return
+    setSavingPgto(true)
+    const { error } = await supabase.from('ponto_lancamentos')
+      .update({ status: 'liberado', data_pagamento: null, obs_pagamento: motivoEstorno || 'Estornado' })
+      .eq('id', modalEstornar.id)
+    setSavingPgto(false)
+    if (error) { toast.error('Erro ao estornar: ' + error.message); return }
+    toast.success('↩ Pagamento estornado — voltou para Ag. Pagamento')
+    setModalEstornar(null); setMotivoEstorno('')
+    fetchLancsPendentes()
   }
 
   // ─── delete ────────────────────────────────────────────────────────────────
@@ -251,6 +305,90 @@ export default function Pagamentos() {
           </Button>
         }
       />
+
+      {/* ══ SEÇÃO: Lançamentos Liberados p/ Pagamento ══ */}
+      <div style={{ marginBottom: 28 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+          <span style={{ fontWeight: 700, fontSize: 14, color: '#b45309' }}>💜 Lançamentos Aguardando Pagamento</span>
+          <span style={{ fontSize: 11, background: '#fef3c7', color: '#b45309', borderRadius: 6, padding: '2px 8px', fontWeight: 600 }}>
+            {lancsPendentes.filter(l => l.status === 'liberado').length} pendente(s)
+          </span>
+        </div>
+
+        {loadingLancs ? (
+          <div style={{ fontSize: 13, color: '#6b7280' }}>Carregando…</div>
+        ) : lancsPendentes.length === 0 ? (
+          <div style={{ background: '#f9fafb', border: '1px dashed #d1d5db', borderRadius: 10, padding: '20px', textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>
+            Nenhum lançamento aguardando pagamento. Libere lançamentos no <strong>Fechamento</strong>.
+          </div>
+        ) : (
+          <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <thead>
+                <tr style={{ background: '#fef3c7', borderBottom: '2px solid #fde68a' }}>
+                  <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 700, color: '#92400e' }}>Colaborador</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 700, color: '#92400e' }}>Obra</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 700, color: '#92400e' }}>Período</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 700, color: '#92400e' }}>Status</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 700, color: '#92400e' }}>Data Pgto</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 700, color: '#92400e' }}>Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lancsPendentes.map((l, i) => {
+                  const isPago = l.status === 'pago'
+                  return (
+                    <tr key={l.id} style={{ background: i % 2 === 0 ? '#fff' : '#fafafa', borderBottom: '1px solid #f3f4f6' }}>
+                      <td style={{ padding: '8px 12px' }}>
+                        <div style={{ fontWeight: 600, fontSize: 13 }}>{l.colaboradores?.nome ?? '—'}</div>
+                        <div style={{ fontSize: 10, color: '#6b7280' }}>{l.colaboradores?.chapa} · {l.colaboradores?.tipo_contrato?.toUpperCase()}</div>
+                      </td>
+                      <td style={{ padding: '8px 12px', color: '#374151', fontSize: 12 }}>
+                        {l.obras?.nome ?? '—'}
+                      </td>
+                      <td style={{ padding: '8px 12px', textAlign: 'center', color: '#374151', fontSize: 11 }}>
+                        {l.data_inicio?.slice(8)}/{l.data_inicio?.slice(5,7)} → {l.data_fim?.slice(8)}/{l.data_fim?.slice(5,7)}
+                      </td>
+                      <td style={{ padding: '8px 12px', textAlign: 'center' }}>
+                        <span style={{
+                          fontSize: 11, fontWeight: 600, borderRadius: 6, padding: '2px 8px',
+                          background: isPago ? '#ede9fe' : '#fef3c7',
+                          color: isPago ? '#6d28d9' : '#b45309',
+                        }}>
+                          {isPago ? '💰 Pago' : '💜 Ag. Pagamento'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '8px 12px', textAlign: 'center', fontSize: 11, color: isPago ? '#15803d' : '#9ca3af' }}>
+                        {(l as any).data_pagamento ?? '—'}
+                      </td>
+                      <td style={{ padding: '8px 12px', textAlign: 'right' }}>
+                        <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
+                          {!isPago && (
+                            <button
+                              style={{ height: 26, padding: '0 10px', fontSize: 11, borderRadius: 6, border: 'none', background: '#7c3aed', color: '#fff', cursor: 'pointer', fontWeight: 600 }}
+                              onClick={() => { setModalPagarLanc(l); setDataPagamento(new Date().toISOString().slice(0, 10)); setObsPagamento('') }}>
+                              💰 Pagar
+                            </button>
+                          )}
+                          {isPago && (
+                            <button
+                              style={{ height: 26, padding: '0 10px', fontSize: 11, borderRadius: 6, border: '1px solid #dc2626', background: 'transparent', color: '#dc2626', cursor: 'pointer', fontWeight: 600 }}
+                              onClick={() => { setModalEstornar(l); setMotivoEstorno('') }}>
+                              ↩ Estornar
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <hr style={{ borderColor: '#e5e7eb', marginBottom: 24 }} />
 
       {/* Filtros */}
       <div className="flex flex-wrap gap-3 mb-4">
@@ -387,6 +525,86 @@ export default function Pagamentos() {
               </TableRow>
             </TableFooter>
           </Table>
+        </div>
+      )}
+
+      {/* ══ MODAL EFETIVAR PAGAMENTO ══ */}
+      {modalPagarLanc && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 80, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: 'var(--background)', borderRadius: 14, width: 420, padding: 28, boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
+            <div style={{ textAlign: 'center', marginBottom: 20 }}>
+              <div style={{ fontSize: 38, marginBottom: 8 }}>💰</div>
+              <h3 style={{ fontWeight: 800, fontSize: 16, margin: 0 }}>Efetivar Pagamento</h3>
+              <p style={{ fontSize: 13, color: 'var(--muted-foreground)', marginTop: 8 }}>
+                <strong>{modalPagarLanc.colaboradores?.nome}</strong><br />
+                {modalPagarLanc.obras?.nome}<br />
+                <span style={{ fontSize: 12 }}>{modalPagarLanc.data_inicio?.slice(8)}/{modalPagarLanc.data_inicio?.slice(5,7)} → {modalPagarLanc.data_fim?.slice(8)}/{modalPagarLanc.data_fim?.slice(5,7)}</span>
+              </p>
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ fontSize: 12, fontWeight: 700, display: 'block', marginBottom: 6 }}>📅 Data de Efetivação *</label>
+              <input
+                type="date"
+                value={dataPagamento}
+                onChange={e => setDataPagamento(e.target.value)}
+                style={{ width: '100%', padding: '8px 10px', fontSize: 13, border: '2px solid #7c3aed', borderRadius: 6, background: 'var(--background)', color: 'var(--foreground)', boxSizing: 'border-box' }}
+              />
+            </div>
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ fontSize: 12, fontWeight: 700, display: 'block', marginBottom: 6 }}>Observação (opcional)</label>
+              <textarea
+                value={obsPagamento}
+                onChange={e => setObsPagamento(e.target.value)}
+                placeholder="Ex.: Pago via Pix, transferência banco X…"
+                rows={3}
+                style={{ width: '100%', padding: '8px 10px', fontSize: 13, border: '1.5px solid #e5e7eb', borderRadius: 6, background: 'var(--background)', color: 'var(--foreground)', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }}
+              />
+            </div>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button style={{ padding: '8px 16px', fontSize: 13, borderRadius: 6, border: '1.5px solid #e5e7eb', background: 'transparent', cursor: 'pointer', color: 'var(--foreground)' }}
+                onClick={() => setModalPagarLanc(null)}>Cancelar</button>
+              <button disabled={!dataPagamento || savingPgto}
+                style={{ padding: '8px 18px', fontSize: 13, fontWeight: 700, borderRadius: 6, border: 'none', background: '#7c3aed', color: '#fff', cursor: 'pointer', opacity: (!dataPagamento || savingPgto) ? 0.5 : 1 }}
+                onClick={efetivarPagamento}>
+                {savingPgto ? 'Salvando…' : '💰 Confirmar Pagamento'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══ MODAL ESTORNAR PAGAMENTO ══ */}
+      {modalEstornar && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 80, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: 'var(--background)', borderRadius: 14, width: 420, padding: 28, boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
+            <div style={{ textAlign: 'center', marginBottom: 20 }}>
+              <div style={{ fontSize: 38, marginBottom: 8 }}>↩</div>
+              <h3 style={{ fontWeight: 800, fontSize: 16, margin: 0, color: '#dc2626' }}>Estornar Pagamento</h3>
+              <p style={{ fontSize: 13, color: 'var(--muted-foreground)', marginTop: 8 }}>
+                <strong>{modalEstornar.colaboradores?.nome}</strong><br />
+                {modalEstornar.obras?.nome} — pago em {(modalEstornar as any).data_pagamento ?? '—'}
+              </p>
+            </div>
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ fontSize: 12, fontWeight: 700, display: 'block', marginBottom: 6 }}>Motivo do Estorno</label>
+              <textarea
+                value={motivoEstorno}
+                onChange={e => setMotivoEstorno(e.target.value)}
+                placeholder="Ex.: Pagamento duplicado, erro de valor…"
+                rows={3}
+                style={{ width: '100%', padding: '8px 10px', fontSize: 13, border: '2px solid #fecaca', borderRadius: 6, background: 'var(--background)', color: 'var(--foreground)', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }}
+              />
+            </div>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button style={{ padding: '8px 16px', fontSize: 13, borderRadius: 6, border: '1.5px solid #e5e7eb', background: 'transparent', cursor: 'pointer', color: 'var(--foreground)' }}
+                onClick={() => setModalEstornar(null)}>Cancelar</button>
+              <button disabled={savingPgto}
+                style={{ padding: '8px 18px', fontSize: 13, fontWeight: 700, borderRadius: 6, border: 'none', background: '#dc2626', color: '#fff', cursor: 'pointer', opacity: savingPgto ? 0.5 : 1 }}
+                onClick={estornarPagamento}>
+                {savingPgto ? 'Salvando…' : '↩ Confirmar Estorno'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
