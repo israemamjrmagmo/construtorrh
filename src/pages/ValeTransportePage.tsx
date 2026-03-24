@@ -314,10 +314,11 @@ export default function ValeTransportePage() {
         return { ...next, ...calc }
       }
 
-      // Recalcula valor_empresa ao editar valor ou desconto manualmente
-      if (key === 'valor' || key === 'desconto_colaborador') {
-        const valor    = parseFloat(key === 'valor'    ? String(value) : next.valor)    || 0
-        const desconto = parseFloat(key === 'desconto_colaborador' ? String(value) : next.desconto_colaborador) || 0
+      // Recalcula valor_empresa ao editar valor (apenas internamente via recalcularPeriodo)
+      // Os campos valor e desconto_colaborador não têm mais input manual — bloco mantido apenas para segurança
+      if (key === 'valor') {
+        const valor    = parseFloat(String(value)) || 0
+        const desconto = parseFloat(next.desconto_colaborador) || 0
         return { ...next, valor_empresa: Math.max(0, valor - desconto).toFixed(2) }
       }
 
@@ -678,18 +679,26 @@ export default function ValeTransportePage() {
                 </Select>
               </div>
 
-              {/* Dias (editável manualmente) */}
+              {/* Dias trabalhados — somente leitura */}
               <div>
-                <Label className="text-xs">Dias trabalhados</Label>
-                <Input type="number" value={form.dias_trabalhados} onChange={e => setField('dias_trabalhados', e.target.value)}
-                  className="mt-1 h-9" placeholder="22" />
+                <Label className="text-xs" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  Dias trabalhados
+                  <span style={{ fontSize: 9, background: 'var(--muted)', color: 'var(--muted-foreground)', borderRadius: 3, padding: '1px 4px', fontWeight: 600 }}>AUTO</span>
+                </Label>
+                <div style={{ marginTop: 4, height: 36, display: 'flex', alignItems: 'center', padding: '0 12px', background: 'var(--muted)', border: '1px solid var(--border)', borderRadius: 6, fontSize: 14, fontWeight: 700, color: 'var(--foreground)' }}>
+                  {form.dias_trabalhados || '0'}
+                </div>
               </div>
 
-              {/* Valor */}
+              {/* Valor VT — somente leitura (base do colaborador) */}
               <div className="col-span-2">
-                <Label className="text-xs">Valor do VT (R$) *</Label>
-                <Input type="number" step="0.01" value={form.valor} onChange={e => setField('valor', e.target.value)}
-                  className="mt-1 h-9" placeholder="0,00" />
+                <Label className="text-xs" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  Valor do VT (R$)
+                  <span style={{ fontSize: 9, background: 'var(--muted)', color: 'var(--muted-foreground)', borderRadius: 3, padding: '1px 4px', fontWeight: 600 }}>AUTO — base do colaborador</span>
+                </Label>
+                <div style={{ marginTop: 4, height: 36, display: 'flex', alignItems: 'center', padding: '0 12px', background: 'var(--muted)', border: '1px solid var(--border)', borderRadius: 6, fontSize: 14, fontWeight: 700, color: 'var(--foreground)' }}>
+                  {parseFloat(form.valor) > 0 ? formatCurrency(parseFloat(form.valor)) : <span style={{ color: 'var(--muted-foreground)', fontWeight: 400 }}>Sem VT configurado no cadastro</span>}
+                </div>
               </div>
 
               {/* Toggle desconto 6% */}
@@ -712,21 +721,28 @@ export default function ValeTransportePage() {
                 </div>
               </div>
 
-              {/* Desconto colaborador */}
+              {/* Desconto colaborador — somente leitura (calculado pelo toggle) */}
               <div>
-                <Label className="text-xs">Desconto colaborador (R$)</Label>
-                <Input type="number" step="0.01" value={form.desconto_colaborador}
-                  onChange={e => setField('desconto_colaborador', e.target.value)}
-                  disabled={!form.descontar_6pct}
-                  className="mt-1 h-9 disabled:opacity-50" placeholder="0,00" />
+                <Label className="text-xs" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  Desconto colaborador (R$)
+                  <span style={{ fontSize: 9, background: 'var(--muted)', color: 'var(--muted-foreground)', borderRadius: 3, padding: '1px 4px', fontWeight: 600 }}>AUTO</span>
+                </Label>
+                <div style={{ marginTop: 4, height: 36, display: 'flex', alignItems: 'center', padding: '0 12px', background: 'var(--muted)', border: '1px solid var(--border)', borderRadius: 6, fontSize: 14, fontWeight: 700, color: form.descontar_6pct ? '#dc2626' : 'var(--muted-foreground)' }}>
+                  {form.descontar_6pct
+                    ? `− ${formatCurrency(parseFloat(form.desconto_colaborador) || 0)}`
+                    : <span style={{ fontWeight: 400, fontSize: 12 }}>isento (toggle desativado)</span>}
+                </div>
               </div>
 
-              {/* Valor empresa */}
+              {/* Valor empresa — somente leitura */}
               <div>
-                <Label className="text-xs">Valor empresa (calculado)</Label>
-                <Input type="number" step="0.01" value={form.valor_empresa}
-                  onChange={e => setField('valor_empresa', e.target.value)}
-                  className="mt-1 h-9 bg-muted font-bold" placeholder="0,00" />
+                <Label className="text-xs" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  Valor empresa (calculado)
+                  <span style={{ fontSize: 9, background: '#dbeafe', color: '#1d4ed8', borderRadius: 3, padding: '1px 4px', fontWeight: 600 }}>AUTO</span>
+                </Label>
+                <div style={{ marginTop: 4, height: 36, display: 'flex', alignItems: 'center', padding: '0 12px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 6, fontSize: 14, fontWeight: 800, color: '#1d4ed8' }}>
+                  {formatCurrency(parseFloat(form.valor_empresa) || 0)}
+                </div>
               </div>
 
               {/* Observações */}
