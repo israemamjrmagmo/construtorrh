@@ -490,6 +490,7 @@ export default function Colaboradores() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState('todos')
+  const [filterFuncao, setFilterFuncao] = useState('todas')
 
   const [modalOpen, setModalOpen] = useState(false)
   const [editId, setEditId]       = useState<string | null>(null)
@@ -555,7 +556,8 @@ export default function Colaboradores() {
     const q = search.toLowerCase()
     const matchQ = !q || c.nome.toLowerCase().includes(q) || (c.chapa ?? '').toLowerCase().includes(q) || (c.cpf ?? '').includes(q)
     const matchS = filterStatus === 'todos' || c.status === filterStatus
-    return matchQ && matchS
+    const matchF = filterFuncao === 'todas' || (c as any).funcao_id === filterFuncao
+    return matchQ && matchS && matchF
   })
 
   // ── helpers form ──────────────────────────────────────────────────────────
@@ -1046,6 +1048,15 @@ export default function Colaboradores() {
                   <SelectItem value="inativo">Inativos</SelectItem>
                   <SelectItem value="afastado">Afastados</SelectItem>
                   <SelectItem value="ferias">Férias</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={filterFuncao} onValueChange={setFilterFuncao}>
+                <SelectTrigger style={{ width: 180 }}><SelectValue placeholder="Todas as funções" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todas">Todas as funções</SelectItem>
+                  {funcoes.map(f => (
+                    <SelectItem key={f.id} value={f.id}>{f.nome}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

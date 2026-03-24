@@ -29,6 +29,8 @@ type ColaboradorVT = Pick<Colaborador, 'id' | 'nome' | 'chapa' | 'salario' | 'vt
   valor_hora_calc?: number | null
   salario_mensal_calc?: number | null
   data_admissao?: string | null   // data de início dos trabalhos
+  vt_valor_diario?: number | null // valor diário do VT (para lote)
+  vt_tipo?: string | null         // tipo do VT (cartao, dinheiro, etc.)
 }
 type VTRow = ValeTransporte & { colaboradores?: ColaboradorVT }
 type FormData = {
@@ -152,6 +154,7 @@ export default function ValeTransportePage() {
   const [mes, setMes]       = useState(hoje.getMonth() + 1)
   const [busca, setBusca]   = useState('')
   const [obraFiltro, setObraFiltro] = useState('todas')
+  const [statusFiltro, setStatusFiltro] = useState<'todos'|'sem'|'parcial'|'completo'>('todos')
 
   const [colaboradores, setColaboradores] = useState<ColaboradorVT[]>([])
   const [obras, setObras]   = useState<{id:string;nome:string}[]>([])
@@ -176,6 +179,10 @@ export default function ValeTransportePage() {
   const [obraLote, setObraLote]   = useState('todas')
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set())
   const [savingLote, setSavingLote] = useState(false)
+
+  // ── Lançar em Lote (criar VT mês inteiro para todos sem VT) ──────────────
+  const [modalLancarLote, setModalLancarLote] = useState(false)
+  const [savingLancarLote, setSavingLancarLote] = useState(false)
 
   const competencia = `${ano}-${String(mes).padStart(2, '0')}`
 
@@ -224,6 +231,8 @@ export default function ValeTransportePage() {
           valor_hora_calc: vh,
           salario_mensal_calc: vh != null ? vh * 220 : (c.salario ?? null),
           data_admissao: c.data_admissao ?? null,
+          vt_valor_diario: c.vt_dados?.valor_diario ?? null,
+          vt_tipo: c.vt_dados?.tipo ?? null,
         }
       }))
     }
@@ -239,18 +248,38 @@ export default function ValeTransportePage() {
     colabSel ? vtRows.filter(r => r.colaborador_id === colabSel.id && r.competencia === competencia) : []
   , [colabSel, vtRows, competencia])
 
-  function statusVTColab(colabId: string) {
+  // ─── Dias úteis (seg-sex) do mês ─────────────────────────────────────────
+  const diasUteisMes = useMemo(() => {
+    const ini = new Date(primeiroDia(competencia) + 'T12:00:00')
+    const fim = new Date(ultimoDia(competencia)   + 'T12:00:00')
+    const dias: string[] = []
+    const cur = new Date(ini)
+    while (cur <= fim) {
+      const dow = cur.getDay()
+      if (dow >= 1 && dow <= 5) dias.push(cur.toISOString().slice(0, 10))
+      cur.setDate(cur.getDate() + 1)
+    }
+    return dias
+  }, [competencia])
+
+  function statusVTColab(colabId: string): 'sem' | 'parcial' | 'completo' {
     const regs = vtRows.filter(r => r.colaborador_id === colabId && r.competencia === competencia)
     if (regs.length === 0) return 'sem'
-    const temCompleto = regs.some(r => r.data_inicio === primeiroDia(competencia) && r.data_fim === ultimoDia(competencia))
-    return temCompleto ? 'completo' : 'parcial'
+    // Expande todos os intervalos lançados e verifica se cobrem todos os dias úteis
+    const diasCobertos = new Set<string>()
+    regs.forEach(r => {
+      if (r.data_inicio && r.data_fim) {
+        expandirIntervalo(r.data_inicio, r.data_fim).forEach(d => diasCobertos.add(d))
+      }
+    })
+    const todosUteisCobertos = diasUteisMes.every(d => diasCobertos.has(d))
+    return todosUteisCobertos ? 'completo' : 'parcial'
   }
 
   function podeNovoVT(colabId: string): { pode: boolean; motivo?: string } {
     const regs = vtRows.filter(r => r.colaborador_id === colabId && r.competencia === competencia)
     if (regs.length >= MAX_PARCELAS_MES) return { pode: false, motivo: `Limite de ${MAX_PARCELAS_MES} lançamentos/mês atingido` }
-    const temCompleto = regs.some(r => r.data_inicio === primeiroDia(competencia) && r.data_fim === ultimoDia(competencia))
-    if (temCompleto) return { pode: false, motivo: 'VT do mês completo já lançado' }
+    if (statusVTColab(colabId) === 'completo') return { pode: false, motivo: 'VT do mês completo já lançado (todos os dias úteis cobertos)' }
     return { pode: true }
   }
 
@@ -320,12 +349,13 @@ export default function ValeTransportePage() {
       if (c.data_admissao > ultimoDiaMes) return false
     }
     if (obraFiltro !== 'todas' && c.obra_id !== obraFiltro) return false
+    if (statusFiltro !== 'todos' && statusVTColab(c.id) !== statusFiltro) return false
     if (busca) {
       const b = busca.toLowerCase()
       return c.nome.toLowerCase().includes(b) || (c.chapa ?? '').toLowerCase().includes(b)
     }
     return true
-  }), [colaboradores, busca, obraFiltro, competencia])
+  }), [colaboradores, busca, obraFiltro, statusFiltro, competencia, vtRows])
 
   // ─── abrir modal ──────────────────────────────────────────────────────────
   function openCreate() {
@@ -539,6 +569,50 @@ export default function ValeTransportePage() {
     }
   }
 
+  // ─── Lançar em Lote: cria VT mês completo para todos sem VT da lista ────
+  async function handleLancarLote() {
+    // Colaboradores SEM VT na lista atualmente filtrada
+    const semVT = colabsFiltrados.filter(c => statusVTColab(c.id) === 'sem')
+    if (semVT.length === 0) { toast.error('Nenhum colaborador sem VT nesta seleção'); return }
+    setSavingLancarLote(true)
+
+    const ini = primeiroDia(competencia)
+    const fim = ultimoDia(competencia)
+
+    const inserts = semVT
+      .filter(c => c.vt_valor_diario && c.vt_valor_diario > 0)
+      .map(c => {
+        const qtd  = diasUteisMes.length
+        const valorBruto = +(c.vt_valor_diario! * qtd).toFixed(2)
+        return {
+          colaborador_id:       c.id,
+          competencia,
+          data_inicio:          ini,
+          data_fim:             fim,
+          dias_trabalhados:     qtd,
+          tipo:                 c.vt_tipo ?? 'cartao',
+          valor:                valorBruto,
+          desconto_colaborador: 0,
+          valor_empresa:        valorBruto,
+          descontar_6pct:       true,
+          status:               'pendente',
+        }
+      })
+
+    if (inserts.length === 0) {
+      setSavingLancarLote(false)
+      toast.error('Nenhum colaborador com valor de VT configurado')
+      return
+    }
+
+    const { error } = await supabase.from('vale_transporte').insert(inserts)
+    setSavingLancarLote(false)
+    setModalLancarLote(false)
+    if (error) { toast.error(`Erro ao lançar em lote: ${error.message}`); return }
+    toast.success(`✅ ${inserts.length} VT(s) lançados para o mês completo!`)
+    fetchData()
+  }
+
   async function handlePagarLote() {
     const ids = [...selecionados].filter(id => vtsPendentesLote.some(r => r.id === id))
     if (ids.length === 0) return toast.error('Selecione ao menos um lançamento')
@@ -674,6 +748,16 @@ export default function ValeTransportePage() {
                 {obras.map(o => <SelectItem key={o.id} value={o.id}>{o.nome}</SelectItem>)}
               </SelectContent>
             </Select>
+            {/* Filtro por status VT */}
+            <Select value={statusFiltro} onValueChange={v => setStatusFiltro(v as 'todos'|'sem'|'parcial'|'completo')}>
+              <SelectTrigger className="h-8 text-xs mb-2"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos os status</SelectItem>
+                <SelectItem value="sem">— Sem VT</SelectItem>
+                <SelectItem value="parcial">~ Parcial</SelectItem>
+                <SelectItem value="completo">✓ Completo</SelectItem>
+              </SelectContent>
+            </Select>
             <div style={{ position: 'relative' }}>
               <Search size={13} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted-foreground)' }} />
               <input placeholder="Nome ou chapa..." value={busca} onChange={e => setBusca(e.target.value)}
@@ -740,6 +824,12 @@ export default function ValeTransportePage() {
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                    <Button variant="outline" size="sm"
+                      onClick={() => setModalLancarLote(true)}
+                      className="gap-2"
+                      title="Cria VT do mês inteiro para todos colaboradores sem VT na lista atual">
+                      <Plus size={14} /> Lançar em Lote
+                    </Button>
                     <Button variant="outline" onClick={() => { setObraLote(colabSel?.obra_id ?? 'todas'); setSelecionados(new Set()); setModalLote(true) }} className="gap-2">
                       <Building2 size={15} /> Fechar em Lote
                     </Button>
@@ -1162,6 +1252,96 @@ export default function ValeTransportePage() {
           </div>
         </div>
       )}
+
+      {/* ══ MODAL LANÇAR EM LOTE ══ */}
+      {modalLancarLote && (() => {
+        const semVT = colabsFiltrados.filter(c => statusVTColab(c.id) === 'sem')
+        const comVT = colabsFiltrados.filter(c => statusVTColab(c.id) !== 'sem')
+        const semConfig = semVT.filter(c => !c.vt_valor_diario || c.vt_valor_diario <= 0)
+        const aptos = semVT.filter(c => c.vt_valor_diario && c.vt_valor_diario > 0)
+        const totalEstimado = aptos.reduce((s, c) => s + (c.vt_valor_diario! * diasUteisMes.length), 0)
+
+        return (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 90, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ background: 'var(--background)', borderRadius: 14, width: 480, maxHeight: '85vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
+              {/* header */}
+              <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid var(--border)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+                  <span style={{ fontSize: 24 }}>📦</span>
+                  <h3 style={{ fontWeight: 800, fontSize: 16, margin: 0 }}>Lançar VT em Lote</h3>
+                </div>
+                <p style={{ fontSize: 12, color: 'var(--muted-foreground)', margin: 0 }}>
+                  Cria VT do mês completo ({diasUteisMes.length} dias úteis) para todos os colaboradores <strong>sem VT</strong> na lista atual.
+                </p>
+              </div>
+
+              {/* resumo */}
+              <div style={{ padding: '16px 24px', overflowY: 'auto', flex: 1 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 16 }}>
+                  {[
+                    { label: 'Aptos para lançar', value: aptos.length, color: '#15803d', bg: '#dcfce7' },
+                    { label: 'Já têm VT',         value: comVT.length,  color: '#1d4ed8', bg: '#dbeafe' },
+                    { label: 'Sem valor config.', value: semConfig.length, color: '#b45309', bg: '#fef3c7' },
+                  ].map((s, i) => (
+                    <div key={i} style={{ background: s.bg, borderRadius: 8, padding: '10px 12px', textAlign: 'center' }}>
+                      <div style={{ fontSize: 22, fontWeight: 800, color: s.color }}>{s.value}</div>
+                      <div style={{ fontSize: 10, color: s.color, fontWeight: 600 }}>{s.label}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {aptos.length > 0 ? (
+                  <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+                    <div style={{ background: 'var(--muted)', padding: '6px 12px', fontSize: 11, fontWeight: 700, color: 'var(--muted-foreground)', textTransform: 'uppercase' }}>
+                      Colaboradores que receberão VT
+                    </div>
+                    {aptos.map(c => (
+                      <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', borderTop: '1px solid var(--border)', fontSize: 12 }}>
+                        <div>
+                          <span style={{ fontWeight: 600 }}>{c.nome}</span>
+                          <span style={{ color: 'var(--muted-foreground)', marginLeft: 8 }}>{c.funcao_nome}</span>
+                        </div>
+                        <span style={{ fontWeight: 700, color: '#15803d' }}>
+                          {formatCurrency(c.vt_valor_diario! * diasUteisMes.length)}
+                        </span>
+                      </div>
+                    ))}
+                    <div style={{ background: 'var(--muted)', padding: '8px 12px', display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 800 }}>
+                      <span>Total estimado ({aptos.length} colaborador{aptos.length !== 1 ? 'es' : ''})</span>
+                      <span style={{ color: '#15803d' }}>{formatCurrency(totalEstimado)}</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--muted-foreground)', fontSize: 13 }}>
+                    ⚠️ Nenhum colaborador apto. Configure o valor diário de VT em cada colaborador.
+                  </div>
+                )}
+
+                {semConfig.length > 0 && (
+                  <div style={{ marginTop: 12, background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 12px', fontSize: 12, color: '#92400e' }}>
+                    <strong>⚠ {semConfig.length} colaborador(es) sem valor de VT configurado</strong> não serão incluídos:
+                    {' '}{semConfig.map(c => c.nome).join(', ')}
+                  </div>
+                )}
+              </div>
+
+              {/* footer */}
+              <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                <Button variant="outline" onClick={() => setModalLancarLote(false)} disabled={savingLancarLote}>Cancelar</Button>
+                <Button
+                  disabled={aptos.length === 0 || savingLancarLote}
+                  onClick={handleLancarLote}
+                  style={{ background: '#15803d', color: '#fff', gap: 6 }}
+                >
+                  {savingLancarLote
+                    ? <><Loader2 size={14} className="animate-spin" /> Lançando…</>
+                    : <><Plus size={14} /> Lançar {aptos.length} VT(s)</>}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }
