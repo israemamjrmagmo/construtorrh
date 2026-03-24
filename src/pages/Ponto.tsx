@@ -219,13 +219,6 @@ export default function Ponto() {
       valor_hora_snapshot:l.valor_hora_snapshot??null,
     }))
     setLancamentos(list)
-    // Se existe algum lançamento não-rascunho com snapshot, expõe para uso na view
-    const snapShot = list.find(l => l.valor_hora_snapshot != null)
-    if(snapShot?.valor_hora_snapshot){
-      setValorHoraCongelado(snapShot.valor_hora_snapshot)
-    } else {
-      setValorHoraCongelado(null)
-    }
     return list
   },[])
 
@@ -341,8 +334,23 @@ export default function Ponto() {
       expandRange(da,f.toISOString().slice(0,10)).forEach(x=>diasSuspensao.add(x))
     })
 
-    // Carregar valor/hora: 1º funcao_valores, 2º fallback nas colunas da funcao
-    if(colab.funcao_id){
+    // ── 1. Carregar lançamentos PRIMEIRO para verificar snapshot ───────────────
+    const [list,,pbMap,horMap]=await Promise.all([
+      fetchLancamentos(colab.id,mr),
+      fetchProducoes(colab.id,mr),
+      fetchPlaybooks([...new Set([colab.obra_id,...([] as (string|null)[])].filter(Boolean) as string[])]),
+      fetchHorariosObras([colab.obra_id].filter(Boolean) as string[]),
+    ])
+
+    // ── 2. Valor/hora: usa snapshot do lançamento se existir (imutável) ─────
+    // Só busca ao vivo da função quando NÃO há snapshot salvo (lançamento novo/rascunho sem save)
+    const snapExistente = list.find((l: {valor_hora_snapshot: number|null}) => l.valor_hora_snapshot != null)
+    if(snapExistente?.valor_hora_snapshot){
+      // ✅ Snapshot existe → usar valor congelado, NÃO consultar funcao_valores
+      setValorHora(snapExistente.valor_hora_snapshot)
+      setValorHoraCongelado(snapExistente.valor_hora_snapshot)
+    } else if(colab.funcao_id){
+      // Nenhum snapshot → buscar ao vivo (lançamento ainda não salvo ou novo)
       const[{data:fvList},{data:funcaoRow}]=await Promise.all([
         supabase.from('funcao_valores').select('valor_hora,tipo_contrato').eq('funcao_id',colab.funcao_id),
         supabase.from('funcoes').select('valor_hora_clt,valor_hora_autonomo').eq('id',colab.funcao_id).single(),
@@ -353,20 +361,16 @@ export default function Ponto() {
       } else if((fvList??[]).length>0){
         setValorHora((fvList??[])[0].valor_hora)
       } else if(funcaoRow){
-        // Fallback: usar coluna direta da funcao
         const vh=colab.tipo_contrato==='clt'?funcaoRow.valor_hora_clt:funcaoRow.valor_hora_autonomo
         setValorHora(vh??funcaoRow.valor_hora_clt??funcaoRow.valor_hora_autonomo??0)
       } else {
         setValorHora(0)
       }
-    } else { setValorHora(0) }
-
-    const [list,,pbMap,horMap]=await Promise.all([
-      fetchLancamentos(colab.id,mr),
-      fetchProducoes(colab.id,mr),
-      fetchPlaybooks([...new Set([colab.obra_id,...([] as (string|null)[])].filter(Boolean) as string[])]),
-      fetchHorariosObras([colab.obra_id].filter(Boolean) as string[]),
-    ])
+      setValorHoraCongelado(null)
+    } else {
+      setValorHora(0)
+      setValorHoraCongelado(null)
+    }
 
     // Buscar obras únicas dos lançamentos
     const obraIds=[...new Set(list.map(l=>l.obra_id))]
@@ -837,7 +841,7 @@ export default function Ponto() {
 
                 const cards=[
                   {label:'⏱ Total de Horas',value:fmtHHMM(totaisGlobais.total),sub:`${fmtHHMM(totaisGlobais.normais)} norm + ${fmtHHMM(totaisGlobais.extras50)} extras`,color:'#1d4ed8'},
-                  {label:'💰 Valor das Horas',value:valorHoraEfetivo>0?`R$ ${valorHoraEfetivo.toFixed(2)}/h`:'Sem tabela',sub:valorHoraEfetivo>0?(valorHoraCongelado!=null?`🔒 Valor congelado · ${formatCurrency(totalHoras)} no período`:formatCurrency(totalHoras)+' no período'):'Cadastre em Funções → valor/hora',color:valorHoraEfetivo>0?'#15803d':'#9ca3af'},
+                  {label:'💰 Valor das Horas',value:valorHoraEfetivo>0?(valorHoraCongelado!=null?`🔒 R$ ${valorHoraEfetivo.toFixed(2)}/h`:`R$ ${valorHoraEfetivo.toFixed(2)}/h`):'Sem tabela',sub:valorHoraEfetivo>0?(valorHoraCongelado!=null?`Valor congelado · ${formatCurrency(totalHoras)} no período`:formatCurrency(totalHoras)+' no período'):'Cadastre em Funções → valor/hora',color:valorHoraEfetivo>0?(valorHoraCongelado!=null?'#0369a1':'#15803d'):'#9ca3af'},
                   {label:'🏗️ Produção',value:totalProd>0?formatCurrency(totalProd):'—',sub:subProd,color:'#b45309'},
                 ]
 
