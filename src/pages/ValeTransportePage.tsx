@@ -241,6 +241,38 @@ export default function ValeTransportePage() {
     return { pode: true }
   }
 
+  // Retorna todos os dias (YYYY-MM-DD) dentro de um intervalo
+  function expandirIntervalo(ini: string, fim: string): string[] {
+    const dias: string[] = []
+    const cur = new Date(ini + 'T12:00:00')
+    const end = new Date(fim + 'T12:00:00')
+    while (cur <= end) {
+      dias.push(cur.toISOString().split('T')[0])
+      cur.setDate(cur.getDate() + 1)
+    }
+    return dias
+  }
+
+  // Verifica sobreposição de período com lançamentos existentes (exclui o próprio ao editar)
+  function validarSobreposicao(ini: string, fim: string, excluirId?: string): string | null {
+    const regs = vtRows.filter(r =>
+      r.colaborador_id === colabSel?.id &&
+      r.competencia === competencia &&
+      r.id !== excluirId &&
+      r.data_inicio && r.data_fim
+    )
+    if (regs.length === 0) return null
+    const diasNovos = new Set(expandirIntervalo(ini, fim))
+    for (const r of regs) {
+      const conflitos = expandirIntervalo(r.data_inicio!, r.data_fim!).filter(d => diasNovos.has(d))
+      if (conflitos.length > 0) {
+        const periodoExist = `${new Date(r.data_inicio!+'T12:00:00').toLocaleDateString('pt-BR')} → ${new Date(r.data_fim!+'T12:00:00').toLocaleDateString('pt-BR')}`
+        return `Período conflita com lançamento existente (${periodoExist}) — ${conflitos.length} dia(s) sobrepostos`
+      }
+    }
+    return null
+  }
+
   // ─── recalcula valor+dias ao mudar período/tick sábado ────────────────────
   // vtDiarioFixo: se informado (modo edição), usa essa taxa em vez de buscar do cadastro atual
   // desconto_colaborador NÃO é calculado aqui — o 6% sobre salário bruto é apurado no Fechamento
@@ -378,6 +410,9 @@ export default function ValeTransportePage() {
       const admFmt = new Date(colabSel.data_admissao + 'T12:00:00').toLocaleDateString('pt-BR')
       return toast.error(`Período não pode ser anterior à admissão de ${colabSel.nome} (${admFmt})`)
     }
+    // Bloquear sobreposição de períodos
+    const erroSobreposicao = validarSobreposicao(form.data_inicio, form.data_fim, editando?.id)
+    if (erroSobreposicao) return toast.error(erroSobreposicao)
     setSaving(true)
     const payload = {
       colaborador_id: colabSel.id,
