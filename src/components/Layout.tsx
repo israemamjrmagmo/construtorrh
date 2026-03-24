@@ -1,16 +1,17 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/useAuth'
 import { useProfile, ROLE_PERMISSIONS } from '@/hooks/useProfile'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
+import { supabase } from '@/lib/supabase'
 import {
   LayoutDashboard, Users, Building2, Shield,
   AlertTriangle, FileText, Clock, DollarSign, Award,
   Calculator, Bus, BarChart3, Settings, LogOut, Menu,
   HardHat, ChevronLeft, ChevronRight, UserCog,
-  ClipboardList, Lock, CalendarDays, Briefcase, Wallet, Smartphone } from 'lucide-react'
+  ClipboardList, Lock, CalendarDays, Briefcase, Wallet, Smartphone, Inbox } from 'lucide-react'
 
 // ── grupos de navegação ───────────────────────────────────────────────────────
 const NAV_GROUPS = [
@@ -18,6 +19,7 @@ const NAV_GROUPS = [
     label: 'Principal',
     items: [
       { to: '/',               label: 'Dashboard',      icon: LayoutDashboard },
+      { to: '/solicitacoes',   label: 'Solicitações',   icon: Inbox,           badge: true },
     ],
   },
   {
@@ -69,6 +71,19 @@ export function Layout({ children }: LayoutProps) {
   const { user, signOut } = useAuth()
   const { profile } = useProfile()
   const navigate = useNavigate()
+  const [solicitacoesPendentes, setSolicitacoesPendentes] = useState(0)
+
+  const fetchSolicitacoesPendentes = useCallback(async () => {
+    const [cad, ocor, epi, doc] = await Promise.all([
+      supabase.from('portal_solicitacoes').select('id', { count:'exact', head:true }).eq('tipo','novo_colaborador').eq('status','pendente'),
+      supabase.from('portal_ocorrencias').select('id', { count:'exact', head:true }).is('sincronizado_em', null),
+      supabase.from('portal_epi_solicitacoes').select('id', { count:'exact', head:true }).eq('status','pendente'),
+      supabase.from('portal_documentos').select('id', { count:'exact', head:true }).eq('status','pendente'),
+    ])
+    setSolicitacoesPendentes((cad.count??0)+(ocor.count??0)+(epi.count??0)+(doc.count??0))
+  }, [])
+
+  useEffect(() => { fetchSolicitacoesPendentes(); const t = setInterval(fetchSolicitacoesPendentes, 60_000); return () => clearInterval(t) }, [fetchSolicitacoesPendentes])
 
   const handleSignOut = async () => { await signOut(); navigate('/login') }
   const userLogin  = profile?.nome || user?.email?.split('@')[0] || 'usuário'
@@ -135,20 +150,31 @@ export function Layout({ children }: LayoutProps) {
                   {group.label}
                 </div>
               )}
-              {group.items.map(({ to, label, icon: Icon, adminOnly }) => {
-                // Esconde item adminOnly para não-admins
+              {group.items.map(({ to, label, icon: Icon, adminOnly, badge: hasBadge }: any) => {
                 if (adminOnly && role !== 'admin') return null
-                // Esconde Financeiro para role=obra
                 const isFinanceiro = ['/ponto','/vt','/adiantamentos','/premios','/fechamento-ponto','/pagamentos','/encargos','/provisoes'].includes(to)
                 if (isFinanceiro && !roleMeta.canViewFinanceiro) return null
+                const badgeCount = hasBadge ? solicitacoesPendentes : 0
 
                 return (
                   <NavLink key={to} to={to} end={to === '/'} title={collapsed ? label : undefined}
                     onClick={() => setMobileOpen(false)} style={{ textDecoration: 'none' }}
                     className={({ isActive }) => cn('nav-item', isActive ? 'nav-item--active' : 'nav-item--default')}
                   >
-                    <span className="nav-icon"><Icon size={15} /></span>
-                    {!collapsed && <span className="nav-label">{label}</span>}
+                    <span className="nav-icon" style={{ position:'relative' }}>
+                      <Icon size={15} />
+                      {collapsed && badgeCount > 0 && (
+                        <span style={{ position:'absolute', top:-4, right:-5, background:'#ef4444', color:'#fff', borderRadius:10, fontSize:8, fontWeight:800, padding:'0 3px', minWidth:13, textAlign:'center', lineHeight:'13px' }}>
+                          {badgeCount > 99 ? '99+' : badgeCount}
+                        </span>
+                      )}
+                    </span>
+                    {!collapsed && <span className="nav-label" style={{ flex:1 }}>{label}</span>}
+                    {!collapsed && badgeCount > 0 && (
+                      <span style={{ background:'#ef4444', color:'#fff', borderRadius:10, padding:'0 6px', fontSize:10, fontWeight:800, marginLeft:'auto', minWidth:18, textAlign:'center' }}>
+                        {badgeCount > 99 ? '99+' : badgeCount}
+                      </span>
+                    )}
                   </NavLink>
                 )
               })}

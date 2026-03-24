@@ -1,0 +1,875 @@
+import React, { useEffect, useState, useCallback } from 'react'
+import { supabase } from '@/lib/supabase'
+import { useProfile } from '@/hooks/useProfile'
+import { toast } from 'sonner'
+import { Button } from '@/components/ui/button'
+import { Users, AlertTriangle, ShieldCheck, FileImage, RefreshCw, Download, X, Check, Eye } from 'lucide-react'
+
+// ─── tipos ────────────────────────────────────────────────────────────────────
+interface Obra      { id: string; nome: string }
+interface Funcao    { id: string; nome: string }
+interface Colab     { id: string; nome: string }
+
+// ─── helper: geração de PDF de cadastro ──────────────────────────────────────
+function gerarPDFCadastro(r: any, funcoes: Funcao[], obras: Obra[]) {
+  const d    = r.dados ?? {}
+  const fn   = funcoes.find(f => f.id === d.funcao_id)?.nome ?? '—'
+  const ob   = obras.find(o => o.id === r.obra_id)?.nome ?? '—'
+  const fmt  = (v: any) => v || '—'
+  const fmtDate = (v: string) => {
+    if (!v) return '—'
+    try { return new Date(v + 'T12:00:00').toLocaleDateString('pt-BR') } catch { return v }
+  }
+  const vtLabel: Record<string,string> = { nenhum:'Não recebe', gasolina:'Aux. Gasolina', transporte:'Transporte Público' }
+  const contr:   Record<string,string> = { clt:'CLT', autonomo:'Autônomo / PJ', estagio:'Estágio' }
+  const tconta:  Record<string,string> = { corrente:'Corrente', poupanca:'Poupança', salario:'Conta Salário' }
+  const sexo:    Record<string,string> = { M:'Masculino', F:'Feminino' }
+  const civil:   Record<string,string> = { solteiro:'Solteiro(a)', casado:'Casado(a)', divorciado:'Divorciado(a)', viuvo:'Viúvo(a)', uniao_estavel:'União Estável' }
+
+  const r2 = (a: string, av: string, b: string, bv: string) =>
+    `<tr><td class="lb">${a}</td><td>${av}</td><td class="lb">${b}</td><td>${bv}</td></tr>`
+  const r1 = (a: string, av: string) =>
+    `<tr><td class="lb">${a}</td><td colspan="3">${av}</td></tr>`
+
+  const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
+<title>Ficha de Cadastro — ${d.nome ?? ''}</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:Arial,sans-serif;font-size:11px;color:#111;padding:20px 28px}
+  h1{font-size:16px;font-weight:800;color:#1e3a5f;margin-bottom:2px}
+  .sub{font-size:11px;color:#555;margin-bottom:14px}
+  .sec{margin-bottom:12px}
+  .sec-title{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;
+    color:#fff;background:#1e3a5f;padding:4px 8px;border-radius:3px 3px 0 0}
+  table{width:100%;border-collapse:collapse}
+  td{border:1px solid #d1d5db;padding:5px 8px;vertical-align:top;min-width:80px}
+  td.lb{font-weight:700;color:#374151;background:#f9fafb;width:22%;white-space:nowrap}
+  .assinatura{margin-top:28px;display:grid;grid-template-columns:1fr 1fr;gap:32px}
+  .assinatura div{border-top:1px solid #374151;padding-top:4px;text-align:center;font-size:10px;color:#555}
+  .rodape{margin-top:18px;font-size:9px;color:#9ca3af;text-align:right}
+  @media print{body{padding:10px 14px}}
+</style></head><body>
+<h1>👷 Ficha de Cadastro de Colaborador</h1>
+<div class="sub">Obra: <strong>${ob}</strong> &nbsp;|&nbsp; Solicitado em: ${new Date(r.criado_em).toLocaleString('pt-BR')}
+  &nbsp;|&nbsp; Aprovado por: <strong>${r.aprovado_nome ?? '—'}</strong></div>
+<div class="sec">
+  <div class="sec-title">Identificação</div>
+  <table>
+    ${r1('Nome Completo', `<strong>${fmt(d.nome)}</strong>`)}
+    ${r2('CPF', fmt(d.cpf), 'RG', fmt(d.rg))}
+    ${r2('PIS / NIT', fmt(d.pis_nit), 'Nascimento', fmtDate(d.data_nascimento))}
+    ${r2('Sexo', sexo[d.genero??'']??fmt(d.genero), 'Estado Civil', civil[d.estado_civil??'']??fmt(d.estado_civil))}
+    ${r2('Telefone', fmt(d.telefone), 'E-mail', fmt(d.email))}
+    ${r2('CTPS Nº', fmt(d.ctps_numero), 'Série CTPS', fmt(d.ctps_serie))}
+  </table>
+</div>
+<div class="sec">
+  <div class="sec-title">Endereço</div>
+  <table>
+    ${r1('Endereço', fmt(d.endereco))}
+    ${r2('Cidade', fmt(d.cidade), 'UF', fmt(d.estado))}
+    ${r1('CEP', fmt(d.cep))}
+  </table>
+</div>
+<div class="sec">
+  <div class="sec-title">Contrato</div>
+  <table>
+    ${r2('Função', fn, 'Tipo de Contrato', contr[d.tipo_contrato??'']??fmt(d.tipo_contrato))}
+    ${r2('Data de Admissão', fmtDate(d.data_admissao), 'Obra', ob)}
+  </table>
+</div>
+<div class="sec">
+  <div class="sec-title">Dados Bancários</div>
+  <table>
+    ${r2('Banco', fmt(d.banco), 'Tipo de Conta', tconta[d.tipo_conta??'']??fmt(d.tipo_conta))}
+    ${r2('Agência', fmt(d.agencia), 'Conta', fmt(d.conta))}
+    ${r2('Tipo PIX', fmt(d.pix_tipo), 'Chave PIX', fmt(d.pix_chave))}
+  </table>
+</div>
+<div class="sec">
+  <div class="sec-title">Vale Transporte</div>
+  <table>
+    ${r1('Modalidade', vtLabel[d.vt_modalidade??'nenhum']??fmt(d.vt_modalidade))}
+    ${d.vt_modalidade==='gasolina' ? r1('Valor diário', d.vt_gasolina_valor_dia ? `R$ ${parseFloat(d.vt_gasolina_valor_dia).toFixed(2)}` : '—') : ''}
+    ${d.vt_modalidade==='transporte' ? r2('Empresa Cartão', fmt(d.vt_cartao_tipo), 'Nº Cartão', fmt(d.vt_cartao_numero)) : ''}
+    ${d.vt_modalidade==='transporte' ? r1('Trechos de Ida', fmt(d.vt_trecho_ida)) : ''}
+    ${d.vt_modalidade==='transporte' ? r1('Trechos de Volta', fmt(d.vt_trecho_volta)) : ''}
+  </table>
+</div>
+${d.observacoes ? `<div class="sec"><div class="sec-title">Observações</div><table>${r1('Obs.', fmt(d.observacoes))}</table></div>` : ''}
+<div class="assinatura">
+  <div>Colaborador / Assinatura</div>
+  <div>Responsável RH / Carimbo</div>
+</div>
+<div class="rodape">Gerado automaticamente — ConstrutorRH — ${new Date().toLocaleString('pt-BR')}</div>
+<script>window.onload=()=>{window.print()}<\/script>
+</body></html>`
+
+  const win = window.open('', '_blank', 'width=900,height=700')
+  if (win) { win.document.write(html); win.document.close() }
+}
+
+// ─── aba: Cadastros de Colaborador ───────────────────────────────────────────
+function TabCadastros({ obras, funcoes, perfil }: { obras: Obra[]; funcoes: Funcao[]; perfil: any }) {
+  const [rows,   setRows]   = useState<any[]>([])
+  const [load,   setLoad]   = useState(true)
+  const [filtro, setFiltro] = useState<'pendente'|'aprovado'|'recusado'|'todos'>('pendente')
+  const [modalVer,    setModalVer]    = useState<any | null>(null)
+  const [recusaId,    setRecusaId]    = useState<string|null>(null)
+  const [motivoRecusa,setMotivoRecusa]= useState('')
+
+  const fetch = useCallback(async () => {
+    setLoad(true)
+    const q = supabase.from('portal_solicitacoes').select('*').eq('tipo','novo_colaborador').order('criado_em', { ascending: false })
+    if (filtro !== 'todos') q.eq('status', filtro)
+    const { data } = await q
+    setRows(data ?? [])
+    setLoad(false)
+  }, [filtro])
+
+  useEffect(() => { fetch() }, [fetch])
+
+  async function aprovar(r: any) {
+    const nome = perfil?.username ?? perfil?.email ?? 'RH'
+    await supabase.from('portal_solicitacoes').update({
+      status: 'aprovado',
+      aprovado_por:  perfil?.id,
+      aprovado_em:   new Date().toISOString(),
+      aprovado_nome: nome,
+    }).eq('id', r.id)
+    toast.success('Aprovado! Gerando ficha de cadastro…')
+    gerarPDFCadastro({ ...r, aprovado_nome: nome }, funcoes, obras)
+    fetch()
+  }
+
+  async function recusar() {
+    if (!recusaId) return
+    await supabase.from('portal_solicitacoes').update({
+      status: 'recusado',
+      observacoes_admin: motivoRecusa || 'Recusado',
+    }).eq('id', recusaId)
+    toast.success('Solicitação recusada')
+    setRecusaId(null); setMotivoRecusa(''); fetch()
+  }
+
+  const badge = (s: string) => {
+    if (s==='aprovado') return { bg:'#dcfce7', cor:'#15803d', label:'✓ Aprovado' }
+    if (s==='recusado') return { bg:'#fee2e2', cor:'#dc2626', label:'✗ Recusado' }
+    return                     { bg:'#fef3c7', cor:'#b45309', label:'⏳ Pendente' }
+  }
+
+  return (
+    <div>
+      <div style={{ display:'flex', gap:6, marginBottom:16, flexWrap:'wrap' }}>
+        {(['pendente','aprovado','recusado','todos'] as const).map(f => (
+          <button key={f} onClick={() => setFiltro(f)} style={{
+            height:32, padding:'0 12px', borderRadius:7, cursor:'pointer', fontWeight:600, fontSize:12,
+            border:`1px solid ${filtro===f?'var(--primary)':'var(--border)'}`,
+            background:filtro===f?'var(--primary)':'var(--card)',
+            color:filtro===f?'#fff':'var(--foreground)',
+          }}>
+            {f==='pendente'?'⏳ Pendentes':f==='aprovado'?'✓ Aprovadas':f==='recusado'?'✗ Recusadas':'Todas'}
+          </button>
+        ))}
+        <button onClick={fetch} style={{ height:32, width:32, borderRadius:7, border:'1px solid var(--border)', background:'var(--card)', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+          <RefreshCw size={14}/>
+        </button>
+      </div>
+
+      {load ? (
+        <div style={{ textAlign:'center', padding:48, color:'var(--muted-foreground)' }}>Carregando…</div>
+      ) : rows.length === 0 ? (
+        <div style={{ background:'var(--card)', border:'1px solid var(--border)', borderRadius:12, padding:48, textAlign:'center', color:'var(--muted-foreground)' }}>
+          <div style={{ fontSize:32, marginBottom:8 }}>📭</div>
+          Nenhuma solicitação {filtro !== 'todos' ? `"${filtro}"` : ''}
+        </div>
+      ) : (
+        <div style={{ background:'var(--card)', border:'1px solid var(--border)', borderRadius:12, overflow:'hidden' }}>
+          {rows.map((r, i) => {
+            const d  = r.dados ?? {}
+            const b  = badge(r.status)
+            const fn = funcoes.find(f => f.id === d.funcao_id)
+            const ob = obras.find(o => o.id === r.obra_id)
+            return (
+              <div key={r.id} style={{ padding:'14px 18px', borderTop:i>0?'1px solid var(--border)':'none', display:'flex', gap:14, alignItems:'center' }}>
+                <div style={{ width:40, height:40, borderRadius:'50%', background:'linear-gradient(135deg,#1e3a5f,#2d6a4f)', display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontWeight:800, fontSize:14, flexShrink:0 }}>
+                  {(d.nome??'?').slice(0,2).toUpperCase()}
+                </div>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontWeight:700, fontSize:14 }}>{d.nome??'—'}</div>
+                  <div style={{ fontSize:11, color:'var(--muted-foreground)', marginTop:2, display:'flex', gap:8, flexWrap:'wrap' }}>
+                    {d.cpf && <span>CPF: {d.cpf}</span>}
+                    {fn && <span>🏷️ {fn.nome}</span>}
+                    {ob && <span>🏗️ {ob.nome}</span>}
+                    {d.data_admissao && <span>📅 {new Date(d.data_admissao+'T12:00:00').toLocaleDateString('pt-BR')}</span>}
+                  </div>
+                  <div style={{ fontSize:10, color:'var(--muted-foreground)', marginTop:2 }}>
+                    Enviado {new Date(r.criado_em).toLocaleString('pt-BR')}
+                    {r.aprovado_nome && <span style={{ marginLeft:8, color:'#15803d', fontWeight:600 }}>· ✓ {r.aprovado_nome}</span>}
+                    {r.observacoes_admin && <span style={{ marginLeft:8, color:'#dc2626' }}>· {r.observacoes_admin}</span>}
+                  </div>
+                </div>
+                <div style={{ display:'flex', alignItems:'center', gap:6, flexShrink:0, flexWrap:'wrap', justifyContent:'flex-end' }}>
+                  <span style={{ background:b.bg, color:b.cor, borderRadius:6, padding:'3px 9px', fontSize:11, fontWeight:700 }}>{b.label}</span>
+                  <Button size="sm" variant="outline" onClick={() => setModalVer(r)} style={{ height:30, fontSize:12, gap:4 }}>
+                    <Eye size={13}/> Ver
+                  </Button>
+                  <Button size="sm" onClick={() => gerarPDFCadastro(r, funcoes, obras)}
+                    style={{ height:30, fontSize:12, background:'#1e3a5f', color:'#fff', gap:4 }}>
+                    🖨️ PDF
+                  </Button>
+                  {r.status === 'pendente' && (<>
+                    <Button size="sm" onClick={() => aprovar(r)}
+                      style={{ height:30, fontSize:12, background:'#15803d', color:'#fff' }}>
+                      <Check size={13}/> Aprovar
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => { setRecusaId(r.id); setMotivoRecusa('') }}
+                      style={{ height:30, fontSize:12, borderColor:'#dc2626', color:'#dc2626' }}>
+                      <X size={13}/>
+                    </Button>
+                  </>)}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Modal Ver */}
+      {modalVer && (() => {
+        const d = modalVer.dados ?? {}
+        const fn = funcoes.find(f => f.id === d.funcao_id)
+        const ob = obras.find(o => o.id === modalVer.obra_id)
+        const b  = badge(modalVer.status)
+        const fmtDate = (v: string) => v ? new Date(v+'T12:00:00').toLocaleDateString('pt-BR') : '—'
+        const fmt = (v: any) => v || '—'
+        const sexo: Record<string,string>  = { M:'Masculino', F:'Feminino' }
+        const civil: Record<string,string> = { solteiro:'Solteiro(a)', casado:'Casado(a)', divorciado:'Divorciado(a)', viuvo:'Viúvo(a)', uniao_estavel:'União Estável' }
+        const vtLabel: Record<string,string> = { nenhum:'Não recebe', gasolina:'Aux. Gasolina', transporte:'Transporte Público' }
+        const contr:   Record<string,string> = { clt:'CLT', autonomo:'Autônomo / PJ', estagio:'Estágio' }
+        const tconta:  Record<string,string> = { corrente:'Corrente', poupanca:'Poupança', salario:'Conta Salário' }
+
+        const SV = ({ t, children }: { t: string; children: React.ReactNode }) => (
+          <div style={{ marginBottom:12 }}>
+            <div style={{ fontSize:9, fontWeight:800, textTransform:'uppercase', letterSpacing:'.07em', color:'#fff', background:'#1e3a5f', padding:'3px 8px', borderRadius:'3px 3px 0 0' }}>{t}</div>
+            <div style={{ border:'1px solid #e5e7eb', borderTop:'none', borderRadius:'0 0 5px 5px', overflow:'hidden' }}>{children}</div>
+          </div>
+        )
+        const Row = ({ a, av, b: bb, bv }: { a:string; av:string; b?:string; bv?:string }) => (
+          <div style={{ display:'grid', gridTemplateColumns: bb ? '1fr 1fr' : '1fr', borderBottom:'1px solid #e5e7eb' }}>
+            <div style={{ display:'flex' }}>
+              <span style={{ width:130, padding:'6px 8px', background:'#f9fafb', fontSize:11, fontWeight:700, color:'#374151', flexShrink:0 }}>{a}</span>
+              <span style={{ padding:'6px 8px', fontSize:12 }}>{av}</span>
+            </div>
+            {bb && (
+              <div style={{ display:'flex', borderLeft:'1px solid #e5e7eb' }}>
+                <span style={{ width:130, padding:'6px 8px', background:'#f9fafb', fontSize:11, fontWeight:700, color:'#374151', flexShrink:0 }}>{bb}</span>
+                <span style={{ padding:'6px 8px', fontSize:12 }}>{bv}</span>
+              </div>
+            )}
+          </div>
+        )
+
+        return (
+          <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', zIndex:300, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
+            <div style={{ background:'var(--background)', borderRadius:14, width:'100%', maxWidth:720, maxHeight:'92vh', display:'flex', flexDirection:'column', overflow:'hidden', boxShadow:'0 20px 60px rgba(0,0,0,0.3)' }}>
+              <div style={{ padding:'16px 20px 12px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                <div>
+                  <div style={{ fontWeight:800, fontSize:16 }}>👷 {d.nome??'—'}</div>
+                  <div style={{ fontSize:12, color:'var(--muted-foreground)', marginTop:2, display:'flex', gap:8, flexWrap:'wrap' }}>
+                    {ob && <span>🏗️ {ob.nome}</span>}
+                    <span style={{ background:b.bg, color:b.cor, borderRadius:5, padding:'1px 7px', fontWeight:700, fontSize:11 }}>{b.label}</span>
+                    {modalVer.aprovado_nome && <span style={{ color:'#15803d', fontWeight:600 }}>✓ {modalVer.aprovado_nome}</span>}
+                  </div>
+                </div>
+                <div style={{ display:'flex', gap:8 }}>
+                  <Button size="sm" onClick={() => gerarPDFCadastro(modalVer, funcoes, obras)} style={{ background:'#1e3a5f', color:'#fff', height:32, fontSize:12 }}>
+                    🖨️ PDF
+                  </Button>
+                  <button onClick={() => setModalVer(null)} style={{ border:'none', background:'none', cursor:'pointer', fontSize:18, color:'var(--muted-foreground)', padding:'0 4px' }}>✕</button>
+                </div>
+              </div>
+              <div style={{ overflowY:'auto', flex:1, padding:'16px 20px' }}>
+                <SV t="Identificação">
+                  <Row a="Nome" av={fmt(d.nome)} />
+                  <Row a="CPF" av={fmt(d.cpf)} b="RG" bv={fmt(d.rg)} />
+                  <Row a="PIS / NIT" av={fmt(d.pis_nit)} b="Nascimento" bv={fmtDate(d.data_nascimento)} />
+                  <Row a="Sexo" av={sexo[d.genero??'']??fmt(d.genero)} b="Estado Civil" bv={civil[d.estado_civil??'']??fmt(d.estado_civil)} />
+                  <Row a="Telefone" av={fmt(d.telefone)} b="E-mail" bv={fmt(d.email)} />
+                  <Row a="CTPS Nº" av={fmt(d.ctps_numero)} b="Série" bv={fmt(d.ctps_serie)} />
+                </SV>
+                <SV t="Endereço">
+                  <Row a="Endereço" av={fmt(d.endereco)} />
+                  <Row a="Cidade" av={fmt(d.cidade)} b="UF" bv={fmt(d.estado)} />
+                  <Row a="CEP" av={fmt(d.cep)} />
+                </SV>
+                <SV t="Contrato">
+                  <Row a="Função" av={fn?.nome??'—'} b="Tipo" bv={contr[d.tipo_contrato??'']??fmt(d.tipo_contrato)} />
+                  <Row a="Data de Admissão" av={fmtDate(d.data_admissao)} b="Obra" bv={ob?.nome??'—'} />
+                </SV>
+                <SV t="Dados Bancários">
+                  <Row a="Banco" av={fmt(d.banco)} b="Tipo de Conta" bv={tconta[d.tipo_conta??'']??fmt(d.tipo_conta)} />
+                  <Row a="Agência" av={fmt(d.agencia)} b="Conta" bv={fmt(d.conta)} />
+                  <Row a="Tipo PIX" av={fmt(d.pix_tipo)} b="Chave PIX" bv={fmt(d.pix_chave)} />
+                </SV>
+                <SV t="Vale Transporte">
+                  <Row a="Modalidade" av={vtLabel[d.vt_modalidade??'nenhum']??fmt(d.vt_modalidade)} />
+                  {d.vt_modalidade==='gasolina' && <Row a="Valor diário" av={d.vt_gasolina_valor_dia ? `R$ ${parseFloat(d.vt_gasolina_valor_dia).toFixed(2)}` : '—'} />}
+                  {d.vt_modalidade==='transporte' && <>
+                    <Row a="Empresa Cartão" av={fmt(d.vt_cartao_tipo)} b="Nº Cartão" bv={fmt(d.vt_cartao_numero)} />
+                    <Row a="Trechos de Ida" av={fmt(d.vt_trecho_ida)} />
+                    <Row a="Trechos de Volta" av={fmt(d.vt_trecho_volta)} />
+                  </>}
+                </SV>
+                {d.observacoes && <SV t="Observações"><Row a="Obs." av={d.observacoes} /></SV>}
+              </div>
+              <div style={{ padding:'12px 20px', borderTop:'1px solid var(--border)', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                <span style={{ fontSize:11, color:'var(--muted-foreground)' }}>ℹ️ Cadastre manualmente após verificar os dados</span>
+                <div style={{ display:'flex', gap:8 }}>
+                  {modalVer.status==='pendente' && (
+                    <Button size="sm" onClick={() => { aprovar(modalVer); setModalVer(null) }} style={{ height:32, fontSize:12, background:'#15803d', color:'#fff' }}>
+                      <Check size={13}/> Aprovar
+                    </Button>
+                  )}
+                  <Button variant="outline" size="sm" onClick={() => setModalVer(null)} style={{ height:32 }}>Fechar</Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* Modal Recusa */}
+      {recusaId && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', zIndex:300, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
+          <div style={{ background:'var(--background)', borderRadius:14, width:'100%', maxWidth:400, padding:22, boxShadow:'0 20px 60px rgba(0,0,0,0.3)' }}>
+            <div style={{ fontWeight:800, fontSize:16, marginBottom:12 }}>✗ Recusar Solicitação</div>
+            <label style={{ fontSize:12, fontWeight:700, display:'block', marginBottom:6, color:'var(--muted-foreground)' }}>Motivo (opcional)</label>
+            <textarea value={motivoRecusa} onChange={e => setMotivoRecusa(e.target.value)} rows={3}
+              placeholder="Motivo da recusa…"
+              style={{ width:'100%', border:'1px solid var(--border)', borderRadius:8, padding:'8px 10px', fontSize:13, boxSizing:'border-box', background:'var(--input)', color:'var(--foreground)', marginBottom:14, resize:'none' }} />
+            <div style={{ display:'flex', justifyContent:'flex-end', gap:10 }}>
+              <Button variant="outline" onClick={() => setRecusaId(null)}>Cancelar</Button>
+              <Button onClick={recusar} style={{ background:'#dc2626', color:'#fff' }}>✗ Confirmar</Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── aba: Ocorrências ─────────────────────────────────────────────────────────
+function TabOcorrencias({ obras, colabs }: { obras: Obra[]; colabs: Colab[] }) {
+  const [rows,   setRows]   = useState<any[]>([])
+  const [load,   setLoad]   = useState(true)
+  const [filtro, setFiltro] = useState<'pendente'|'todos'>('pendente')
+  const [modal,  setModal]  = useState<any|null>(null)
+
+  const fetch = useCallback(async () => {
+    setLoad(true)
+    const q = supabase.from('portal_ocorrencias').select('*').order('criado_em', { ascending: false })
+    if (filtro === 'pendente') q.is('sincronizado_em', null)
+    const { data } = await q
+    setRows(data ?? [])
+    setLoad(false)
+  }, [filtro])
+
+  useEffect(() => { fetch() }, [fetch])
+
+  async function marcarSincronizado(id: string) {
+    await supabase.from('portal_ocorrencias').update({ sincronizado_em: new Date().toISOString() }).eq('id', id)
+    toast.success('Marcada como lançada no sistema')
+    fetch()
+  }
+
+  const tipoColor: Record<string,string> = { acidente:'#dc2626', atestado:'#f97316', advertencia:'#7c3aed', geral:'#0284c7' }
+  const tipoLabel: Record<string,string> = { acidente:'🚨 Acidente', atestado:'🏥 Atestado', advertencia:'⚠️ Advertência', geral:'📋 Geral' }
+
+  return (
+    <div>
+      <div style={{ display:'flex', gap:6, marginBottom:16, flexWrap:'wrap' }}>
+        {(['pendente','todos'] as const).map(f => (
+          <button key={f} onClick={() => setFiltro(f)} style={{
+            height:32, padding:'0 12px', borderRadius:7, cursor:'pointer', fontWeight:600, fontSize:12,
+            border:`1px solid ${filtro===f?'var(--primary)':'var(--border)'}`,
+            background:filtro===f?'var(--primary)':'var(--card)',
+            color:filtro===f?'#fff':'var(--foreground)',
+          }}>
+            {f==='pendente'?'⏳ Pendentes (não lançadas)':'Todas'}
+          </button>
+        ))}
+        <button onClick={fetch} style={{ height:32, width:32, borderRadius:7, border:'1px solid var(--border)', background:'var(--card)', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+          <RefreshCw size={14}/>
+        </button>
+      </div>
+
+      {load ? <div style={{ textAlign:'center', padding:48, color:'var(--muted-foreground)' }}>Carregando…</div>
+      : rows.length === 0 ? (
+        <div style={{ background:'var(--card)', border:'1px solid var(--border)', borderRadius:12, padding:48, textAlign:'center', color:'var(--muted-foreground)' }}>
+          <div style={{ fontSize:32, marginBottom:8 }}>✅</div>Nenhuma ocorrência pendente
+        </div>
+      ) : (
+        <div style={{ background:'var(--card)', border:'1px solid var(--border)', borderRadius:12, overflow:'hidden' }}>
+          {rows.map((r, i) => {
+            const ob = obras.find(o => o.id === r.obra_id)
+            const co = colabs.find(c => c.id === r.colaborador_id)
+            const cor = tipoColor[r.tipo] ?? '#6b7280'
+            return (
+              <div key={r.id} style={{ padding:'12px 18px', borderTop:i>0?'1px solid var(--border)':'none', display:'flex', gap:12, alignItems:'center' }}>
+                <div style={{ width:8, height:40, borderRadius:4, background:cor, flexShrink:0 }}/>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
+                    <span style={{ fontWeight:700, fontSize:13 }}>{tipoLabel[r.tipo] ?? r.tipo}</span>
+                    {co && <span style={{ fontSize:12, color:'var(--muted-foreground)' }}>· {co.nome}</span>}
+                    {ob && <span style={{ fontSize:11, background:'#eff6ff', color:'#1d4ed8', borderRadius:4, padding:'1px 5px' }}>{ob.nome}</span>}
+                  </div>
+                  <div style={{ fontSize:11, color:'var(--muted-foreground)', marginTop:3, display:'flex', gap:10, flexWrap:'wrap' }}>
+                    {r.data_ocorrencia && <span>📅 {new Date(r.data_ocorrencia+'T12:00:00').toLocaleDateString('pt-BR')}</span>}
+                    {r.motivo && <span>"{r.motivo}"</span>}
+                  </div>
+                  <div style={{ fontSize:10, color:'var(--muted-foreground)', marginTop:2 }}>
+                    Enviado {new Date(r.criado_em).toLocaleString('pt-BR')}
+                    {r.sincronizado_em && <span style={{ color:'#15803d', marginLeft:6 }}>✓ Lançado {new Date(r.sincronizado_em).toLocaleDateString('pt-BR')}</span>}
+                  </div>
+                </div>
+                <div style={{ display:'flex', gap:6, flexShrink:0 }}>
+                  <Button size="sm" variant="outline" onClick={() => setModal(r)} style={{ height:30, fontSize:12 }}><Eye size={13}/></Button>
+                  {!r.sincronizado_em && (
+                    <Button size="sm" onClick={() => marcarSincronizado(r.id)} style={{ height:30, fontSize:12, background:'#15803d', color:'#fff' }}>
+                      <Check size={13}/> Lançar
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Modal detalhe ocorrência */}
+      {modal && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', zIndex:300, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
+          <div style={{ background:'var(--background)', borderRadius:14, width:'100%', maxWidth:500, padding:22, boxShadow:'0 20px 60px rgba(0,0,0,0.3)', maxHeight:'90vh', overflowY:'auto' }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
+              <div style={{ fontWeight:800, fontSize:16 }}>{tipoLabel[modal.tipo] ?? modal.tipo}</div>
+              <button onClick={() => setModal(null)} style={{ border:'none', background:'none', cursor:'pointer', fontSize:20, color:'var(--muted-foreground)' }}>✕</button>
+            </div>
+            {[
+              ['Obra',       obras.find(o => o.id === modal.obra_id)?.nome],
+              ['Colaborador',colabs.find(c => c.id === modal.colaborador_id)?.nome],
+              ['Data',       modal.data_ocorrencia ? new Date(modal.data_ocorrencia+'T12:00:00').toLocaleDateString('pt-BR') : null],
+              ['Hora',       modal.hora_acidente],
+              ['Local',      modal.local],
+              ['Gravidade',  modal.gravidade],
+              ['CAT Emitida',modal.cat_emitida ? 'Sim' : modal.cat_emitida === false ? 'Não' : null],
+              ['Tipo Acidente', modal.tipo_acidente],
+              ['Tipo Atestado', modal.tipo_atestado],
+              ['Dias Afastamento', modal.dias_afastamento],
+              ['CID',        modal.cid],
+              ['Médico',     modal.medico],
+              ['Tipo Advert.',modal.tipo_adv],
+              ['Dias Suspensão', modal.dias_suspensao],
+              ['Assinada',   modal.assinada ? 'Sim' : modal.assinada === false ? 'Não' : null],
+              ['Motivo',     modal.motivo],
+              ['Observações',modal.observacoes],
+            ].filter(([,v]) => v != null && v !== '').map(([label, value]) => (
+              <div key={String(label)} style={{ display:'flex', borderBottom:'1px solid var(--border)', padding:'7px 0' }}>
+                <span style={{ width:140, fontSize:11, fontWeight:700, color:'var(--muted-foreground)', flexShrink:0 }}>{label}</span>
+                <span style={{ fontSize:12 }}>{String(value)}</span>
+              </div>
+            ))}
+            <div style={{ display:'flex', justifyContent:'flex-end', marginTop:16, gap:8 }}>
+              {!modal.sincronizado_em && (
+                <Button onClick={() => { marcarSincronizado(modal.id); setModal(null) }} style={{ background:'#15803d', color:'#fff', height:32, fontSize:12 }}>
+                  <Check size={13}/> Marcar como Lançada
+                </Button>
+              )}
+              <Button variant="outline" onClick={() => setModal(null)} style={{ height:32 }}>Fechar</Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── aba: EPIs ────────────────────────────────────────────────────────────────
+function TabEpis({ obras, colabs, perfil }: { obras: Obra[]; colabs: Colab[]; perfil: any }) {
+  const [rows,   setRows]   = useState<any[]>([])
+  const [load,   setLoad]   = useState(true)
+  const [filtro, setFiltro] = useState<'pendente'|'todos'>('pendente')
+  const [modal,  setModal]  = useState<any|null>(null)
+
+  const fetch = useCallback(async () => {
+    setLoad(true)
+    const q = supabase.from('portal_epi_solicitacoes').select('*').order('criado_em', { ascending: false })
+    if (filtro === 'pendente') q.eq('status','pendente')
+    const { data } = await q
+    setRows(data ?? [])
+    setLoad(false)
+  }, [filtro])
+
+  useEffect(() => { fetch() }, [fetch])
+
+  async function atender(id: string) {
+    const nome = perfil?.username ?? perfil?.email ?? 'RH'
+    await supabase.from('portal_epi_solicitacoes').update({
+      status: 'atendido', aprovado_por: perfil?.id, aprovado_em: new Date().toISOString(), aprovado_nome: nome
+    }).eq('id', id)
+    toast.success('EPI marcado como atendido')
+    fetch()
+  }
+
+  const ugColor = (u: string) => u==='critico'?'#dc2626':u==='urgente'?'#f97316':'#16a34a'
+  const ugLabel = (u: string) => u==='critico'?'🔴 Crítico':u==='urgente'?'🟠 Urgente':'🟢 Normal'
+  const stBadge = (s: string) => {
+    if (s==='atendido'||s==='aprovado') return { bg:'#dcfce7', cor:'#15803d', label:'✓ Atendido' }
+    if (s==='recusado') return { bg:'#fee2e2', cor:'#dc2626', label:'✗ Recusado' }
+    return                    { bg:'#fef3c7', cor:'#b45309', label:'⏳ Pendente' }
+  }
+
+  return (
+    <div>
+      <div style={{ display:'flex', gap:6, marginBottom:16, flexWrap:'wrap' }}>
+        {(['pendente','todos'] as const).map(f => (
+          <button key={f} onClick={() => setFiltro(f)} style={{
+            height:32, padding:'0 12px', borderRadius:7, cursor:'pointer', fontWeight:600, fontSize:12,
+            border:`1px solid ${filtro===f?'var(--primary)':'var(--border)'}`,
+            background:filtro===f?'var(--primary)':'var(--card)',
+            color:filtro===f?'#fff':'var(--foreground)',
+          }}>
+            {f==='pendente'?'⏳ Pendentes':'Todas'}
+          </button>
+        ))}
+        <button onClick={fetch} style={{ height:32, width:32, borderRadius:7, border:'1px solid var(--border)', background:'var(--card)', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+          <RefreshCw size={14}/>
+        </button>
+      </div>
+
+      {load ? <div style={{ textAlign:'center', padding:48, color:'var(--muted-foreground)' }}>Carregando…</div>
+      : rows.length === 0 ? (
+        <div style={{ background:'var(--card)', border:'1px solid var(--border)', borderRadius:12, padding:48, textAlign:'center', color:'var(--muted-foreground)' }}>
+          <div style={{ fontSize:32, marginBottom:8 }}>🦺</div>Nenhuma solicitação de EPI
+        </div>
+      ) : (
+        <div style={{ background:'var(--card)', border:'1px solid var(--border)', borderRadius:12, overflow:'hidden' }}>
+          {rows.map((r, i) => {
+            const ob = obras.find(o => o.id === r.obra_id)
+            const co = colabs.find(c => c.id === r.colaborador_id)
+            const b  = stBadge(r.status)
+            return (
+              <div key={r.id} style={{ padding:'12px 18px', borderTop:i>0?'1px solid var(--border)':'none', display:'flex', gap:12, alignItems:'center' }}>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap', marginBottom:4 }}>
+                    <span style={{ fontWeight:700, fontSize:13 }}>🦺 {r.itens?.length ?? 0} item(s)</span>
+                    <span style={{ fontSize:11, fontWeight:700, color:ugColor(r.urgencia) }}>{ugLabel(r.urgencia)}</span>
+                    {ob && <span style={{ fontSize:11, background:'#eff6ff', color:'#1d4ed8', borderRadius:4, padding:'1px 5px' }}>{ob.nome}</span>}
+                    {co && <span style={{ fontSize:11, color:'var(--muted-foreground)' }}>· {co.nome}</span>}
+                  </div>
+                  <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
+                    {(r.itens ?? []).slice(0, 4).map((it: any, j: number) => (
+                      <span key={j} style={{ background:'#f3f4f6', color:'#374151', borderRadius:5, padding:'2px 7px', fontSize:11 }}>
+                        {it.nome} ×{it.quantidade}
+                      </span>
+                    ))}
+                    {(r.itens ?? []).length > 4 && <span style={{ fontSize:11, color:'var(--muted-foreground)' }}>+{r.itens.length - 4}</span>}
+                  </div>
+                  <div style={{ fontSize:10, color:'var(--muted-foreground)', marginTop:4 }}>
+                    {new Date(r.criado_em).toLocaleString('pt-BR')}
+                    {r.aprovado_nome && <span style={{ marginLeft:6, color:'#15803d' }}>✓ {r.aprovado_nome}</span>}
+                  </div>
+                </div>
+                <div style={{ display:'flex', gap:6, alignItems:'center', flexShrink:0 }}>
+                  <span style={{ background:b.bg, color:b.cor, borderRadius:6, padding:'3px 9px', fontSize:11, fontWeight:700 }}>{b.label}</span>
+                  <Button size="sm" variant="outline" onClick={() => setModal(r)} style={{ height:30, fontSize:12 }}><Eye size={13}/></Button>
+                  {r.status === 'pendente' && (
+                    <Button size="sm" onClick={() => atender(r.id)} style={{ height:30, fontSize:12, background:'#15803d', color:'#fff' }}>
+                      <Check size={13}/> Atender
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Modal detalhe EPI */}
+      {modal && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', zIndex:300, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
+          <div style={{ background:'var(--background)', borderRadius:14, width:'100%', maxWidth:500, padding:22, boxShadow:'0 20px 60px rgba(0,0,0,0.3)', maxHeight:'90vh', overflowY:'auto' }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
+              <div style={{ fontWeight:800, fontSize:16 }}>🦺 Solicitação de EPI</div>
+              <button onClick={() => setModal(null)} style={{ border:'none', background:'none', cursor:'pointer', fontSize:20, color:'var(--muted-foreground)' }}>✕</button>
+            </div>
+            <div style={{ marginBottom:12 }}>
+              <div style={{ fontSize:11, fontWeight:700, color:'var(--muted-foreground)', marginBottom:6 }}>ITENS</div>
+              {(modal.itens ?? []).map((it: any, i: number) => (
+                <div key={i} style={{ display:'flex', justifyContent:'space-between', borderBottom:'1px solid var(--border)', padding:'6px 0' }}>
+                  <span style={{ fontSize:13 }}>{it.nome}</span>
+                  <span style={{ fontSize:12, fontWeight:700 }}>×{it.quantidade}</span>
+                </div>
+              ))}
+            </div>
+            {[
+              ['Obra',       obras.find(o => o.id === modal.obra_id)?.nome],
+              ['Colaborador',colabs.find(c => c.id === modal.colaborador_id)?.nome ?? 'Toda a equipe'],
+              ['Urgência',   modal.urgencia],
+              ['Observações',modal.observacoes],
+            ].filter(([,v]) => v).map(([l,v]) => (
+              <div key={String(l)} style={{ display:'flex', borderBottom:'1px solid var(--border)', padding:'6px 0' }}>
+                <span style={{ width:130, fontSize:11, fontWeight:700, color:'var(--muted-foreground)', flexShrink:0 }}>{l}</span>
+                <span style={{ fontSize:12 }}>{String(v)}</span>
+              </div>
+            ))}
+            <div style={{ display:'flex', justifyContent:'flex-end', marginTop:16, gap:8 }}>
+              {modal.status === 'pendente' && (
+                <Button onClick={() => { atender(modal.id); setModal(null) }} style={{ background:'#15803d', color:'#fff', height:32, fontSize:12 }}>
+                  <Check size={13}/> Marcar como Atendido
+                </Button>
+              )}
+              <Button variant="outline" onClick={() => setModal(null)} style={{ height:32 }}>Fechar</Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── aba: Documentos ─────────────────────────────────────────────────────────
+function TabDocumentos({ obras, colabs }: { obras: Obra[]; colabs: Colab[] }) {
+  const [rows,   setRows]   = useState<any[]>([])
+  const [load,   setLoad]   = useState(true)
+  const [filtro, setFiltro] = useState<'pendente'|'todos'>('pendente')
+  const [modal,  setModal]  = useState<any|null>(null)
+
+  const fetch = useCallback(async () => {
+    setLoad(true)
+    const q = supabase.from('portal_documentos').select('*').order('criado_em', { ascending: false })
+    if (filtro === 'pendente') q.eq('status','pendente')
+    const { data } = await q
+    setRows(data ?? [])
+    setLoad(false)
+  }, [filtro])
+
+  useEffect(() => { fetch() }, [fetch])
+
+  async function marcarProcessado(id: string) {
+    await supabase.from('portal_documentos').update({ status:'processado' }).eq('id', id)
+    toast.success('Documento marcado como processado')
+    fetch()
+  }
+
+  const tipoLabel: Record<string,string> = {
+    rg:'RG', cpf:'CPF', aso:'ASO / Exame Médico', ctps:'CTPS',
+    comprovante:'Comprovante de Residência', foto:'Foto do Colaborador',
+    certificado:'Certificado / Treinamento', nr:'NR / Segurança', outro:'Outro',
+  }
+  const stBadge = (s: string) => {
+    if (s==='processado') return { bg:'#dcfce7', cor:'#15803d', label:'✓ Processado' }
+    if (s==='descartado') return { bg:'#f3f4f6', cor:'#6b7280', label:'✕ Descartado' }
+    return                       { bg:'#fef3c7', cor:'#b45309', label:'⏳ Pendente' }
+  }
+
+  return (
+    <div>
+      <div style={{ display:'flex', gap:6, marginBottom:16, flexWrap:'wrap' }}>
+        {(['pendente','todos'] as const).map(f => (
+          <button key={f} onClick={() => setFiltro(f)} style={{
+            height:32, padding:'0 12px', borderRadius:7, cursor:'pointer', fontWeight:600, fontSize:12,
+            border:`1px solid ${filtro===f?'var(--primary)':'var(--border)'}`,
+            background:filtro===f?'var(--primary)':'var(--card)',
+            color:filtro===f?'#fff':'var(--foreground)',
+          }}>
+            {f==='pendente'?'⏳ Pendentes':'Todos'}
+          </button>
+        ))}
+        <button onClick={fetch} style={{ height:32, width:32, borderRadius:7, border:'1px solid var(--border)', background:'var(--card)', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+          <RefreshCw size={14}/>
+        </button>
+      </div>
+
+      {load ? <div style={{ textAlign:'center', padding:48, color:'var(--muted-foreground)' }}>Carregando…</div>
+      : rows.length === 0 ? (
+        <div style={{ background:'var(--card)', border:'1px solid var(--border)', borderRadius:12, padding:48, textAlign:'center', color:'var(--muted-foreground)' }}>
+          <div style={{ fontSize:32, marginBottom:8 }}>📭</div>Nenhum documento pendente
+        </div>
+      ) : (
+        <div style={{ background:'var(--card)', border:'1px solid var(--border)', borderRadius:12, overflow:'hidden' }}>
+          {rows.map((r, i) => {
+            const ob = obras.find(o => o.id === r.obra_id)
+            const co = colabs.find(c => c.id === r.colaborador_id)
+            const b  = stBadge(r.status)
+            const isImg = r.arquivo_tipo?.startsWith('image/')
+            return (
+              <div key={r.id} style={{ padding:'12px 18px', borderTop:i>0?'1px solid var(--border)':'none', display:'flex', gap:12, alignItems:'center' }}>
+                {/* thumb */}
+                <div style={{ width:46, height:46, borderRadius:8, overflow:'hidden', flexShrink:0, background:'#f3f4f6', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                  {isImg && r.arquivo_url
+                    ? <img src={r.arquivo_url} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
+                    : <span style={{ fontSize:22 }}>📄</span>}
+                </div>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontWeight:700, fontSize:13 }}>{tipoLabel[r.tipo] ?? r.tipo}</div>
+                  <div style={{ fontSize:11, color:'var(--muted-foreground)', marginTop:2, display:'flex', gap:8, flexWrap:'wrap' }}>
+                    {co && <span>👤 {co.nome}</span>}
+                    {ob && <span style={{ background:'#eff6ff', color:'#1d4ed8', borderRadius:4, padding:'1px 5px' }}>{ob.nome}</span>}
+                    {r.descricao && <span>{r.descricao}</span>}
+                  </div>
+                  <div style={{ fontSize:10, color:'var(--muted-foreground)', marginTop:2 }}>{new Date(r.criado_em).toLocaleString('pt-BR')}</div>
+                </div>
+                <div style={{ display:'flex', gap:6, alignItems:'center', flexShrink:0 }}>
+                  <span style={{ background:b.bg, color:b.cor, borderRadius:6, padding:'3px 9px', fontSize:11, fontWeight:700 }}>{b.label}</span>
+                  <Button size="sm" variant="outline" onClick={() => setModal(r)} style={{ height:30, fontSize:12 }}><Eye size={13}/></Button>
+                  {r.arquivo_url && (
+                    <a href={r.arquivo_url} target="_blank" rel="noopener noreferrer">
+                      <Button size="sm" variant="outline" style={{ height:30, fontSize:12 }}><Download size={13}/></Button>
+                    </a>
+                  )}
+                  {r.status === 'pendente' && (
+                    <Button size="sm" onClick={() => marcarProcessado(r.id)} style={{ height:30, fontSize:12, background:'#15803d', color:'#fff' }}>
+                      <Check size={13}/> OK
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Modal visualizar documento */}
+      {modal && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', zIndex:300, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
+          <div style={{ background:'var(--background)', borderRadius:14, width:'100%', maxWidth:560, padding:22, boxShadow:'0 20px 60px rgba(0,0,0,0.3)', maxHeight:'90vh', overflowY:'auto' }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
+              <div style={{ fontWeight:800, fontSize:16 }}>📎 {tipoLabel[modal.tipo] ?? modal.tipo}</div>
+              <button onClick={() => setModal(null)} style={{ border:'none', background:'none', cursor:'pointer', fontSize:20, color:'var(--muted-foreground)' }}>✕</button>
+            </div>
+            {modal.arquivo_url && modal.arquivo_tipo?.startsWith('image/') && (
+              <img src={modal.arquivo_url} alt="documento" style={{ width:'100%', maxHeight:300, objectFit:'contain', borderRadius:8, marginBottom:12, background:'#f9fafb' }} />
+            )}
+            {modal.arquivo_url && !modal.arquivo_tipo?.startsWith('image/') && (
+              <a href={modal.arquivo_url} target="_blank" rel="noopener noreferrer" style={{ display:'flex', alignItems:'center', gap:8, padding:'10px 14px', background:'#eff6ff', borderRadius:8, marginBottom:12, color:'#1e3a5f', fontWeight:600, textDecoration:'none' }}>
+                <Download size={16}/> Baixar arquivo
+              </a>
+            )}
+            {[
+              ['Tipo',       tipoLabel[modal.tipo] ?? modal.tipo],
+              ['Obra',       obras.find(o => o.id === modal.obra_id)?.nome],
+              ['Colaborador',colabs.find(c => c.id === modal.colaborador_id)?.nome ?? 'Geral'],
+              ['Descrição',  modal.descricao],
+              ['Arquivo',    modal.arquivo_nome],
+            ].filter(([,v]) => v).map(([l,v]) => (
+              <div key={String(l)} style={{ display:'flex', borderBottom:'1px solid var(--border)', padding:'6px 0' }}>
+                <span style={{ width:120, fontSize:11, fontWeight:700, color:'var(--muted-foreground)', flexShrink:0 }}>{l}</span>
+                <span style={{ fontSize:12 }}>{String(v)}</span>
+              </div>
+            ))}
+            <div style={{ display:'flex', justifyContent:'flex-end', marginTop:16, gap:8 }}>
+              {modal.status === 'pendente' && (
+                <Button onClick={() => { marcarProcessado(modal.id); setModal(null) }} style={{ background:'#15803d', color:'#fff', height:32, fontSize:12 }}>
+                  <Check size={13}/> Marcar Processado
+                </Button>
+              )}
+              <Button variant="outline" onClick={() => setModal(null)} style={{ height:32 }}>Fechar</Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── PÁGINA PRINCIPAL ─────────────────────────────────────────────────────────
+export default function Solicitacoes() {
+  const { profile: perfil } = useProfile()
+  const [aba, setAba] = useState<'cadastros'|'ocorrencias'|'epis'|'documentos'>('cadastros')
+  const [obras,  setObras]  = useState<Obra[]>([])
+  const [funcoes,setFuncoes]= useState<Funcao[]>([])
+  const [colabs, setColabs] = useState<Colab[]>([])
+  const [counts, setCounts] = useState({ cadastros:0, ocorrencias:0, epis:0, documentos:0 })
+
+  const fetchBase = useCallback(async () => {
+    const [o, f, c] = await Promise.all([
+      supabase.from('obras').select('id,nome').eq('ativo',true).order('nome'),
+      supabase.from('funcoes').select('id,nome').eq('ativo',true).order('nome'),
+      supabase.from('colaboradores').select('id,nome').eq('status','ativo').order('nome'),
+    ])
+    if (o.data) setObras(o.data)
+    if (f.data) setFuncoes(f.data)
+    if (c.data) setColabs(c.data)
+  }, [])
+
+  const fetchCounts = useCallback(async () => {
+    const [cad, ocor, epi, doc] = await Promise.all([
+      supabase.from('portal_solicitacoes').select('id', { count:'exact', head:true }).eq('tipo','novo_colaborador').eq('status','pendente'),
+      supabase.from('portal_ocorrencias').select('id', { count:'exact', head:true }).is('sincronizado_em', null),
+      supabase.from('portal_epi_solicitacoes').select('id', { count:'exact', head:true }).eq('status','pendente'),
+      supabase.from('portal_documentos').select('id', { count:'exact', head:true }).eq('status','pendente'),
+    ])
+    setCounts({
+      cadastros:  cad.count  ?? 0,
+      ocorrencias:ocor.count ?? 0,
+      epis:       epi.count  ?? 0,
+      documentos: doc.count  ?? 0,
+    })
+  }, [])
+
+  useEffect(() => { fetchBase(); fetchCounts() }, [fetchBase, fetchCounts])
+
+  const ABAS = [
+    { id:'cadastros',   label:'👷 Cadastros',    count: counts.cadastros,   icon: Users },
+    { id:'ocorrencias', label:'🚨 Ocorrências',  count: counts.ocorrencias, icon: AlertTriangle },
+    { id:'epis',        label:'🦺 EPIs',         count: counts.epis,        icon: ShieldCheck },
+    { id:'documentos',  label:'📎 Documentos',   count: counts.documentos,  icon: FileImage },
+  ] as const
+
+  const totalPendente = counts.cadastros + counts.ocorrencias + counts.epis + counts.documentos
+
+  return (
+    <div style={{ padding:'24px 28px', minHeight:'100vh', background:'var(--background)' }}>
+      {/* Header */}
+      <div style={{ marginBottom:24 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+          <div style={{ fontWeight:800, fontSize:22, color:'var(--foreground)' }}>📥 Solicitações do Portal</div>
+          {totalPendente > 0 && (
+            <span style={{ background:'#ef4444', color:'#fff', borderRadius:20, padding:'2px 10px', fontSize:12, fontWeight:700 }}>
+              {totalPendente} pendente{totalPendente !== 1 ? 's' : ''}
+            </span>
+          )}
+        </div>
+        <div style={{ fontSize:13, color:'var(--muted-foreground)', marginTop:4 }}>
+          Gerencie todas as solicitações enviadas pelos encarregados via portal da obra
+        </div>
+      </div>
+
+      {/* Abas */}
+      <div style={{ display:'flex', gap:6, marginBottom:22, flexWrap:'wrap', borderBottom:'1px solid var(--border)', paddingBottom:1 }}>
+        {ABAS.map(a => (
+          <button key={a.id} onClick={() => { setAba(a.id as any); fetchCounts() }} style={{
+            height:40, padding:'0 16px', border:'none', borderBottom:`2px solid ${aba===a.id?'var(--primary)':'transparent'}`,
+            background:'transparent', cursor:'pointer', fontWeight:aba===a.id?700:500, fontSize:13,
+            color:aba===a.id?'var(--primary)':'var(--muted-foreground)',
+            display:'flex', alignItems:'center', gap:7, transition:'all 120ms',
+          }}>
+            {a.label}
+            {a.count > 0 && (
+              <span style={{ background:'#ef4444', color:'#fff', borderRadius:10, padding:'0 6px', fontSize:10, fontWeight:700, minWidth:18, textAlign:'center' }}>
+                {a.count}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* Conteúdo */}
+      {aba === 'cadastros'   && <TabCadastros   obras={obras} funcoes={funcoes} perfil={perfil} />}
+      {aba === 'ocorrencias' && <TabOcorrencias obras={obras} colabs={colabs} />}
+      {aba === 'epis'        && <TabEpis        obras={obras} colabs={colabs} perfil={perfil} />}
+      {aba === 'documentos'  && <TabDocumentos  obras={obras} colabs={colabs} />}
+    </div>
+  )
+}

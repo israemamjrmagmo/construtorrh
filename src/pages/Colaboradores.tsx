@@ -895,7 +895,7 @@ function SolicitacoesPortalTab({ obras, funcoes }: { obras: Obra[]; funcoes: Fun
 
 // ─── COMPONENTE PRINCIPAL ─────────────────────────────────────────────────────
 export default function Colaboradores() {
-  const [pageTab, setPageTab] = useState<'colaboradores' | 'funcoes' | 'solicitacoes'>('colaboradores')
+  const [pageTab, setPageTab] = useState<'colaboradores' | 'funcoes'>('colaboradores')
 
   const [rows, setRows]     = useState<ColaboradorRow[]>([])
   const [funcoes, setFuncoes] = useState<Funcao[]>([])
@@ -1429,23 +1429,20 @@ export default function Colaboradores() {
     <div>
       {/* Tabs de página */}
       <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--border)', marginBottom: 24 }}>
-        {(['colaboradores', 'funcoes', 'solicitacoes'] as const).map(t => (
+        {(['colaboradores', 'funcoes'] as const).map(t => (
           <button key={t} onClick={() => setPageTab(t)} style={{
             padding: '10px 20px', fontSize: 14, fontWeight: 600, border: 'none', background: 'none', cursor: 'pointer',
             borderBottom: pageTab === t ? '2px solid var(--primary)' : '2px solid transparent',
             color: pageTab === t ? 'var(--primary)' : 'var(--muted-foreground)',
             marginBottom: -1, transition: 'color 120ms',
           }}>
-            {t === 'colaboradores' ? '👷 Colaboradores' : t === 'funcoes' ? '🏷️ Funções & Cargos' : '📥 Solicitações do Portal'}
+            {t === 'colaboradores' ? '👷 Colaboradores' : '🏷️ Funções & Cargos'}
           </button>
         ))}
       </div>
 
       {/* ── ABA FUNÇÕES ─────────────────────────────────────────────────── */}
       {pageTab === 'funcoes' && <FuncoesTab />}
-
-      {/* ── ABA SOLICITAÇÕES DO PORTAL ──────────────────────────────────── */}
-      {pageTab === 'solicitacoes' && <SolicitacoesPortalTab obras={obras} funcoes={funcoes} />}
 
       {/* ── ABA COLABORADORES ───────────────────────────────────────────── */}
       {pageTab === 'colaboradores' && (

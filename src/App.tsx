@@ -30,6 +30,7 @@ const Usuarios       = React.lazy(() => import('@/pages/Usuarios'))
 const EncargosPage   = React.lazy(() => import('@/pages/EncargosPage'))
 const Adiantamentos  = React.lazy(() => import('@/pages/Adiantamentos'))
 const PortalAdmin    = React.lazy(() => import('@/pages/PortalAdmin'))
+const Solicitacoes   = React.lazy(() => import('@/pages/Solicitacoes'))
 // Portal externo (sem Layout principal)
 const PortalLogin        = React.lazy(() => import('@/pages/portal/PortalLogin'))
 const PortalHome         = React.lazy(() => import('@/pages/portal/PortalHome'))
@@ -37,6 +38,8 @@ const PortalPonto        = React.lazy(() => import('@/pages/portal/PortalPonto')
 const PortalOcorrencias  = React.lazy(() => import('@/pages/portal/PortalOcorrencias'))
 const PortalSolicitacoes = React.lazy(() => import('@/pages/portal/PortalSolicitacoes'))
 const PortalProducao     = React.lazy(() => import('@/pages/portal/PortalProducao'))
+const PortalEpis         = React.lazy(() => import('@/pages/portal/PortalEpis'))
+const PortalDocumentos   = React.lazy(() => import('@/pages/portal/PortalDocumentos'))
 
 // ─── Full-page loading spinner ───────────────────────────────────────────────
 function FullPageSpinner() {
@@ -88,10 +91,12 @@ export default function App() {
               {/* ── Portal Externo (público, sem Layout) ── */}
               <Route path="/portal"            element={<PortalLogin />} />
               <Route path="/portal/home"       element={<PortalHome />} />
-              <Route path="/portal/ponto"      element={<PortalPonto />} />
-              <Route path="/portal/ocorrencias" element={<PortalOcorrencias />} />
-              <Route path="/portal/solicitacoes" element={<PortalSolicitacoes />} />
-              <Route path="/portal/producao"    element={<PortalProducao />} />
+              <Route path="/portal/ponto"         element={<PortalPonto />} />
+              <Route path="/portal/ocorrencias"   element={<PortalOcorrencias />} />
+              <Route path="/portal/solicitacoes"  element={<PortalSolicitacoes />} />
+              <Route path="/portal/producao"      element={<PortalProducao />} />
+              <Route path="/portal/epis"          element={<PortalEpis />} />
+              <Route path="/portal/documentos"    element={<PortalDocumentos />} />
 
               {/* Private — wrapped in Layout */}
               <Route
@@ -302,6 +307,16 @@ export default function App() {
                   <PrivateRoute>
                     <Layout>
                       <PortalAdmin />
+                    </Layout>
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/solicitacoes"
+                element={
+                  <PrivateRoute>
+                    <Layout>
+                      <Solicitacoes />
                     </Layout>
                   </PrivateRoute>
                 }

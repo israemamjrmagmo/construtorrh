@@ -1,6 +1,6 @@
 import React from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
-import { ClipboardList, AlertTriangle, Home, LogOut, UserPlus, HardHat } from 'lucide-react'
+import { ClipboardList, AlertTriangle, Home, LogOut, UserPlus, HardHat, ShieldCheck, FileImage } from 'lucide-react'
 import { clearPortalSession, getPortalSession } from '@/hooks/usePortalAuth'
 
 interface PortalLayoutProps { children: React.ReactNode }
@@ -15,11 +15,13 @@ export default function PortalLayout({ children }: PortalLayoutProps) {
   }
 
   const navItems = [
-    { to: '/portal/home',        icon: <Home size={22} />,          label: 'Início' },
-    { to: '/portal/ponto',       icon: <ClipboardList size={22} />, label: 'Ponto' },
-    { to: '/portal/ocorrencias', icon: <AlertTriangle size={22} />, label: 'Ocorrências' },
-    { to: '/portal/solicitacoes',icon: <UserPlus size={22} />,      label: 'Solicitar' },
-    { to: '/portal/producao',    icon: <HardHat size={22} />,       label: 'Produção'  },
+    { to: '/portal/home',        icon: <Home size={20} />,          label: 'Início' },
+    { to: '/portal/ponto',       icon: <ClipboardList size={20} />, label: 'Ponto' },
+    { to: '/portal/ocorrencias', icon: <AlertTriangle size={20} />, label: 'Ocorr.' },
+    { to: '/portal/solicitacoes',icon: <UserPlus size={20} />,      label: 'Cadastro' },
+    { to: '/portal/epis',        icon: <ShieldCheck size={20} />,   label: 'EPIs' },
+    { to: '/portal/documentos',  icon: <FileImage size={20} />,     label: 'Docs' },
+    { to: '/portal/producao',    icon: <HardHat size={20} />,       label: 'Prod.' },
   ]
 
   return (
