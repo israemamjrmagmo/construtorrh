@@ -322,219 +322,210 @@ export default function Pagamentos() {
   const totalRealizado = lancsRealizados.reduce((s: number, l: any) => s + (l.snap_liquido ?? l.valor_liquido ?? 0), 0)
 
   return (
-    <div style={{ padding: 24 }}>
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
-        <div>
-          <h1 style={{ fontWeight: 800, fontSize: 22, margin: 0 }}>💰 Pagamentos</h1>
-          <p style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>Lançamentos liberados da folha e pagamentos avulsos</p>
-        </div>
-        <button onClick={openCreate}
-          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', fontWeight: 700, fontSize: 13, borderRadius: 8, border: 'none', background: '#7c3aed', color: '#fff', cursor: 'pointer' }}>
-          <span style={{ fontSize: 16 }}>+</span> Pagamento Avulso
-        </button>
+    <div className="p-6">
+      {/* Header — padrão do sistema */}
+      <PageHeader
+        title="💰 Pagamentos"
+        subtitle="Lançamentos liberados da folha e pagamentos avulsos"
+        action={
+          <Button onClick={openCreate} className="gap-2">
+            <Plus size={15} /> Pagamento Avulso
+          </Button>
+        }
+      />
+
+      {/* Cards resumo — padrão var(--card) / var(--border) */}
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+        {[
+          { icon: <Clock size={16}/>,       label: 'Agendados',       value: `${lancsPendentes.filter(l=>l.status==='liberado').length} lançamento(s)`,  color:'#b45309' },
+          { icon: <CheckCircle size={16}/>, label: 'Realizados (mês)', value: `${lancsPendentes.filter(l=>l.status==='pago'&&l.mes_referencia===filtroMesLanc).length} lançamento(s)`, color:'#15803d' },
+          { icon: <DollarSign size={16}/>,  label: 'Avulsos',         value: `${rows.length} registro(s)`,  color:'#7c3aed' },
+        ].map((c,i) => (
+          <div key={i} style={{ background:'var(--card)', border:'1px solid var(--border)', borderRadius:10, padding:'14px 16px' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:6, color:c.color, marginBottom:4 }}>
+              {c.icon}<span style={{ fontSize:11, fontWeight:600 }}>{c.label}</span>
+            </div>
+            <div style={{ fontSize:20, fontWeight:800, color:c.color }}>{c.value}</div>
+          </div>
+        ))}
       </div>
 
-      {/* Cards resumo */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 20 }}>
-        <div style={{ background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 10, padding: '14px 18px' }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: '#92400e', marginBottom: 4 }}>💜 Agendados</div>
-          <div style={{ fontWeight: 800, fontSize: 20, color: '#b45309' }}>
-            {lancsPendentes.filter(l => l.status === 'liberado').length} lançamento(s)
-          </div>
-        </div>
-        <div style={{ background: '#dcfce7', border: '1px solid #bbf7d0', borderRadius: 10, padding: '14px 18px' }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: '#14532d', marginBottom: 4 }}>✅ Realizados (mês)</div>
-          <div style={{ fontWeight: 800, fontSize: 20, color: '#15803d' }}>
-            {lancsPendentes.filter(l => l.status === 'pago' && l.mes_referencia === filtroMesLanc).length} lançamento(s)
-          </div>
-        </div>
-        <div style={{ background: '#ede9fe', border: '1px solid #ddd6fe', borderRadius: 10, padding: '14px 18px' }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: '#4c1d95', marginBottom: 4 }}>💲 Avulsos</div>
-          <div style={{ fontWeight: 800, fontSize: 20, color: '#7c3aed' }}>{rows.length} registro(s)</div>
-        </div>
-      </div>
-
-      {/* Abas */}
-      <div style={{ display: 'flex', gap: 0, marginBottom: 0, borderBottom: '2px solid #e5e7eb' }}>
+      {/* Abas — padrão do sistema */}
+      <div className="flex gap-0 mb-0" style={{ borderBottom:'2px solid var(--border)' }}>
         {([
-          { key: 'agendados',  label: '⏳ Agendados', count: lancsPendentes.filter(l => l.status === 'liberado').length },
-          { key: 'realizados', label: '✅ Realizados', count: lancsPendentes.filter(l => l.status === 'pago').length },
-        ] as { key: 'agendados'|'realizados'; label: string; count: number }[]).map(tab => (
-          <button key={tab.key} onClick={() => setAba(tab.key)}
+          { key:'agendados',  label:'⏳ Agendados',  count: lancsPendentes.filter(l=>l.status==='liberado').length },
+          { key:'realizados', label:'✅ Realizados', count: lancsPendentes.filter(l=>l.status==='pago').length },
+        ] as {key:'agendados'|'realizados';label:string;count:number}[]).map(tab => (
+          <button key={tab.key} onClick={()=>setAba(tab.key)}
             style={{
-              padding: '10px 20px', fontSize: 13, fontWeight: aba === tab.key ? 700 : 500,
-              border: 'none', background: 'transparent', cursor: 'pointer',
-              borderBottom: aba === tab.key ? '3px solid #7c3aed' : '3px solid transparent',
-              color: aba === tab.key ? '#7c3aed' : '#6b7280', marginBottom: -2,
+              padding:'10px 20px', fontSize:13, fontWeight: aba===tab.key?700:500,
+              border:'none', background:'transparent', cursor:'pointer',
+              borderBottom: aba===tab.key?'2px solid var(--primary)':'2px solid transparent',
+              color: aba===tab.key?'var(--primary)':'var(--muted-foreground)', marginBottom:-2,
             }}>
             {tab.label}
-            <span style={{ marginLeft: 6, fontSize: 11, background: aba === tab.key ? '#ede9fe' : '#f3f4f6', color: aba === tab.key ? '#7c3aed' : '#6b7280', borderRadius: 10, padding: '1px 7px', fontWeight: 600 }}>
+            <span style={{ marginLeft:6, fontSize:11, background: aba===tab.key?'hsl(var(--primary)/.1)':'var(--muted)', color: aba===tab.key?'var(--primary)':'var(--muted-foreground)', borderRadius:10, padding:'1px 7px', fontWeight:600 }}>
               {tab.count}
             </span>
           </button>
         ))}
       </div>
 
-      {/* Filtros comuns */}
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', padding: '14px 0', alignItems: 'flex-end', borderBottom: '1px solid #f3f4f6', marginBottom: 16 }}>
+      {/* Filtros — padrão do sistema com componentes Select/Input */}
+      <div className="flex flex-wrap items-end gap-3 py-4 mb-4" style={{ borderBottom:'1px solid var(--border)' }}>
         <div>
-          <label style={{ fontSize: 11, color: '#6b7280', fontWeight: 600, display: 'block', marginBottom: 3 }}>Competência</label>
-          <input type="month" value={filtroMesLanc} onChange={e => setFiltroMesLanc(e.target.value)}
-            style={{ height: 32, padding: '0 10px', fontSize: 13, border: '1.5px solid #e5e7eb', borderRadius: 6, background: 'var(--background)', color: 'var(--foreground)' }} />
+          <label className="text-xs font-semibold text-muted-foreground block mb-1">Competência</label>
+          <input type="month" value={filtroMesLanc} onChange={e=>setFiltroMesLanc(e.target.value)}
+            className="h-9 px-3 text-sm border border-input rounded-md bg-background text-foreground" />
         </div>
-        <div style={{ position: 'relative' }}>
-          <label style={{ fontSize: 11, color: '#6b7280', fontWeight: 600, display: 'block', marginBottom: 3 }}>Colaborador</label>
-          <input placeholder="Buscar nome..." value={filtroNomeLanc} onChange={e => setFiltroNomeLanc(e.target.value)}
-            style={{ height: 32, padding: '0 10px', fontSize: 13, border: '1.5px solid #e5e7eb', borderRadius: 6, background: 'var(--background)', color: 'var(--foreground)', width: 200 }} />
+        <div className="relative">
+          <label className="text-xs font-semibold text-muted-foreground block mb-1">Colaborador</label>
+          <div className="relative">
+            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <input placeholder="Buscar nome..." value={filtroNomeLanc} onChange={e=>setFiltroNomeLanc(e.target.value)}
+              className="h-9 pl-8 pr-3 text-sm border border-input rounded-md bg-background text-foreground w-48" />
+          </div>
         </div>
-        {aba === 'realizados' && (
-          <>
-            <div>
-              <label style={{ fontSize: 11, color: '#6b7280', fontWeight: 600, display: 'block', marginBottom: 3 }}>Data pgto de</label>
-              <input type="date" value={filtroDataIni} onChange={e => setFiltroDataIni(e.target.value)}
-                style={{ height: 32, padding: '0 10px', fontSize: 13, border: '1.5px solid #e5e7eb', borderRadius: 6, background: 'var(--background)', color: 'var(--foreground)' }} />
-            </div>
-            <div>
-              <label style={{ fontSize: 11, color: '#6b7280', fontWeight: 600, display: 'block', marginBottom: 3 }}>até</label>
-              <input type="date" value={filtroDataFim} onChange={e => setFiltroDataFim(e.target.value)}
-                style={{ height: 32, padding: '0 10px', fontSize: 13, border: '1.5px solid #e5e7eb', borderRadius: 6, background: 'var(--background)', color: 'var(--foreground)' }} />
-            </div>
-          </>
-        )}
-        {(filtroNomeLanc || filtroDataIni || filtroDataFim) && (
-          <button onClick={() => { setFiltroNomeLanc(''); setFiltroDataIni(''); setFiltroDataFim('') }}
-            style={{ height: 32, padding: '0 12px', fontSize: 12, border: '1.5px solid #e5e7eb', borderRadius: 6, background: 'transparent', cursor: 'pointer', color: '#6b7280' }}>
+        {aba==='realizados' && (<>
+          <div>
+            <label className="text-xs font-semibold text-muted-foreground block mb-1">Data pgto de</label>
+            <input type="date" value={filtroDataIni} onChange={e=>setFiltroDataIni(e.target.value)}
+              className="h-9 px-3 text-sm border border-input rounded-md bg-background text-foreground" />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-muted-foreground block mb-1">até</label>
+            <input type="date" value={filtroDataFim} onChange={e=>setFiltroDataFim(e.target.value)}
+              className="h-9 px-3 text-sm border border-input rounded-md bg-background text-foreground" />
+          </div>
+        </>)}
+        {(filtroNomeLanc||filtroDataIni||filtroDataFim) && (
+          <Button variant="outline" size="sm" onClick={()=>{setFiltroNomeLanc('');setFiltroDataIni('');setFiltroDataFim('')}}>
             ✕ Limpar
-          </button>
+          </Button>
         )}
       </div>
 
       {/* ══ ABA AGENDADOS ══ */}
       {aba === 'agendados' && (
-        loadingLancs ? (
-          <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>Carregando…</div>
-        ) : lancsAgendados.length === 0 ? (
-          <div style={{ padding: 60, textAlign: 'center', color: '#9ca3af', border: '1px dashed #e5e7eb', borderRadius: 12 }}>
-            <div style={{ fontSize: 32, marginBottom: 8 }}>💜</div>
-            <div style={{ fontWeight: 600 }}>Nenhum pagamento agendado</div>
-            <div style={{ fontSize: 12, marginTop: 4 }}>Libere lançamentos no <strong>Fechamento</strong> para aparecerem aqui.</div>
-          </div>
+        loadingLancs ? <LoadingSkeleton /> :
+        lancsAgendados.length === 0 ? (
+          <EmptyState
+            icon={<Clock size={32} />}
+            title="Nenhum pagamento agendado"
+            description="Libere lançamentos no Fechamento para aparecerem aqui."
+          />
         ) : (
-          <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-              <thead>
-                <tr style={{ background: '#fef3c7', borderBottom: '2px solid #fde68a' }}>
-                  <th style={{ padding: '9px 14px', textAlign: 'left', fontWeight: 700, color: '#92400e' }}>Colaborador</th>
-                  <th style={{ padding: '9px 14px', textAlign: 'left', fontWeight: 700, color: '#92400e' }}>Obra</th>
-                  <th style={{ padding: '9px 14px', textAlign: 'center', fontWeight: 700, color: '#92400e' }}>Período</th>
-                  <th style={{ padding: '9px 14px', textAlign: 'center', fontWeight: 700, color: '#92400e' }}>Competência</th>
-                  <th style={{ padding: '9px 14px', textAlign: 'right', fontWeight: 700, color: '#92400e' }}>💵 Líquido</th>
-                  <th style={{ padding: '9px 14px', textAlign: 'right', fontWeight: 700, color: '#92400e' }}>Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                {lancsAgendados.map((l: any, i: number) => (
-                  <tr key={l.id} style={{ background: i % 2 === 0 ? '#fff' : '#fafafa', borderBottom: '1px solid #f3f4f6' }}>
-                    <td style={{ padding: '10px 14px' }}>
-                      <div style={{ fontWeight: 600, fontSize: 13 }}>{l.colaboradores?.nome ?? '—'}</div>
-                      <div style={{ fontSize: 10, color: '#6b7280' }}>{l.colaboradores?.chapa} · {l.colaboradores?.tipo_contrato?.toUpperCase()}</div>
-                    </td>
-                    <td style={{ padding: '10px 14px', fontSize: 12, color: '#374151' }}>{l.obras?.nome ?? '—'}</td>
-                    <td style={{ padding: '10px 14px', textAlign: 'center', fontSize: 11, color: '#374151' }}>
+          <div style={{ border:'1px solid var(--border)', borderRadius:10, overflow:'hidden' }}>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Colaborador</TableHead>
+                  <TableHead>Obra</TableHead>
+                  <TableHead className="text-center">Período</TableHead>
+                  <TableHead className="text-center">Competência</TableHead>
+                  <TableHead className="text-right">💵 Líquido</TableHead>
+                  <TableHead className="text-right">Ações</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {lancsAgendados.map((l: any) => (
+                  <TableRow key={l.id}>
+                    <TableCell>
+                      <div className="font-semibold text-sm">{l.colaboradores?.nome ?? '—'}</div>
+                      <div className="text-xs text-muted-foreground">{l.colaboradores?.chapa} · {l.colaboradores?.tipo_contrato?.toUpperCase()}</div>
+                    </TableCell>
+                    <TableCell className="text-sm">{l.obras?.nome ?? '—'}</TableCell>
+                    <TableCell className="text-center text-xs text-muted-foreground">
                       {l.data_inicio?.slice(8)}/{l.data_inicio?.slice(5,7)} → {l.data_fim?.slice(8)}/{l.data_fim?.slice(5,7)}
-                    </td>
-                    <td style={{ padding: '10px 14px', textAlign: 'center', fontSize: 11 }}>
-                      <span style={{ background: '#ede9fe', color: '#7c3aed', borderRadius: 5, padding: '2px 8px', fontWeight: 600 }}>
-                        {l.mes_referencia?.slice(5)}/{l.mes_referencia?.slice(0,4)}
-                      </span>
-                    </td>
-                    <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, fontSize: 13, color: '#15803d' }}>
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <BadgeStatus status="liberado" />
+                      <div className="text-xs text-muted-foreground mt-0.5">{l.mes_referencia?.slice(5)}/{l.mes_referencia?.slice(0,4)}</div>
+                    </TableCell>
+                    <TableCell className="text-right font-bold text-sm" style={{ color:'#15803d' }}>
                       {l.snap_liquido ? formatCurrency(l.snap_liquido) : '—'}
-                    </td>
-                    <td style={{ padding: '10px 14px', textAlign: 'right' }}>
-                      <button
-                        style={{ height: 28, padding: '0 12px', fontSize: 11, borderRadius: 6, border: 'none', background: '#7c3aed', color: '#fff', cursor: 'pointer', fontWeight: 600 }}
-                        onClick={() => { setModalPagarLanc(l); setDataPagamento(new Date().toISOString().slice(0, 10)); setObsPagamento('') }}>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button size="sm" className="h-7 text-xs"
+                        onClick={() => { setModalPagarLanc(l); setDataPagamento(new Date().toISOString().slice(0,10)); setObsPagamento('') }}>
                         💰 Pagar
-                      </button>
-                    </td>
-                  </tr>
+                      </Button>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-              <tfoot>
-                <tr style={{ background: '#fef3c7', borderTop: '2px solid #fde68a', fontWeight: 700 }}>
-                  <td colSpan={5} style={{ padding: '9px 14px', fontSize: 12 }}>Total agendado — {lancsAgendados.length} lançamento(s)</td>
-                  <td style={{ padding: '9px 14px', textAlign: 'right', fontSize: 13, color: '#b45309' }}>{formatCurrency(totalAgendado)}</td>
-                </tr>
-              </tfoot>
-            </table>
+              </TableBody>
+              <TableFooter>
+                <TableRow>
+                  <TableCell colSpan={5} className="text-sm font-semibold">Total agendado — {lancsAgendados.length} lançamento(s)</TableCell>
+                  <TableCell className="text-right font-bold text-sm" style={{ color:'#b45309' }}>{formatCurrency(totalAgendado)}</TableCell>
+                </TableRow>
+              </TableFooter>
+            </Table>
           </div>
         )
       )}
 
       {/* ══ ABA REALIZADOS ══ */}
       {aba === 'realizados' && (
-        loadingLancs ? (
-          <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>Carregando…</div>
-        ) : lancsRealizados.length === 0 ? (
-          <div style={{ padding: 60, textAlign: 'center', color: '#9ca3af', border: '1px dashed #e5e7eb', borderRadius: 12 }}>
-            <div style={{ fontSize: 32, marginBottom: 8 }}>✅</div>
-            <div style={{ fontWeight: 600 }}>Nenhum pagamento realizado no período</div>
-          </div>
+        loadingLancs ? <LoadingSkeleton /> :
+        lancsRealizados.length === 0 ? (
+          <EmptyState
+            icon={<CheckCircle size={32} />}
+            title="Nenhum pagamento realizado no período"
+            description="Pagamentos efetivados aparecerão aqui."
+          />
         ) : (
-          <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-              <thead>
-                <tr style={{ background: '#f0fdf4', borderBottom: '2px solid #bbf7d0' }}>
-                  <th style={{ padding: '9px 14px', textAlign: 'left', fontWeight: 700, color: '#14532d' }}>Colaborador</th>
-                  <th style={{ padding: '9px 14px', textAlign: 'left', fontWeight: 700, color: '#14532d' }}>Obra</th>
-                  <th style={{ padding: '9px 14px', textAlign: 'center', fontWeight: 700, color: '#14532d' }}>Período</th>
-                  <th style={{ padding: '9px 14px', textAlign: 'center', fontWeight: 700, color: '#14532d' }}>Data Pgto</th>
-                  <th style={{ padding: '9px 14px', textAlign: 'left', fontWeight: 700, color: '#14532d' }}>Obs</th>
-                  <th style={{ padding: '9px 14px', textAlign: 'right', fontWeight: 700, color: '#14532d' }}>💵 Líquido</th>
-                  <th style={{ padding: '9px 14px', textAlign: 'right', fontWeight: 700, color: '#14532d' }}>Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                {lancsRealizados.map((l: any, i: number) => (
-                  <tr key={l.id} style={{ background: i % 2 === 0 ? '#fff' : '#fafafa', borderBottom: '1px solid #f3f4f6' }}>
-                    <td style={{ padding: '10px 14px' }}>
-                      <div style={{ fontWeight: 600, fontSize: 13 }}>{l.colaboradores?.nome ?? '—'}</div>
-                      <div style={{ fontSize: 10, color: '#6b7280' }}>{l.colaboradores?.chapa} · {l.colaboradores?.tipo_contrato?.toUpperCase()}</div>
-                    </td>
-                    <td style={{ padding: '10px 14px', fontSize: 12, color: '#374151' }}>{l.obras?.nome ?? '—'}</td>
-                    <td style={{ padding: '10px 14px', textAlign: 'center', fontSize: 11, color: '#374151' }}>
+          <div style={{ border:'1px solid var(--border)', borderRadius:10, overflow:'hidden' }}>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Colaborador</TableHead>
+                  <TableHead>Obra</TableHead>
+                  <TableHead className="text-center">Período</TableHead>
+                  <TableHead className="text-center">Data Pgto</TableHead>
+                  <TableHead>Obs</TableHead>
+                  <TableHead className="text-right">💵 Líquido</TableHead>
+                  <TableHead className="text-right">Ações</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {lancsRealizados.map((l: any) => (
+                  <TableRow key={l.id}>
+                    <TableCell>
+                      <div className="font-semibold text-sm">{l.colaboradores?.nome ?? '—'}</div>
+                      <div className="text-xs text-muted-foreground">{l.colaboradores?.chapa} · {l.colaboradores?.tipo_contrato?.toUpperCase()}</div>
+                    </TableCell>
+                    <TableCell className="text-sm">{l.obras?.nome ?? '—'}</TableCell>
+                    <TableCell className="text-center text-xs text-muted-foreground">
                       {l.data_inicio?.slice(8)}/{l.data_inicio?.slice(5,7)} → {l.data_fim?.slice(8)}/{l.data_fim?.slice(5,7)}
-                    </td>
-                    <td style={{ padding: '10px 14px', textAlign: 'center' }}>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: '#15803d' }}>
-                        {l.data_pagamento ? l.data_pagamento.slice(8)+'/'+l.data_pagamento.slice(5,7)+'/'+l.data_pagamento.slice(0,4) : '—'}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <span className="text-sm font-semibold" style={{ color:'#15803d' }}>
+                        {l.data_pagamento ? formatDate(l.data_pagamento) : '—'}
                       </span>
-                    </td>
-                    <td style={{ padding: '10px 14px', fontSize: 11, color: '#6b7280', maxWidth: 160 }}>
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground max-w-[160px] truncate">
                       {l.obs_pagamento ?? '—'}
-                    </td>
-                    <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, fontSize: 13, color: '#15803d' }}>
+                    </TableCell>
+                    <TableCell className="text-right font-bold text-sm" style={{ color:'#15803d' }}>
                       {l.snap_liquido ? formatCurrency(l.snap_liquido) : '—'}
-                    </td>
-                    <td style={{ padding: '10px 14px', textAlign: 'right' }}>
-                      <button
-                        style={{ height: 28, padding: '0 12px', fontSize: 11, borderRadius: 6, border: '1px solid #fecaca', background: 'transparent', color: '#dc2626', cursor: 'pointer', fontWeight: 600 }}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button size="sm" variant="outline" className="h-7 text-xs text-destructive border-destructive/40 hover:bg-destructive/5"
                         onClick={() => { setModalEstornar(l); setMotivoEstorno('') }}>
                         ↩ Estornar
-                      </button>
-                    </td>
-                  </tr>
+                      </Button>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-              <tfoot>
-                <tr style={{ background: '#f0fdf4', borderTop: '2px solid #bbf7d0', fontWeight: 700 }}>
-                  <td colSpan={6} style={{ padding: '9px 14px', fontSize: 12 }}>Total realizado — {lancsRealizados.length} lançamento(s)</td>
-                  <td style={{ padding: '9px 14px', textAlign: 'right', fontSize: 13, color: '#15803d' }}>{formatCurrency(totalRealizado)}</td>
-                </tr>
-              </tfoot>
-            </table>
+              </TableBody>
+              <TableFooter>
+                <TableRow>
+                  <TableCell colSpan={6} className="text-sm font-semibold">Total realizado — {lancsRealizados.length} lançamento(s)</TableCell>
+                  <TableCell className="text-right font-bold text-sm" style={{ color:'#15803d' }}>{formatCurrency(totalRealizado)}</TableCell>
+                </TableRow>
+              </TableFooter>
+            </Table>
           </div>
         )
       )}
