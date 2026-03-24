@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { traduzirErro } from '@/lib/erros'
+import { calcDSRComFaltas } from '@/lib/dsr'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -463,25 +464,36 @@ export default function Ponto() {
     return fmtDecimal(min)*valorHoraEfetivo
   },[diasMap,diasComProd,valorHoraEfetivo])
 
-  // DSR — só para CLT
-  // Fórmula: DSR = (totalHoras × valorHoraEfetivo / diasUteis) × domingos
-  // diasUteis = Seg-Sab do período · domingos = domingos + feriados
+  // DSR — só para CLT, com regra de perda por falta semanal
+  // Regra: se houver falta em uma semana (Seg-Sab), o DSR daquele domingo é perdido
   const dsrInfo = useMemo(()=>{
     if(!colabSel||colabSel.tipo_contrato!=='clt'||valorHoraEfetivo===0){
-      return{valor:0,diasUteis:0,domingos:0,baseValor:0}
+      return{valor:0,diasUteis:0,domingos:0,baseValor:0,domingosPerdidos:0}
     }
-    let totalDiasUteis=0,totalDomingos=0
-    lancamentos.forEach(lanc=>{
-      totalDiasUteis+=diasUteisPeriodo(lanc.data_inicio,lanc.data_fim,feriados)
-      totalDomingos+=domingosFeriadosPeriodo(lanc.data_inicio,lanc.data_fim,feriados)
-    })
     const baseValor = fmtDecimal(totaisGlobais.normais)*valorHoraEfetivo
                     + fmtDecimal(totaisGlobais.extras50)*valorHoraEfetivo*1.5
-    const dsr = totalDiasUteis>0 && totalDomingos>0
-      ? (baseValor / totalDiasUteis) * totalDomingos
-      : 0
-    return{valor:dsr,diasUteis:totalDiasUteis,domingos:totalDomingos,baseValor}
-  },[colabSel,valorHoraEfetivo,lancamentos,totaisGlobais.normais,totaisGlobais.extras50,feriados])
+    // Montar set de datas com falta (todos os lançamentos)
+    const datasComFalta = new Set<string>()
+    Object.values(diasMap).forEach(diasLanc=>
+      diasLanc.forEach(d=>{ if(d.falta && d.data) datasComFalta.add(d.data) })
+    )
+    // Somar DSR por lançamento (cada lançamento pode ter período distinto)
+    let dsrTotal=0, totalDiasUteis=0, totalDomingosPagos=0, totalDomingosPerdidos=0
+    lancamentos.forEach(lanc=>{
+      // Horas do lançamento
+      const diasLanc = diasMap[lanc.id] ?? []
+      const vHorasLanc = diasLanc.reduce((s,d)=>{
+        if(diasComProd.has(d.data)) return s  // dias com produção não entram no cálculo de horas
+        const cl=calcDia(d); return s+(cl.normais+cl.extras50)*valorHoraEfetivo
+      },0)
+      const res = calcDSRComFaltas(vHorasLanc, lanc.data_inicio, lanc.data_fim, datasComFalta, feriados)
+      dsrTotal += res.dsr
+      totalDiasUteis += res.diasUteis
+      totalDomingosPagos += res.domingosPagos
+      totalDomingosPerdidos += res.domingosPerdidos
+    })
+    return{valor:dsrTotal,diasUteis:totalDiasUteis,domingos:totalDomingosPagos,baseValor,domingosPerdidos:totalDomingosPerdidos}
+  },[colabSel,valorHoraEfetivo,lancamentos,totaisGlobais.normais,totaisGlobais.extras50,feriados,diasMap,diasComProd])
 
   // premioCLT = excedente da produção sobre o salário (horas + DSR)
   const premioCLT = useMemo(()=>{
@@ -860,12 +872,15 @@ export default function Ponto() {
                   {label:'🏗️ Produção',value:totalProd>0?formatCurrency(totalProd):'—',sub:subProd,color:'#b45309'},
                 ]
 
-                // Card DSR — só CLT
+                // Card DSR — só CLT, com indicador de domingos perdidos por falta
                 if(!ehAuto&&dsrInfo.diasUteis>0){
-                  const subDsr=dsrInfo.baseValor>0
-                    ? `(${formatCurrency(dsrInfo.baseValor)} ÷ ${dsrInfo.diasUteis} du) × ${dsrInfo.domingos} dom`
+                  const perdeuDom = (dsrInfo as any).domingosPerdidos ?? 0
+                  const subDsr = dsrInfo.baseValor>0
+                    ? `(${formatCurrency(dsrInfo.baseValor)} ÷ ${dsrInfo.diasUteis} du) × ${dsrInfo.domingos} dom pagos`
+                      + (perdeuDom>0 ? ` · ⚠ ${perdeuDom} dom perdido${perdeuDom>1?'s':''} p/ falta` : '')
                     : `${dsrInfo.diasUteis} dias úteis · ${dsrInfo.domingos} domingos`
-                  cards.push({label:'📅 DSR',value:dsrInfo.valor>0?formatCurrency(dsrInfo.valor):'R$ 0,00',sub:subDsr,color:'#0369a1'})
+                  const corDsr = perdeuDom>0 ? '#b45309' : '#0369a1'   // laranja se perdeu, azul se ok
+                  cards.push({label:'📅 DSR',value:dsrInfo.valor>0?formatCurrency(dsrInfo.valor):'R$ 0,00',sub:subDsr,color:corDsr})
                 }
 
                 // Card Salário (CLT) ou Total a Receber (autônomo)
@@ -956,12 +971,19 @@ export default function Ponto() {
                     </div>
                     {/* Mini totais com DSR por lançamento */}
                     {valorHoraEfetivo>0&&(()=>{
-                      const vHorasLanc = fmtDecimal(tot.normais)*valorHoraEfetivo + fmtDecimal(tot.extras50)*valorHoraEfetivo*1.5
-                      // DSR individual deste lançamento (só CLT)
+                      const diasLancAtual = diasMap[lanc.id] ?? []
+                      const vHorasLanc = diasLancAtual.reduce((s,d)=>{
+                        if(diasComProd.has(d.data)) return s
+                        const cl=calcDia(d); return s+(cl.normais+cl.extras50)*valorHoraEfetivo
+                      },0)
+                      // DSR individual com regra de falta semanal
                       const ehCLTLanc = colabSel?.tipo_contrato === 'clt'
-                      const duLanc = ehCLTLanc ? diasUteisPeriodo(lanc.data_inicio, lanc.data_fim, feriados) : 0
-                      const domLanc = ehCLTLanc ? domingosFeriadosPeriodo(lanc.data_inicio, lanc.data_fim, feriados) : 0
-                      const dsrLanc = ehCLTLanc && duLanc > 0 && domLanc > 0 ? (vHorasLanc / duLanc) * domLanc : 0
+                      const datasComFaltaLanc = new Set<string>()
+                      if(ehCLTLanc) diasLancAtual.forEach(d=>{ if(d.falta&&d.data) datasComFaltaLanc.add(d.data) })
+                      const dsrResLanc = ehCLTLanc
+                        ? calcDSRComFaltas(vHorasLanc, lanc.data_inicio, lanc.data_fim, datasComFaltaLanc, feriados)
+                        : {dsr:0,domingosPerdidos:0,domingosPagos:0,diasUteis:0}
+                      const dsrLanc = dsrResLanc.dsr
                       return(
                         <div style={{textAlign:'right'}}>
                           <div style={{fontSize:12,fontWeight:700,color:'#15803d'}}>{formatCurrency(vHorasLanc + dsrLanc)}</div>
@@ -1153,10 +1175,11 @@ export default function Ponto() {
                                   </span>
                                 }
                                 // CLT: horas + DSR proporcional do lançamento
-                                const duLanc=diasUteisPeriodo(lanc.data_inicio,lanc.data_fim,feriados)
-                                const domLanc=domingosFeriadosPeriodo(lanc.data_inicio,lanc.data_fim,feriados)
+                                // usar calcDSRComFaltas para consistência
+                                const _duLanc=diasUteisPeriodo(lanc.data_inicio,lanc.data_fim,feriados)
+                                const _domLanc=domingosFeriadosPeriodo(lanc.data_inicio,lanc.data_fim,feriados)
                                 const extrasLanc=fmtDecimal(tot.extras50)*valorHoraEfetivo*1.5
-                                const dsrLanc=duLanc>0&&domLanc>0&&extrasLanc>0?(extrasLanc/duLanc)*domLanc:0
+                                const dsrLanc=_duLanc>0&&_domLanc>0&&extrasLanc>0?(extrasLanc/_duLanc)*_domLanc:0
                                 const totalLanc=vHoras+dsrLanc
                                 return <span title={`Horas: ${formatCurrency(vHoras)}${dsrLanc>0?' + DSR: '+formatCurrency(dsrLanc):''}`}>
                                   {formatCurrency(totalLanc)}

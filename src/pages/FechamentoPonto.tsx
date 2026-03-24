@@ -4,6 +4,7 @@ import {
   CheckCircle2, Clock, DollarSign, Users, ChevronDown, ChevronRight,
   Search, Building2, X,
 } from 'lucide-react'
+import { calcDSRComFaltas } from '@/lib/dsr'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { formatCurrency } from '@/lib/utils'
@@ -176,14 +177,17 @@ export default function FechamentoPonto() {
     // Feriados do período
     const feriadosSet = new Set<string>((feriadosRaw ?? []).map((f: any) => f.data as string))
 
-    // Agregar horas e faltas por lançamento
-    const mapaHoras: Record<string, { norm: number; extra: number; dias: number; faltas: number; diasDatas: Set<string> }> = {}
+    // Agregar horas, faltas e datas de falta por lançamento
+    const mapaHoras: Record<string, { norm: number; extra: number; dias: number; faltas: number; diasDatas: Set<string>; datasComFalta: Set<string> }> = {}
     ;(pontosRaw ?? []).forEach((p: any) => {
-      if (!mapaHoras[p.lancamento_id]) mapaHoras[p.lancamento_id] = { norm: 0, extra: 0, dias: 0, faltas: 0, diasDatas: new Set() }
+      if (!mapaHoras[p.lancamento_id]) mapaHoras[p.lancamento_id] = { norm: 0, extra: 0, dias: 0, faltas: 0, diasDatas: new Set(), datasComFalta: new Set() }
       mapaHoras[p.lancamento_id].norm   += (p.horas_trabalhadas ?? 0)
       mapaHoras[p.lancamento_id].extra  += (p.horas_extras ?? 0)
       mapaHoras[p.lancamento_id].dias   += 1
-      if (p.falta) mapaHoras[p.lancamento_id].faltas += 1
+      if (p.falta) {
+        mapaHoras[p.lancamento_id].faltas += 1
+        if (p.data) mapaHoras[p.lancamento_id].datasComFalta.add(p.data)
+      }
       if (p.data) mapaHoras[p.lancamento_id].diasDatas.add(p.data)
     })
 
@@ -297,10 +301,10 @@ export default function FechamentoPonto() {
       let premio = 0
 
       if (tipo === 'clt') {
-        // DSR = (valorHoras / diasUteis) × domingos
-        const du  = diasUteisPeriodo(l.data_inicio, l.data_fim)
-        const dom = domingosFeriadosPeriodo(l.data_inicio, l.data_fim)
-        dsr = du > 0 && dom > 0 ? (valorHoras / du) * dom : 0
+        // DSR com regra de perda por falta semanal
+        const datasComFaltaLanc = (horasAgg as any).datasComFalta ?? new Set<string>()
+        const dsrRes = calcDSRComFaltas(valorHoras, l.data_inicio, l.data_fim, datasComFaltaLanc)
+        dsr = dsrRes.dsr
         const salario = valorHoras + dsr
         // Regra produção: se prod > salário → paga salário + prêmio
         premio = valorProd > salario ? valorProd - salario : 0
