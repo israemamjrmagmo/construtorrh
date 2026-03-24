@@ -377,7 +377,11 @@ export default function ValeTransportePage() {
       ? await supabase.from('vale_transporte').update(payload).eq('id', editando.id)
       : await supabase.from('vale_transporte').insert(payload)
     setSaving(false)
-    if (error) { toast.error(traduzirErro(error.message)); return }
+    if (error) {
+      console.error('[VT save error]', error)
+      toast.error(error.message || 'Erro ao salvar. Verifique o console.')
+      return
+    }
     toast.success(editando ? 'VT atualizado!' : 'VT lançado!')
     setModalOpen(false)
     fetchData()
