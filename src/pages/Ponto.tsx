@@ -185,6 +185,103 @@ export default function Ponto() {
   const [criandoEmLote, setCriandoEmLote]           = useState(false)
   const [progressoLote, setProgressoLote]           = useState('')
 
+  // ── Painel Portal Produção ─────────────────────────────────────────────────
+  const [modalPortalProd, setModalPortalProd]     = useState(false)
+  const [portalProdInicio, setPortalProdInicio]   = useState('')
+  const [portalProdFim, setPortalProdFim]         = useState('')
+  const [portalProdObraFiltro, setPortalProdObraFiltro] = useState('')
+  const [portalProdDados, setPortalProdDados]     = useState<{
+    id:string; colaborador_id:string; colab_nome:string; obra_id:string; obra_nome:string
+    data:string; quantidade:number; obs:string|null; sincronizado_em:string|null
+    playbook_item_id:string|null; item_nome:string|null; lancamento_id:string|null
+  }[]>([])
+  const [loadingPortalProd, setLoadingPortalProd]         = useState(false)
+  const [importandoPortalProd, setImportandoPortalProd]   = useState<Set<string>>(new Set())
+  const [criandoProdLote, setCriandoProdLote]             = useState(false)
+
+  async function fetchPortalProd(inicio: string, fim: string, obraId?: string) {
+    setLoadingPortalProd(true)
+    const q = supabase
+      .from('portal_producao')
+      .select('id,colaborador_id,obra_id,playbook_item_id,lancamento_id,data,quantidade,obs,sincronizado_em,colaboradores(nome),obras(nome),playbook_items(nome)')
+      .gte('data', inicio)
+      .lte('data', fim)
+      .order('obra_id').order('data')
+    if (obraId) q.eq('obra_id', obraId)
+    const { data } = await q
+    setPortalProdDados((data ?? []).map((r:any) => ({
+      id: r.id,
+      colaborador_id: r.colaborador_id,
+      colab_nome: r.colaboradores?.nome ?? '—',
+      obra_id: r.obra_id,
+      obra_nome: r.obras?.nome ?? '—',
+      data: r.data,
+      quantidade: r.quantidade,
+      obs: r.obs ?? null,
+      sincronizado_em: r.sincronizado_em,
+      playbook_item_id: r.playbook_item_id,
+      item_nome: r.playbook_items?.nome ?? null,
+      lancamento_id: r.lancamento_id,
+    })))
+    setLoadingPortalProd(false)
+  }
+
+  async function importarPortalProd(reg: typeof portalProdDados[0]) {
+    if (reg.sincronizado_em) return
+    setImportandoPortalProd(prev => new Set([...prev, reg.id]))
+    // Encontra ou cria lançamento para o colaborador/obra/mês
+    const mr = reg.data.slice(0,7)
+    let lancId = reg.lancamento_id
+    if (!lancId) {
+      const { data: existentes } = await supabase.from('ponto_lancamentos')
+        .select('id').eq('colaborador_id', reg.colaborador_id).eq('obra_id', reg.obra_id)
+        .lte('data_inicio', reg.data).gte('data_fim', reg.data).limit(1)
+      if (existentes && existentes.length > 0) {
+        lancId = existentes[0].id
+      } else {
+        const { data: newLanc } = await supabase.from('ponto_lancamentos').insert({
+          colaborador_id: reg.colaborador_id, obra_id: reg.obra_id,
+          mes_referencia: mr, data_inicio: `${mr}-01`, data_fim: `${mr}-31`,
+          status: 'rascunho', criado_por: 'portal',
+        }).select('id').single()
+        lancId = newLanc?.id ?? null
+      }
+    }
+    // Insere em ponto_producao
+    const { data: novaProd, error } = await supabase.from('ponto_producao').insert({
+      lancamento_id: lancId,
+      colaborador_id: reg.colaborador_id,
+      obra_id: reg.obra_id,
+      playbook_item_id: reg.playbook_item_id,
+      data: reg.data,
+      quantidade: reg.quantidade,
+      observacoes: reg.obs ?? null,
+    }).select('id').single()
+    if (!error && novaProd) {
+      await supabase.from('portal_producao').update({
+        sincronizado_em: new Date().toISOString(),
+        lancamento_prod_id: novaProd.id,
+        lancamento_id: lancId,
+      }).eq('id', reg.id)
+      fetchPortalProd(portalProdInicio, portalProdFim, portalProdObraFiltro)
+      toast.success('Produção importada!')
+    } else {
+      toast.error('Erro ao importar produção')
+    }
+    setImportandoPortalProd(prev => { const s = new Set(prev); s.delete(reg.id); return s })
+  }
+
+  async function criarProdLote() {
+    const pendentes = portalProdDados.filter(r => !r.sincronizado_em)
+    if (!pendentes.length) return
+    setCriandoProdLote(true)
+    for (const reg of pendentes) {
+      await importarPortalProd(reg)
+    }
+    setCriandoProdLote(false)
+    toast.success(`${pendentes.length} produção(ões) importada(s) em lote!`)
+  }
+
   async function fetchPortalPonto(inicio: string, fim: string, obraId?: string) {
     setLoadingPortal(true)
     const q = supabase
@@ -1027,6 +1124,17 @@ export default function Ponto() {
                 style={{gap:4,height:30,fontSize:12,borderColor:'#3b82f6',color:'#1d4ed8',background:'#eff6ff'}}>
                 📲 Portal
               </Button>
+              <Button size="sm" variant="outline"
+                onClick={()=>{
+                  setPortalProdInicio(`${mesRef}-01`)
+                  setPortalProdFim(`${mesRef}-31`)
+                  setPortalProdObraFiltro('')
+                  setPortalProdDados([])
+                  setModalPortalProd(true)
+                }}
+                style={{gap:4,height:30,fontSize:12,borderColor:'#b45309',color:'#92400e',background:'#fffbeb'}}>
+                📈 Prod. Portal
+              </Button>
               <Button size="sm"
                 disabled={!colabSel||lancamentos.some(l=>['rascunho','recusado','aguardando_aprovacao'].includes(l.status))}
                 title={lancamentos.some(l=>['rascunho','recusado','aguardando_aprovacao'].includes(l.status))?'Envie os lançamentos em aberto para o Fechamento antes de criar um novo':undefined}
@@ -1770,6 +1878,144 @@ export default function Ponto() {
               💡 <strong>"Criar Tudo em Lote"</strong> cria os lançamentos e os pontos diários automaticamente. Você só valida os dados no sistema.
             </div>
           </>)}
+        </div>
+      </div>
+    )}
+    {/* ─── Modal Portal: importação de Produções do Portal ─────────────── */}
+    {modalPortalProd && (
+      <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
+        <div style={{background:'var(--background)',borderRadius:16,width:'100%',maxWidth:820,maxHeight:'92vh',display:'flex',flexDirection:'column',overflow:'hidden',boxShadow:'0 20px 60px rgba(0,0,0,0.3)'}}>
+
+          {/* Header */}
+          <div style={{padding:'18px 24px',borderBottom:'1px solid var(--border)',display:'flex',justifyContent:'space-between',alignItems:'center',background:'linear-gradient(135deg,#fffbeb,#fef3c7)'}}>
+            <div>
+              <div style={{fontWeight:800,fontSize:17,color:'#92400e'}}>📈 Importar Produções do Portal</div>
+              <div style={{fontSize:12,color:'#b45309',marginTop:2}}>Selecione o período e importe as produções lançadas pelos encarregados</div>
+            </div>
+            <button onClick={()=>setModalPortalProd(false)} style={{background:'none',border:'none',fontSize:22,cursor:'pointer',color:'#b45309',lineHeight:1}}>✕</button>
+          </div>
+
+          {/* Filtros */}
+          <div style={{padding:'14px 20px',borderBottom:'1px solid var(--border)',display:'flex',gap:12,flexWrap:'wrap',alignItems:'flex-end'}}>
+            <div>
+              <label style={{display:'block',fontSize:11,fontWeight:700,color:'#b45309',marginBottom:4,textTransform:'uppercase'}}>De</label>
+              <input type="date" value={portalProdInicio} onChange={e=>setPortalProdInicio(e.target.value)}
+                style={{height:36,border:'1px solid var(--border)',borderRadius:7,padding:'0 10px',fontSize:13,background:'var(--background)',color:'var(--foreground)'}}/>
+            </div>
+            <div>
+              <label style={{display:'block',fontSize:11,fontWeight:700,color:'#b45309',marginBottom:4,textTransform:'uppercase'}}>Até</label>
+              <input type="date" value={portalProdFim} onChange={e=>setPortalProdFim(e.target.value)}
+                style={{height:36,border:'1px solid var(--border)',borderRadius:7,padding:'0 10px',fontSize:13,background:'var(--background)',color:'var(--foreground)'}}/>
+            </div>
+            <div style={{flex:1,minWidth:160}}>
+              <label style={{display:'block',fontSize:11,fontWeight:700,color:'#b45309',marginBottom:4,textTransform:'uppercase'}}>Obra (opcional)</label>
+              <select value={portalProdObraFiltro} onChange={e=>setPortalProdObraFiltro(e.target.value)}
+                style={{width:'100%',height:36,border:'1px solid var(--border)',borderRadius:7,padding:'0 10px',fontSize:13,background:'var(--background)',color:'var(--foreground)'}}>
+                <option value="">Todas as obras</option>
+                {obras.map(o=><option key={o.id} value={o.id}>{o.nome}</option>)}
+              </select>
+            </div>
+            <Button onClick={()=>fetchPortalProd(portalProdInicio,portalProdFim,portalProdObraFiltro||undefined)}
+              disabled={!portalProdInicio||!portalProdFim||loadingPortalProd}
+              style={{height:36,background:'#b45309',color:'#fff',fontWeight:700,gap:4}}>
+              {loadingPortalProd?'Buscando…':'🔍 Buscar'}
+            </Button>
+          </div>
+
+          {/* Conteúdo */}
+          <div style={{flex:1,overflow:'auto',padding:'16px 20px'}}>
+            {loadingPortalProd ? (
+              <div style={{textAlign:'center',padding:40,color:'var(--muted-foreground)'}}>Buscando produções…</div>
+            ) : portalProdDados.length === 0 ? (
+              <div style={{background:'var(--muted)',borderRadius:12,padding:40,textAlign:'center',color:'var(--muted-foreground)'}}>
+                <div style={{fontSize:32,marginBottom:8}}>📭</div>
+                {portalProdInicio ? 'Nenhuma produção encontrada para o período' : 'Selecione o período e clique em Buscar'}
+              </div>
+            ) : (
+              <>
+                {/* Resumo + lote */}
+                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12,flexWrap:'wrap',gap:8}}>
+                  <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                    {portalProdDados.filter(r=>!r.sincronizado_em).length>0&&<span style={{background:'#fef3c7',color:'#b45309',borderRadius:5,padding:'2px 8px',fontWeight:700,fontSize:12}}>⏳ {portalProdDados.filter(r=>!r.sincronizado_em).length} pendente(s)</span>}
+                    {portalProdDados.filter(r=>r.sincronizado_em).length>0&&<span style={{background:'#dcfce7',color:'#15803d',borderRadius:5,padding:'2px 8px',fontWeight:700,fontSize:12}}>✓ {portalProdDados.filter(r=>r.sincronizado_em).length} importada(s)</span>}
+                  </div>
+                  {portalProdDados.some(r=>!r.sincronizado_em)&&(
+                    <button onClick={criarProdLote} disabled={criandoProdLote}
+                      style={{background:'#b45309',color:'#fff',border:'none',borderRadius:9,padding:'7px 16px',fontWeight:800,fontSize:12,cursor:'pointer',display:'flex',alignItems:'center',gap:6}}>
+                      {criandoProdLote?'⏳ Importando…':'⚡ Importar Tudo em Lote'}
+                    </button>
+                  )}
+                </div>
+
+                {/* Tabela agrupada por obra */}
+                {(()=>{
+                  const obraIds = [...new Set(portalProdDados.map(r=>r.obra_id))]
+                  return obraIds.map(oId=>{
+                    const regs = portalProdDados.filter(r=>r.obra_id===oId)
+                    const obraNome = regs[0]?.obra_nome ?? '—'
+                    return(
+                      <div key={oId} style={{marginBottom:16}}>
+                        <div style={{fontWeight:800,fontSize:13,color:'#92400e',marginBottom:6,paddingBottom:4,borderBottom:'2px solid #fcd34d'}}>
+                          🏗️ {obraNome} <span style={{fontWeight:400,color:'#b45309',fontSize:11}}>({regs.length} registro(s))</span>
+                        </div>
+                        <div style={{background:'var(--card)',border:'1px solid var(--border)',borderRadius:10,overflow:'hidden'}}>
+                          <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+                            <thead>
+                              <tr style={{background:'#fef3c7'}}>
+                                <th style={{...TH,textAlign:'left',padding:'7px 12px'}}>Colaborador</th>
+                                <th style={{...TH}}>Data</th>
+                                <th style={{...TH}}>Serviço / Item</th>
+                                <th style={{...TH}}>Qtde</th>
+                                <th style={{...TH}}>Obs</th>
+                                <th style={{...TH}}>Status</th>
+                                <th style={{...TH}}></th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {regs.map((reg,ri)=>{
+                                const jaSync=!!reg.sincronizado_em
+                                const imp=importandoPortalProd.has(reg.id)
+                                return(
+                                  <tr key={reg.id} style={{borderTop:ri>0?'1px solid var(--border)':'none',background:jaSync?'#f0fdf4':'#fff'}}>
+                                    <td style={{...TD,padding:'7px 12px',fontWeight:600,color:'var(--foreground)'}}>{reg.colab_nome}</td>
+                                    <td style={{...TD,textAlign:'center'}}>{reg.data.split('-').reverse().join('/')}</td>
+                                    <td style={{...TD,textAlign:'center',color:'#92400e'}}>{reg.item_nome ?? <span style={{color:'#9ca3af',fontStyle:'italic'}}>—</span>}</td>
+                                    <td style={{...TD,textAlign:'center',fontWeight:700,color:'#b45309'}}>{reg.quantidade}</td>
+                                    <td style={{...TD,textAlign:'center',color:'#6b7280',fontSize:11}}>{reg.obs ?? '—'}</td>
+                                    <td style={{...TD,textAlign:'center'}}>
+                                      {jaSync
+                                        ?<span style={{background:'#dcfce7',color:'#15803d',borderRadius:5,padding:'2px 6px',fontSize:11,fontWeight:700}}>✓</span>
+                                        :<span style={{background:'#fef3c7',color:'#b45309',borderRadius:5,padding:'2px 6px',fontSize:11,fontWeight:700}}>⏳</span>}
+                                    </td>
+                                    <td style={{...TD,textAlign:'center'}}>
+                                      {!jaSync&&(
+                                        <button onClick={()=>importarPortalProd(reg)} disabled={imp}
+                                          style={{background:'#1e3a5f',color:'#fff',border:'none',borderRadius:6,padding:'3px 10px',fontSize:11,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}}>
+                                          {imp?'⏳':'↓ Importar'}
+                                        </button>
+                                      )}
+                                    </td>
+                                  </tr>
+                                )
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )
+                  })
+                })()}
+              </>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div style={{padding:'12px 20px',borderTop:'1px solid var(--border)',display:'flex',justifyContent:'flex-end'}}>
+            <button onClick={()=>setModalPortalProd(false)}
+              style={{height:38,padding:'0 20px',border:'1px solid var(--border)',borderRadius:8,background:'var(--muted)',cursor:'pointer',fontWeight:600,fontSize:13}}>
+              Fechar
+            </button>
+          </div>
         </div>
       </div>
     )}

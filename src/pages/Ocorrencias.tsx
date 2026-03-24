@@ -219,91 +219,244 @@ type Aba = 'acidentes' | 'atestados' | 'advertencias' | 'portal'
 function OcorrenciasPortalTab({ obras, colaboradores }: { obras: {id:string;nome:string}[]; colaboradores: {id:string;nome:string;chapa:string}[] }) {
   const [rows, setRows]       = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [filtroObra, setFiltroObra] = useState('')
+  const [filtroObra, setFiltroObra]   = useState('')
+  const [filtroTipo, setFiltroTipo]   = useState('')
+  const [filtroSync, setFiltroSync]   = useState<'pendente'|'todos'>('pendente')
   const [sincronizando, setSincronizando] = useState<Set<string>>(new Set())
+  const [detalhe, setDetalhe] = useState<any|null>(null)
 
   const TIPOS_LABEL: Record<string,string> = {
-    ocorrencia:'Ocorrência', acidente:'Acidente', quase_acidente:'Quase Acidente', epi:'EPI/Segurança', disciplinar:'Disciplinar'
+    acidente:'⚠️ Acidente', atestado:'🏥 Atestado', advertencia:'📋 Advertência',
+    quase_acidente:'⚡ Quase Acidente', ocorrencia:'📌 Ocorrência', geral:'📌 Geral',
+    epi:'🦺 EPI/Segurança', disciplinar:'📋 Disciplinar',
   }
   const GRAV_COR: Record<string,{bg:string;cor:string}> = {
-    baixa:{bg:'#dcfce7',cor:'#15803d'}, media:{bg:'#fef3c7',cor:'#b45309'},
-    alta:{bg:'#fee2e2',cor:'#dc2626'},  critica:{bg:'#ede9fe',cor:'#7c3aed'},
+    leve:    {bg:'#fef9c3',cor:'#a16207'},
+    moderado:{bg:'#fef3c7',cor:'#b45309'},
+    grave:   {bg:'#fee2e2',cor:'#dc2626'},
+    fatal:   {bg:'#450a0a',cor:'#fff'},
+    baixa:   {bg:'#dcfce7',cor:'#15803d'},
+    media:   {bg:'#fef3c7',cor:'#b45309'},
+    alta:    {bg:'#fee2e2',cor:'#dc2626'},
+    critica: {bg:'#ede9fe',cor:'#7c3aed'},
   }
 
   const fetchRows = useCallback(async () => {
     setLoading(true)
-    const q = supabase.from('portal_ocorrencias').select('*,colaboradores(nome)').order('criado_em', { ascending: false })
+    const q = supabase.from('portal_ocorrencias')
+      .select('*,colaboradores(nome,chapa),obras(nome)')
+      .order('criado_em', { ascending: false })
     if (filtroObra) q.eq('obra_id', filtroObra)
+    if (filtroTipo) q.eq('tipo', filtroTipo)
+    if (filtroSync === 'pendente') q.is('sincronizado_em', null)
     const { data } = await q
     setRows(data ?? [])
     setLoading(false)
-  }, [filtroObra])
+  }, [filtroObra, filtroTipo, filtroSync])
 
   useEffect(() => { fetchRows() }, [fetchRows])
 
   async function sincronizar(r: any) {
     setSincronizando(prev => new Set([...prev, r.id]))
-    // Cria na tabela de acidentes se for acidente, caso contrário apenas marca como sincronizado
-    if (r.tipo === 'acidente' || r.tipo === 'quase_acidente') {
-      await supabase.from('acidentes').insert({
-        colaborador_id: r.colaborador_id ?? null,
-        obra_id: r.obra_id,
-        data_ocorrencia: r.data,
-        tipo: r.tipo === 'acidente' ? 'com_afastamento' : 'sem_afastamento',
-        descricao: `[PORTAL] ${r.titulo}${r.descricao ? ' — ' + r.descricao : ''}`,
-        gravidade: r.gravidade,
-      })
+    const dataOcor = r.data_ocorrencia ?? r.data ?? new Date().toISOString().slice(0,10)
+    let destId: string | null = null
+
+    try {
+      if (r.tipo === 'acidente' || r.tipo === 'quase_acidente') {
+        // → tabela acidentes
+        const tipoAcid = r.tipo_acidente ?? (r.tipo === 'quase_acidente' ? 'sem_afastamento' : 'com_afastamento')
+        const { data: novo } = await supabase.from('acidentes').insert({
+          colaborador_id:  r.colaborador_id ?? null,
+          obra_id:         r.obra_id,
+          data_ocorrencia: dataOcor,
+          hora_acidente:   r.hora_acidente ?? null,
+          tipo:            tipoAcid,
+          gravidade:       r.gravidade ?? null,
+          descricao:       r.descricao ?? '',
+          local_acidente:  r.local ?? null,
+          cat_emitida:     r.cat_emitida ?? false,
+          status:          'aberto',
+          observacoes:     '[Importado do Portal]',
+        }).select('id').single()
+        destId = novo?.id ?? null
+
+      } else if (r.tipo === 'atestado') {
+        // → tabela atestados
+        const { data: novo } = await supabase.from('atestados').insert({
+          colaborador_id:  r.colaborador_id ?? null,
+          data:            dataOcor,
+          tipo:            r.tipo_atestado ?? 'medico',
+          com_afastamento: r.com_afastamento ?? false,
+          dias_afastamento:r.dias_afastamento ?? null,
+          cid:             r.cid ?? null,
+          medico:          r.medico ?? null,
+          descricao:       r.descricao ?? '',
+          observacoes:     '[Importado do Portal]',
+        }).select('id').single()
+        destId = novo?.id ?? null
+
+      } else if (r.tipo === 'advertencia') {
+        // → tabela advertencias
+        const { data: novo } = await supabase.from('advertencias').insert({
+          colaborador_id:  r.colaborador_id ?? null,
+          data_advertencia:dataOcor,
+          tipo:            r.tipo_adv ?? 'escrita',
+          motivo:          r.motivo ?? r.descricao ?? '',
+          descricao:       r.descricao ?? '',
+          assinada:        r.assinada ?? false,
+          dias_suspensao:  r.dias_suspensao ?? null,
+          observacoes:     '[Importado do Portal]',
+        }).select('id').single()
+        destId = novo?.id ?? null
+      }
+      // Para outros tipos: só marca como sincronizado sem criar registro adicional
+
+    } catch (err: any) {
+      toast.error('Erro ao sincronizar: ' + err?.message)
+      setSincronizando(prev => { const s = new Set(prev); s.delete(r.id); return s })
+      return
     }
-    await supabase.from('portal_ocorrencias').update({ sincronizado_em: new Date().toISOString() }).eq('id', r.id)
-    toast.success('Ocorrência sincronizada!')
+
+    await supabase.from('portal_ocorrencias').update({
+      sincronizado_em: new Date().toISOString(),
+      ...(destId ? { lancamento_id: destId } : {}),
+    }).eq('id', r.id)
+
+    toast.success(`${TIPOS_LABEL[r.tipo] ?? r.tipo} sincronizado!`)
     setSincronizando(prev => { const s = new Set(prev); s.delete(r.id); return s })
+    setDetalhe(null)
     fetchRows()
   }
 
+  const pendentes = rows.filter(r => !r.sincronizado_em).length
+
   return (
     <div>
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16, flexWrap:'wrap', gap:10 }}>
+      {/* ── Header + Filtros ── */}
+      <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:14, flexWrap:'wrap', gap:10 }}>
         <div>
           <div style={{ fontWeight:800, fontSize:16 }}>📲 Ocorrências do Portal</div>
-          <div style={{ fontSize:12, color:'var(--muted-foreground)' }}>Registradas pelo encarregado no app móvel</div>
+          <div style={{ fontSize:12, color:'var(--muted-foreground)' }}>
+            Registradas pelo encarregado no app · {pendentes > 0 && <span style={{ color:'#b45309', fontWeight:700 }}>{pendentes} pendente(s)</span>}
+          </div>
         </div>
-        <select value={filtroObra} onChange={e => setFiltroObra(e.target.value)}
-          style={{ height:34, border:'1px solid var(--border)', borderRadius:7, padding:'0 12px', fontSize:13, background:'var(--input)', color:'var(--foreground)' }}>
-          <option value="">Todas as obras</option>
-          {obras.map(o => <option key={o.id} value={o.id}>{o.nome}</option>)}
-        </select>
+        <div style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' }}>
+          {/* Filtro sync */}
+          <div style={{ display:'flex', background:'var(--muted)', borderRadius:8, padding:3 }}>
+            {(['pendente','todos'] as const).map(v => (
+              <button key={v} onClick={()=>setFiltroSync(v)}
+                style={{ height:28, padding:'0 12px', border:'none', borderRadius:6, cursor:'pointer', fontWeight:700, fontSize:11,
+                  background: filtroSync===v?'var(--background)':'transparent',
+                  color: filtroSync===v?'var(--foreground)':'var(--muted-foreground)',
+                  boxShadow: filtroSync===v?'0 1px 3px rgba(0,0,0,0.1)':'none' }}>
+                {v==='pendente'?'⏳ Pendentes':'Todos'}
+              </button>
+            ))}
+          </div>
+          {/* Filtro tipo */}
+          <select value={filtroTipo} onChange={e=>setFiltroTipo(e.target.value)}
+            style={{ height:34, border:'1px solid var(--border)', borderRadius:7, padding:'0 10px', fontSize:12, background:'var(--input)', color:'var(--foreground)' }}>
+            <option value="">Todos os tipos</option>
+            {Object.entries(TIPOS_LABEL).map(([k,v])=><option key={k} value={k}>{v}</option>)}
+          </select>
+          {/* Filtro obra */}
+          <select value={filtroObra} onChange={e=>setFiltroObra(e.target.value)}
+            style={{ height:34, border:'1px solid var(--border)', borderRadius:7, padding:'0 10px', fontSize:12, background:'var(--input)', color:'var(--foreground)' }}>
+            <option value="">Todas as obras</option>
+            {obras.map(o=><option key={o.id} value={o.id}>{o.nome}</option>)}
+          </select>
+        </div>
       </div>
+
       {loading ? (
         <div style={{ textAlign:'center', padding:40, color:'var(--muted-foreground)' }}>Carregando…</div>
       ) : rows.length === 0 ? (
         <div style={{ background:'var(--card)', border:'1px solid var(--border)', borderRadius:12, padding:40, textAlign:'center', color:'var(--muted-foreground)' }}>
-          <div style={{ fontSize:32, marginBottom:8 }}>📭</div>Nenhuma ocorrência registrada no portal
+          <div style={{ fontSize:32, marginBottom:8 }}>📭</div>
+          {filtroSync==='pendente' ? 'Nenhuma ocorrência pendente de sincronização' : 'Nenhuma ocorrência registrada no portal'}
         </div>
       ) : (
         <div style={{ background:'var(--card)', border:'1px solid var(--border)', borderRadius:12, overflow:'hidden' }}>
           {rows.map((r, i) => {
-            const gc = GRAV_COR[r.gravidade] ?? { bg:'#f3f4f6', cor:'#374151' }
+            const gc  = GRAV_COR[r.gravidade ?? ''] ?? {bg:'#f3f4f6', cor:'#374151'}
             const jaSync = !!r.sincronizado_em
-            const sync = sincronizando.has(r.id)
+            const sync   = sincronizando.has(r.id)
+            const tipoLabel = TIPOS_LABEL[r.tipo] ?? r.tipo
+            const dataFmt = r.data_ocorrencia
+              ? r.data_ocorrencia.split('-').reverse().join('/')
+              : r.data ? r.data.split('-').reverse().join('/') : '—'
             return (
-              <div key={r.id} style={{ padding:'14px 18px', borderTop:i>0?'1px solid var(--border)':'none', display:'flex', gap:12, alignItems:'center' }}>
-                <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', marginBottom:4 }}>
-                    <span style={{ fontWeight:700, fontSize:14 }}>{TIPOS_LABEL[r.tipo] ?? r.tipo} — {r.titulo}</span>
-                    <span style={{ background:gc.bg, color:gc.cor, borderRadius:5, padding:'2px 7px', fontSize:11, fontWeight:700 }}>{r.gravidade?.charAt(0).toUpperCase()+r.gravidade?.slice(1)}</span>
-                    {jaSync && <span style={{ background:'#dcfce7', color:'#15803d', borderRadius:5, padding:'2px 7px', fontSize:11, fontWeight:700 }}>✓ Sincronizado</span>}
+              <div key={r.id} style={{ padding:'14px 18px', borderTop:i>0?'1px solid var(--border)':'none' }}>
+                <div style={{ display:'flex', gap:12, alignItems:'flex-start' }}>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    {/* Linha 1: tipo + gravidade + sync */}
+                    <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap', marginBottom:4 }}>
+                      <span style={{ fontWeight:800, fontSize:13 }}>{tipoLabel}</span>
+                      {r.gravidade && <span style={{ background:gc.bg, color:gc.cor, borderRadius:5, padding:'1px 7px', fontSize:11, fontWeight:700 }}>{r.gravidade}</span>}
+                      {jaSync && <span style={{ background:'#dcfce7', color:'#15803d', borderRadius:5, padding:'1px 7px', fontSize:11, fontWeight:700 }}>✓ Sincronizado</span>}
+                      {!jaSync && <span style={{ background:'#fef3c7', color:'#b45309', borderRadius:5, padding:'1px 7px', fontSize:11, fontWeight:700 }}>⏳ Pendente</span>}
+                    </div>
+
+                    {/* Colaborador + obra */}
+                    <div style={{ fontSize:12, color:'var(--foreground)', fontWeight:600 }}>
+                      👤 {r.colaboradores?.nome ?? '—'}
+                      {r.obras?.nome && <span style={{ fontWeight:400, color:'var(--muted-foreground)', marginLeft:6 }}>· 🏗️ {r.obras.nome}</span>}
+                    </div>
+
+                    {/* Descrição */}
+                    {r.descricao && <div style={{ fontSize:11, color:'var(--muted-foreground)', marginTop:3, fontStyle:'italic', lineHeight:1.4 }}>{r.descricao}</div>}
+
+                    {/* Detalhes específicos inline */}
+                    <div style={{ display:'flex', gap:10, flexWrap:'wrap', marginTop:4 }}>
+                      {r.local && <span style={{ fontSize:11, color:'var(--muted-foreground)' }}>📍 {r.local}</span>}
+                      {r.hora_acidente && <span style={{ fontSize:11, color:'var(--muted-foreground)' }}>⏰ {r.hora_acidente}</span>}
+                      {r.cat_emitida && <span style={{ fontSize:11, background:'#fee2e2', color:'#dc2626', borderRadius:4, padding:'0 5px' }}>CAT Emitida</span>}
+                      {r.dias_afastamento > 0 && <span style={{ fontSize:11, color:'#2563eb', fontWeight:700 }}>🏥 {r.dias_afastamento} dia(s)</span>}
+                      {r.cid && <span style={{ fontSize:11, color:'var(--muted-foreground)', fontFamily:'monospace' }}>CID: {r.cid}</span>}
+                      {r.motivo && <span style={{ fontSize:11, color:'var(--muted-foreground)' }}>📋 {r.motivo}</span>}
+                      {r.assinada && <span style={{ fontSize:11, background:'#dcfce7', color:'#15803d', borderRadius:4, padding:'0 5px' }}>Assinada</span>}
+                      {r.dias_suspensao > 0 && <span style={{ fontSize:11, color:'#ea580c', fontWeight:700 }}>⛔ {r.dias_suspensao} dia(s) suspensão</span>}
+                    </div>
+
+                    <div style={{ fontSize:10, color:'var(--muted-foreground)', marginTop:5 }}>
+                      📅 {dataFmt} · Registrado {new Date(r.criado_em).toLocaleString('pt-BR')}
+                    </div>
                   </div>
-                  {r.colaboradores?.nome && <div style={{ fontSize:12, color:'var(--muted-foreground)' }}>👤 {r.colaboradores.nome}</div>}
-                  {r.descricao && <div style={{ fontSize:11, color:'var(--muted-foreground)', marginTop:3, fontStyle:'italic' }}>{r.descricao}</div>}
-                  <div style={{ fontSize:10, color:'var(--muted-foreground)', marginTop:4 }}>
-                    📅 {new Date(r.data).toLocaleDateString('pt-BR')} · Registrado {new Date(r.criado_em).toLocaleString('pt-BR')}
+
+                  {/* Ações */}
+                  <div style={{ display:'flex', flexDirection:'column', gap:6, flexShrink:0, alignItems:'flex-end' }}>
+                    <button onClick={()=>setDetalhe(detalhe?.id===r.id?null:r)}
+                      style={{ background:'none', border:'1px solid var(--border)', borderRadius:7, padding:'4px 10px', fontSize:11, cursor:'pointer', color:'var(--muted-foreground)' }}>
+                      {detalhe?.id===r.id?'▲ Fechar':'▼ Detalhes'}
+                    </button>
+                    {!jaSync && (
+                      <button onClick={()=>sincronizar(r)} disabled={sync}
+                        style={{ background:'#1e3a5f', color:'#fff', border:'none', borderRadius:8, padding:'5px 12px', fontSize:12, fontWeight:700, cursor:sync?'wait':'pointer', whiteSpace:'nowrap' }}>
+                        {sync ? '⏳…' : '🔄 Sincronizar'}
+                      </button>
+                    )}
                   </div>
                 </div>
-                {!jaSync && (
-                  <button onClick={() => sincronizar(r)} disabled={sync}
-                    style={{ background:'#1e3a5f', color:'#fff', border:'none', borderRadius:8, padding:'6px 14px', fontSize:12, fontWeight:700, cursor:sync?'wait':'pointer', whiteSpace:'nowrap', flexShrink:0 }}>
-                    {sync ? '⏳…' : '🔄 Sincronizar'}
-                  </button>
+
+                {/* Painel de detalhe expandido */}
+                {detalhe?.id === r.id && (
+                  <div style={{ marginTop:10, background:'var(--muted)', borderRadius:8, padding:'10px 14px', fontSize:12, display:'grid', gridTemplateColumns:'1fr 1fr', gap:'6px 16px' }}>
+                    {r.hora_acidente    && <div><b>Hora:</b> {r.hora_acidente}</div>}
+                    {r.local            && <div><b>Local:</b> {r.local}</div>}
+                    {r.tipo_acidente    && <div><b>Tipo Acidente:</b> {r.tipo_acidente}</div>}
+                    {r.cat_emitida!=null&& <div><b>CAT:</b> {r.cat_emitida?'Sim':'Não'}</div>}
+                    {r.tipo_atestado    && <div><b>Tipo Atestado:</b> {r.tipo_atestado}</div>}
+                    {r.cid              && <div><b>CID:</b> {r.cid}</div>}
+                    {r.medico           && <div><b>Médico:</b> {r.medico}</div>}
+                    {r.dias_afastamento != null && <div><b>Dias Afastamento:</b> {r.dias_afastamento}</div>}
+                    {r.com_afastamento  != null && <div><b>Com Afastamento:</b> {r.com_afastamento?'Sim':'Não'}</div>}
+                    {r.tipo_adv         && <div><b>Tipo Adv.:</b> {r.tipo_adv}</div>}
+                    {r.motivo           && <div style={{ gridColumn:'1/-1' }}><b>Motivo:</b> {r.motivo}</div>}
+                    {r.assinada!=null   && <div><b>Assinada:</b> {r.assinada?'Sim':'Não'}</div>}
+                    {r.dias_suspensao   && <div><b>Dias Suspensão:</b> {r.dias_suspensao}</div>}
+                    {r.gravidade        && <div><b>Gravidade:</b> {r.gravidade}</div>}
+                    {r.sincronizado_em  && <div style={{ gridColumn:'1/-1', color:'#15803d' }}><b>Sincronizado em:</b> {new Date(r.sincronizado_em).toLocaleString('pt-BR')}</div>}
+                  </div>
                 )}
               </div>
             )
