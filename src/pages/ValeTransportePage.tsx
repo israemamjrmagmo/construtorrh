@@ -23,6 +23,9 @@ import {
 // ─── tipos ───────────────────────────────────────────────────────────────────
 type ColaboradorVT = Pick<Colaborador, 'id' | 'nome' | 'chapa' | 'salario' | 'vt_dados'> & {
   obra_id: string | null; obra_nome?: string; funcao_nome?: string
+  tipo_contrato?: string | null
+  valor_hora_calc?: number | null    // valor/hora efetivo vindo de funcao_valores ou funcoes
+  salario_mensal_calc?: number | null // valor_hora_calc × 220
 }
 type VTRow = ValeTransporte & { colaboradores?: ColaboradorVT }
 type FormData = {
@@ -185,7 +188,7 @@ export default function ValeTransportePage() {
     const [colRes, obraRes, vtRes] = await Promise.all([
       supabase
         .from('colaboradores')
-        .select('id,nome,chapa,salario,vt_dados,obra_id,funcoes(nome),obras(nome)')
+        .select('id,nome,chapa,salario,vt_dados,obra_id,tipo_contrato,funcao_id,funcoes(nome,valor_hora_clt,valor_hora_autonomo),obras(nome)')
         .eq('status', 'ativo')
         .order('nome'),
       supabase.from('obras').select('id,nome').order('nome'),
@@ -195,9 +198,19 @@ export default function ValeTransportePage() {
         .order('competencia', { ascending: false }),
     ])
     if (colRes.data) {
-      setColaboradores(colRes.data.map((c: any) => ({
-        ...c, obra_nome: c.obras?.nome ?? '', funcao_nome: c.funcoes?.nome ?? '',
-      })))
+      setColaboradores(colRes.data.map((c: any) => {
+        const tipo = c.tipo_contrato ?? 'clt'
+        const vh = tipo === 'clt'
+          ? (c.funcoes?.valor_hora_clt ?? null)
+          : (c.funcoes?.valor_hora_autonomo ?? null)
+        return {
+          ...c,
+          obra_nome: c.obras?.nome ?? '',
+          funcao_nome: c.funcoes?.nome ?? '',
+          valor_hora_calc: vh,
+          salario_mensal_calc: vh != null ? vh * 220 : (c.salario ?? null),
+        }
+      }))
     }
     if (obraRes.data) setObras(obraRes.data)
     if (vtRes.data)   setVtRows(vtRes.data as VTRow[])
@@ -242,7 +255,7 @@ export default function ValeTransportePage() {
       const vtMen = colab ? vtMensalColab(colab, comp, contarSab) : 0
       valorBruto  = vtMen > 0 ? calcValorProporcional(vtMen, dataIni, dataFim, comp, contarSab) : 0
     }
-    const salario  = colab?.salario ?? 0
+    const salario  = colab?.salario_mensal_calc ?? colab?.salario ?? 0
     const desconto = descontar ? salario * 0.06 : 0
     const valorEmp = Math.max(0, valorBruto - desconto)
     return {
@@ -525,7 +538,7 @@ export default function ValeTransportePage() {
                         {vtDiario_ > 0 && <span>Valor/dia: <strong>{formatCurrency(vtDiario_)}</strong></span>}
                         {vtMensalColab_ > 0 && <span>Mês estimado: <strong>{formatCurrency(vtMensalColab_)}</strong></span>}
                       </> : <span style={{ color: '#b45309' }}>⚠ VT não configurado no cadastro</span>}
-                      {colabSel.salario && <span>Salário: <strong>{formatCurrency(colabSel.salario)}</strong> → 6% = <strong>{formatCurrency((colabSel.salario ?? 0) * 0.06)}</strong></span>}
+                      {(colabSel.salario_mensal_calc ?? colabSel.salario) && <span>Salário: <strong>{formatCurrency(colabSel.salario_mensal_calc ?? colabSel.salario ?? 0)}</strong> → 6% = <strong>{formatCurrency((colabSel.salario_mensal_calc ?? colabSel.salario ?? 0) * 0.06)}</strong></span>}
                     </div>
                   </div>
                   <Button onClick={openCreate} disabled={!pode} title={motivo} className="gap-2 shrink-0">
@@ -729,7 +742,7 @@ export default function ValeTransportePage() {
                     </div>
                     <div style={{ fontSize: 11, color: 'var(--muted-foreground)', marginTop: 2 }}>
                       {form.descontar_6pct
-                        ? `Desconto: ${formatCurrency(parseFloat(form.desconto_colaborador) || 0)} (6% de ${formatCurrency(colabSel.salario ?? 0)})`
+                        ? `Desconto: ${formatCurrency(parseFloat(form.desconto_colaborador) || 0)} (6% de ${formatCurrency(colabSel.salario_mensal_calc ?? colabSel.salario ?? 0)})`
                         : 'Empresa arca com 100% do VT — sem desconto no holerite'}
                     </div>
                   </div>
