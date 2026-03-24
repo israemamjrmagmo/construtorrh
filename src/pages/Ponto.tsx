@@ -33,7 +33,8 @@ interface Lancamento {
   mes_referencia: string; data_inicio: string; data_fim: string
   status: 'rascunho'|'aguardando_aprovacao'|'em_fechamento'|'aprovado'|'recusado'|'liberado'|'pago'
   motivo_recusa: string | null
-  valor_hora_snapshot: number | null  // valor/hora gravado ao aprovar — imutável
+  valor_hora_snapshot: number | null  // gravado ao salvar (salvarLanc) — imutável
+  snap_valor_hora:     number | null  // gravado pelo Fechamento (aprovarLanc) — fallback
 }
 type TipoEvento = 'atestado' | 'suspensao' | 'outro_lancamento' | null
 interface DiaRegistro {
@@ -217,6 +218,7 @@ export default function Ponto() {
       mes_referencia:l.mes_referencia,data_inicio:l.data_inicio,data_fim:l.data_fim,
       status:l.status??'rascunho',motivo_recusa:l.motivo_recusa??null,
       valor_hora_snapshot:l.valor_hora_snapshot??null,
+      snap_valor_hora:    l.snap_valor_hora??null,
     }))
     setLancamentos(list)
     return list
@@ -344,11 +346,24 @@ export default function Ponto() {
 
     // ── 2. Valor/hora: usa snapshot do lançamento se existir (imutável) ─────
     // Só busca ao vivo da função quando NÃO há snapshot salvo (lançamento novo/rascunho sem save)
-    const snapExistente = list.find((l: {valor_hora_snapshot: number|null}) => l.valor_hora_snapshot != null)
-    if(snapExistente?.valor_hora_snapshot){
+    // Prioridade de snapshot: 1º valor_hora_snapshot (salvo no Ponto), 2º snap_valor_hora (salvo no Fechamento)
+    const snapExistente = list.find((l: {valor_hora_snapshot: number|null; snap_valor_hora: number|null}) =>
+      (l.valor_hora_snapshot ?? l.snap_valor_hora) != null
+    )
+    const snapValor = snapExistente ? (snapExistente.valor_hora_snapshot ?? snapExistente.snap_valor_hora) : null
+
+    // Status considerados "fechados" (não devem usar valor ao vivo)
+    const statusFechados = ['em_fechamento','aprovado','liberado','pago']
+    const temLancFechado = list.some((l: {status: string}) => statusFechados.includes(l.status))
+
+    if(snapValor != null){
       // ✅ Snapshot existe → usar valor congelado, NÃO consultar funcao_valores
-      setValorHora(snapExistente.valor_hora_snapshot)
-      setValorHoraCongelado(snapExistente.valor_hora_snapshot)
+      setValorHora(snapValor)
+      setValorHoraCongelado(snapValor)
+    } else if(temLancFechado){
+      // ⚠ Lançamento fechado SEM snapshot (dado antigo) → manter o último valor conhecido, não atualizar
+      // Não chama setValorHora para não sobrescrever com valor ao vivo
+      setValorHoraCongelado(null)  // sem snapshot mas fecha — não congela visualmente
     } else if(colab.funcao_id){
       // Nenhum snapshot → buscar ao vivo (lançamento ainda não salvo ou novo)
       const[{data:fvList},{data:funcaoRow}]=await Promise.all([

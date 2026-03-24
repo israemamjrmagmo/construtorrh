@@ -232,3 +232,20 @@ ORDER BY table_name;
 -- ══════════════════════════════════════════════════════════════════════════
 ALTER TABLE public.ponto_lancamentos
   ADD COLUMN IF NOT EXISTS valor_hora_snapshot NUMERIC(10,4);
+
+-- ══════════════════════════════════════════════════════════════════════════
+-- BLOCO 10 — BACKFILL: preencher valor_hora_snapshot para lançamentos
+--            fechados que não tinham a coluna ainda (dados antigos)
+--            Copia de snap_valor_hora (gravado pelo Fechamento) quando existir
+-- ══════════════════════════════════════════════════════════════════════════
+UPDATE public.ponto_lancamentos
+SET valor_hora_snapshot = snap_valor_hora
+WHERE valor_hora_snapshot IS NULL
+  AND snap_valor_hora IS NOT NULL
+  AND status IN ('em_fechamento','aprovado','liberado','pago');
+
+-- Confirmar quantos registros foram atualizados
+SELECT
+  COUNT(*) FILTER (WHERE valor_hora_snapshot IS NOT NULL) AS com_snapshot,
+  COUNT(*) FILTER (WHERE valor_hora_snapshot IS NULL AND status IN ('em_fechamento','aprovado','liberado','pago')) AS fechados_sem_snapshot
+FROM public.ponto_lancamentos;
