@@ -1070,6 +1070,169 @@ function TabDocumentos({ obras, colabs, perfil }: { obras: Obra[]; colabs: Colab
   )
 }
 
+// ─── ABA: DESLIGAMENTOS ───────────────────────────────────────────────────────
+function TabDesligamentos({ obras, perfil }: { obras: Obra[]; perfil: any }) {
+  const [rows,    setRows]    = useState<any[]>([])
+  const [load,    setLoad]    = useState(true)
+  const [filtro,  setFiltro]  = useState<'pendente'|'aprovado'|'recusado'|'todos'>('pendente')
+  const [recusaId,setRecusaId]= useState<string|null>(null)
+  const [motivo,  setMotivo]  = useState('')
+
+  const motivoLabels: Record<string,string> = {
+    pedido_demissao:    'Pedido de Demissão',
+    demissao_sem_justa: 'Demissão sem Justa Causa',
+    demissao_com_justa: 'Demissão com Justa Causa',
+    fim_contrato:       'Fim de Contrato',
+    acordo:             'Acordo (§ 484-A CLT)',
+    aposentadoria:      'Aposentadoria',
+    falecimento:        'Falecimento',
+    outro:              'Outro',
+  }
+
+  const fetchRows = useCallback(async () => {
+    setLoad(true)
+    const q = supabase.from('portal_solicitacoes')
+      .select('id,obra_id,dados,status,criado_em,aprovado_nome,observacoes_admin')
+      .eq('tipo','desligamento')
+      .order('criado_em', { ascending: false })
+    if (filtro !== 'todos') q.eq('status', filtro)
+    const { data } = await q
+    setRows(data ?? [])
+    setLoad(false)
+  }, [filtro])
+
+  useEffect(() => { fetchRows() }, [fetchRows])
+
+  async function aprovar(id: string, dados: any) {
+    const nome = perfil?.nome ?? perfil?.email ?? 'RH'
+    await supabase.from('portal_solicitacoes').update({
+      status: 'aprovado', aprovado_nome: nome, aprovado_em: new Date().toISOString(),
+    }).eq('id', id)
+    // Inativar o colaborador no sistema
+    if (dados?.colaborador_id) {
+      await supabase.from('colaboradores').update({
+        status: 'inativo',
+        data_demissao: dados?.data_prevista ?? new Date().toISOString().slice(0,10),
+      }).eq('id', dados.colaborador_id)
+    }
+    fetchRows()
+  }
+
+  async function recusar(id: string) {
+    const nome = perfil?.nome ?? perfil?.email ?? 'RH'
+    await supabase.from('portal_solicitacoes').update({
+      status: 'recusado', aprovado_nome: nome, aprovado_em: new Date().toISOString(),
+      observacoes_admin: motivo,
+    }).eq('id', id)
+    setRecusaId(null); setMotivo(''); fetchRows()
+  }
+
+  const badge = (s: string) => {
+    if (s === 'aprovado') return { bg:'#dcfce7', cor:'#15803d', label:'✓ Aprovado' }
+    if (s === 'recusado') return { bg:'#fee2e2', cor:'#dc2626', label:'✗ Recusado' }
+    return                       { bg:'#fef3c7', cor:'#b45309', label:'⏳ Pendente' }
+  }
+
+  return (
+    <div>
+      {/* Filtros */}
+      <div style={{ display:'flex', gap:6, marginBottom:16, flexWrap:'wrap' }}>
+        {(['pendente','aprovado','recusado','todos'] as const).map(f => (
+          <button key={f} onClick={() => setFiltro(f)} style={{
+            height:32, padding:'0 14px', borderRadius:20, border:'none', cursor:'pointer',
+            fontWeight:700, fontSize:12,
+            background: filtro===f ? '#7c3aed' : '#f3f4f6',
+            color: filtro===f ? '#fff' : '#6b7280',
+          }}>
+            {f === 'pendente' ? '⏳ Pendentes' : f === 'aprovado' ? '✓ Aprovados' : f === 'recusado' ? '✗ Recusados' : '📋 Todos'}
+          </button>
+        ))}
+      </div>
+
+      {load ? (
+        <div style={{ textAlign:'center', padding:40, color:'#9ca3af' }}>Carregando…</div>
+      ) : rows.length === 0 ? (
+        <div style={{ textAlign:'center', padding:40, color:'#9ca3af', background:'#fff', borderRadius:12 }}>
+          🚪 Nenhuma solicitação de desligamento {filtro !== 'todos' ? `com status "${filtro}"` : ''}
+        </div>
+      ) : rows.map(r => {
+        const d  = r.dados ?? {}
+        const b  = badge(r.status)
+        const ob = obras.find(o => o.id === r.obra_id)?.nome ?? '—'
+        const dt = d.data_prevista ? new Date(d.data_prevista + 'T12:00:00').toLocaleDateString('pt-BR') : '—'
+        return (
+          <div key={r.id} style={{ background:'#fff', border:'1px solid #e5e7eb', borderLeft:`4px solid ${b.cor}`,
+            borderRadius:10, padding:'16px', marginBottom:10 }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:8 }}>
+              <div style={{ flex:1 }}>
+                <div style={{ fontWeight:800, fontSize:15, color:'#111', marginBottom:4 }}>
+                  🚪 {d.colaborador_nome || '—'}
+                  {d.colaborador_chapa && <span style={{ fontSize:12, color:'#6b7280', fontWeight:400, marginLeft:6 }}>({d.colaborador_chapa})</span>}
+                </div>
+                <div style={{ display:'flex', gap:8, flexWrap:'wrap', fontSize:12, color:'#374151', marginBottom:6 }}>
+                  <span>🏗️ {ob}</span>
+                  <span>📅 Data prevista: <strong>{dt}</strong></span>
+                </div>
+                <div style={{ fontSize:13, fontWeight:700, color:'#7c3aed', marginBottom:4 }}>
+                  {motivoLabels[d.motivo_desligamento] ?? d.motivo_desligamento ?? '—'}
+                </div>
+                {d.observacoes && (
+                  <div style={{ fontSize:12, color:'#6b7280', marginBottom:4 }}>💬 {d.observacoes}</div>
+                )}
+                {r.aprovado_nome && (
+                  <div style={{ fontSize:11, color:'#15803d', marginTop:4 }}>✓ Processado por: {r.aprovado_nome}</div>
+                )}
+                {r.observacoes_admin && (
+                  <div style={{ background:'#fef9c3', borderRadius:6, padding:'6px 10px', fontSize:12, color:'#92400e', marginTop:6 }}>
+                    💬 {r.observacoes_admin}
+                  </div>
+                )}
+              </div>
+              <span style={{ background:b.bg, color:b.cor, borderRadius:6, padding:'3px 10px', fontSize:11, fontWeight:700, whiteSpace:'nowrap' }}>
+                {b.label}
+              </span>
+            </div>
+
+            {r.status === 'pendente' && (
+              recusaId === r.id ? (
+                <div style={{ marginTop:12, display:'flex', flexDirection:'column', gap:8 }}>
+                  <textarea value={motivo} onChange={e => setMotivo(e.target.value)} rows={2}
+                    placeholder="Motivo da recusa (opcional)…"
+                    style={{ width:'100%', border:'1px solid #e5e7eb', borderRadius:8, padding:'8px 10px', fontSize:12, boxSizing:'border-box', resize:'none' }}/>
+                  <div style={{ display:'flex', gap:8 }}>
+                    <button onClick={() => recusar(r.id)} style={{
+                      flex:1, height:36, background:'#dc2626', color:'#fff', border:'none', borderRadius:8,
+                      cursor:'pointer', fontWeight:700, fontSize:13,
+                    }}>✗ Confirmar Recusa</button>
+                    <button onClick={() => setRecusaId(null)} style={{
+                      height:36, padding:'0 16px', background:'#f3f4f6', color:'#374151', border:'none',
+                      borderRadius:8, cursor:'pointer', fontWeight:700, fontSize:13,
+                    }}>Cancelar</button>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display:'flex', gap:8, marginTop:12 }}>
+                  <button onClick={() => aprovar(r.id, d)} style={{
+                    flex:1, height:36, background:'#15803d', color:'#fff', border:'none', borderRadius:8,
+                    cursor:'pointer', fontWeight:700, fontSize:13,
+                  }}>✓ Aprovar e Inativar</button>
+                  <button onClick={() => setRecusaId(r.id)} style={{
+                    flex:1, height:36, background:'#fff', color:'#dc2626', border:'1px solid #fca5a5',
+                    borderRadius:8, cursor:'pointer', fontWeight:700, fontSize:13,
+                  }}>✗ Recusar</button>
+                </div>
+              )
+            )}
+            <div style={{ fontSize:10, color:'#9ca3af', marginTop:8 }}>
+              Solicitado em {new Date(r.criado_em).toLocaleString('pt-BR')}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 // ─── ABA: RELATÓRIO DE PRESENÇA ───────────────────────────────────────────────
 function TabRelatorio({ obras, colabs }: { obras: Obra[]; colabs: Colab[] }) {
   const hoje = new Date()
@@ -1375,11 +1538,11 @@ function TabRelatorio({ obras, colabs }: { obras: Obra[]; colabs: Colab[] }) {
 // ─── PÁGINA PRINCIPAL ─────────────────────────────────────────────────────────
 export default function Solicitacoes() {
   const { profile: perfil } = useProfile()
-  const [aba, setAba] = useState<'cadastros'|'ocorrencias'|'epis'|'documentos'|'relatorio'>('cadastros')
+  const [aba, setAba] = useState<'cadastros'|'ocorrencias'|'epis'|'documentos'|'desligamentos'|'relatorio'>('cadastros')
   const [obras,  setObras]  = useState<Obra[]>([])
   const [funcoes,setFuncoes]= useState<Funcao[]>([])
   const [colabs, setColabs] = useState<Colab[]>([])
-  const [counts, setCounts] = useState({ cadastros:0, ocorrencias:0, epis:0, documentos:0 })
+  const [counts, setCounts] = useState({ cadastros:0, ocorrencias:0, epis:0, documentos:0, desligamentos:0 })
 
   const fetchBase = useCallback(async () => {
     const [o, f, c] = await Promise.all([
@@ -1393,31 +1556,34 @@ export default function Solicitacoes() {
   }, [])
 
   const fetchCounts = useCallback(async () => {
-    const [cad, ocor, epi, doc] = await Promise.all([
+    const [cad, ocor, epi, doc, deslig] = await Promise.all([
       supabase.from('portal_solicitacoes').select('id', { count:'exact', head:true }).eq('tipo','novo_colaborador').eq('status','pendente'),
       supabase.from('portal_ocorrencias').select('id', { count:'exact', head:true }).is('sincronizado_em', null),
       supabase.from('portal_epi_solicitacoes').select('id', { count:'exact', head:true }).eq('status','pendente'),
       supabase.from('portal_documentos').select('id', { count:'exact', head:true }).eq('status','pendente'),
+      supabase.from('portal_solicitacoes').select('id', { count:'exact', head:true }).eq('tipo','desligamento').eq('status','pendente'),
     ])
     setCounts({
-      cadastros:  cad.count  ?? 0,
-      ocorrencias:ocor.count ?? 0,
-      epis:       epi.count  ?? 0,
-      documentos: doc.count  ?? 0,
+      cadastros:     cad.count    ?? 0,
+      ocorrencias:   ocor.count   ?? 0,
+      epis:          epi.count    ?? 0,
+      documentos:    doc.count    ?? 0,
+      desligamentos: deslig.count ?? 0,
     })
   }, [])
 
   useEffect(() => { fetchBase(); fetchCounts() }, [fetchBase, fetchCounts])
 
   const ABAS = [
-    { id:'cadastros',   label:'👷 Cadastros',    count: counts.cadastros,   icon: Users },
-    { id:'ocorrencias', label:'🚨 Ocorrências',  count: counts.ocorrencias, icon: AlertTriangle },
-    { id:'epis',        label:'🦺 EPIs',         count: counts.epis,        icon: ShieldCheck },
-    { id:'documentos',  label:'📎 Documentos',   count: counts.documentos,  icon: FileImage },
-    { id:'relatorio',   label:'📊 Rel. Presença', count: 0,                  icon: FileBarChart2 },
+    { id:'cadastros',    label:'👷 Cadastros',      count: counts.cadastros,    icon: Users },
+    { id:'ocorrencias',  label:'🚨 Ocorrências',    count: counts.ocorrencias,  icon: AlertTriangle },
+    { id:'epis',         label:'🦺 EPIs',           count: counts.epis,         icon: ShieldCheck },
+    { id:'documentos',   label:'📎 Documentos',     count: counts.documentos,   icon: FileImage },
+    { id:'desligamentos',label:'🚪 Desligamentos',  count: counts.desligamentos,icon: FileText },
+    { id:'relatorio',    label:'📊 Rel. Presença',  count: 0,                   icon: FileBarChart2 },
   ] as const
 
-  const totalPendente = counts.cadastros + counts.ocorrencias + counts.epis + counts.documentos
+  const totalPendente = counts.cadastros + counts.ocorrencias + counts.epis + counts.documentos + counts.desligamentos
 
   return (
     <div style={{ padding:'24px 28px', minHeight:'100vh', background:'var(--background)' }}>
@@ -1456,11 +1622,12 @@ export default function Solicitacoes() {
       </div>
 
       {/* Conteúdo */}
-      {aba === 'cadastros'   && <TabCadastros   obras={obras} funcoes={funcoes} perfil={perfil} />}
-      {aba === 'ocorrencias' && <TabOcorrencias obras={obras} colabs={colabs} perfil={perfil} />}
-      {aba === 'epis'        && <TabEpis        obras={obras} colabs={colabs} perfil={perfil} />}
-      {aba === 'documentos'  && <TabDocumentos  obras={obras} colabs={colabs} perfil={perfil} />}
-      {aba === 'relatorio'   && <TabRelatorio   obras={obras} colabs={colabs} />}
+      {aba === 'cadastros'    && <TabCadastros     obras={obras} funcoes={funcoes} perfil={perfil} />}
+      {aba === 'ocorrencias'  && <TabOcorrencias   obras={obras} colabs={colabs} perfil={perfil} />}
+      {aba === 'epis'         && <TabEpis          obras={obras} colabs={colabs} perfil={perfil} />}
+      {aba === 'documentos'   && <TabDocumentos    obras={obras} colabs={colabs} perfil={perfil} />}
+      {aba === 'desligamentos'&& <TabDesligamentos obras={obras} perfil={perfil} />}
+      {aba === 'relatorio'    && <TabRelatorio     obras={obras} colabs={colabs} />}
     </div>
   )
 }

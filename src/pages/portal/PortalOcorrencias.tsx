@@ -16,7 +16,7 @@ interface OcorRow {
   dias_suspensao?: number | null; motivo?: string | null
 }
 
-type AbaOcor = 'acidente' | 'atestado' | 'advertencia' | 'geral'
+type AbaOcor = 'acidente' | 'atestado' | 'advertencia' | 'geral' | 'desligamento'
 
 // ── Compressão de imagem ──────────────────────────────────────────────────────
 const BUCKET = 'portal-documentos'
@@ -129,6 +129,13 @@ export default function PortalOcorrencias() {
   const [assinada, setAssinada]     = useState(false)
   const [diasSusp, setDiasSusp]     = useState('')
 
+  // ── Desligamento ──────────────────────────────────────────────────────────
+  const [motivoDeslig,   setMotivoDeslig]   = useState('demissao_sem_justa')
+  const [dataDeslig,     setDataDeslig]     = useState('')
+  const [obsDeslig,      setObsDeslig]      = useState('')
+  const [savingDeslig,   setSavingDeslig]   = useState(false)
+  const [sucessoDeslig,  setSucessoDeslig]  = useState(false)
+
   // ── Carregamento ──────────────────────────────────────────────────────────
   const loadBase = useCallback(async () => {
     if (!obrasIds.length) return
@@ -162,7 +169,46 @@ export default function PortalOcorrencias() {
     setHora(''); setLocal(''); setTipoAcid('sem_afastamento'); setCatEmitida(false)
     setTipoAtest('medico'); setDiasAfas(''); setComAfas(false); setCid(''); setMedico('')
     setTipoAdv('escrita'); setMotivo(''); setAssinada(false); setDiasSusp('')
+    setMotivoDeslig('demissao_sem_justa'); setDataDeslig(''); setObsDeslig('')
     limparAtestado()
+  }
+
+  async function handleSubmitDesligamento(e: React.FormEvent) {
+    e.preventDefault()
+    if (!colabId) { setErroMsg('⚠️ Selecione o colaborador a ser desligado.'); return }
+    if (!dataDeslig) { setErroMsg('⚠️ Informe a data prevista do desligamento.'); return }
+    setSavingDeslig(true); setErroMsg('')
+    const motivoLabels: Record<string,string> = {
+      pedido_demissao:       'Pedido de Demissão',
+      demissao_sem_justa:    'Demissão sem Justa Causa',
+      demissao_com_justa:    'Demissão com Justa Causa',
+      fim_contrato:          'Fim de Contrato',
+      acordo:                'Acordo (§ 484-A CLT)',
+      aposentadoria:         'Aposentadoria',
+      falecimento:           'Falecimento',
+      outro:                 'Outro',
+    }
+    const colab = colabs.find(c => c.id === colabId)
+    const { error } = await supabase.from('portal_solicitacoes').insert({
+      obra_id:           obraId,
+      tipo:              'desligamento',
+      status:            'pendente',
+      portal_usuario_id: session?.id,
+      dados: {
+        colaborador_id:   colabId,
+        colaborador_nome: colab?.nome ?? '',
+        colaborador_chapa:colab?.chapa ?? '',
+        motivo_desligamento:        motivoDeslig,
+        motivo_desligamento_label:  motivoLabels[motivoDeslig] ?? motivoDeslig,
+        data_prevista:    dataDeslig,
+        observacoes:      obsDeslig || null,
+      },
+    })
+    setSavingDeslig(false)
+    if (error) { setErroMsg('Erro ao enviar: ' + error.message); return }
+    setSucessoDeslig(true)
+    setColabId(''); setDataDeslig(''); setObsDeslig(''); setMotivoDeslig('demissao_sem_justa')
+    setTimeout(() => { setSucessoDeslig(false) }, 3000)
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -252,10 +298,11 @@ export default function PortalOcorrencias() {
   )
 
   const ABAS: { key: AbaOcor; icon: string; label: string; cor: string }[] = [
-    { key:'acidente',    icon:'⚠️', label:'Acidente',    cor:'#dc2626' },
-    { key:'atestado',    icon:'🏥', label:'Atestado',    cor:'#2563eb' },
-    { key:'advertencia', icon:'📋', label:'Advertência', cor:'#ea580c' },
-    { key:'geral',       icon:'📌', label:'Geral',       cor:'#7c3aed' },
+    { key:'acidente',     icon:'⚠️', label:'Acidente',     cor:'#dc2626' },
+    { key:'atestado',     icon:'🏥', label:'Atestado',     cor:'#2563eb' },
+    { key:'advertencia',  icon:'📋', label:'Advertência',  cor:'#ea580c' },
+    { key:'desligamento', icon:'🚪', label:'Desligamento', cor:'#7c3aed' },
+    { key:'geral',        icon:'📌', label:'Geral',        cor:'#6b7280' },
   ]
 
   const GRAV_COR: Record<string,{bg:string;cor:string}> = {
@@ -300,7 +347,7 @@ export default function PortalOcorrencias() {
       </div>
 
       {/* Sub-abas Nova / Histórico */}
-      {aba !== 'geral' && (
+      {aba !== 'geral' && aba !== 'desligamento' && (
         <div style={{ display:'flex', margin:'0 16px 12px', background:'#f3f4f6', borderRadius:10, padding:4 }}>
           {(['nova','historico'] as const).map(s => (
             <button type="button" key={s} onClick={() => setSubAba(s)} style={{
@@ -315,8 +362,83 @@ export default function PortalOcorrencias() {
         </div>
       )}
 
-      {/* ── FORMULÁRIO ── */}
-      {subAba === 'nova' && aba !== 'geral' && (
+      {/* ── FORMULÁRIO DESLIGAMENTO ── */}
+      {aba === 'desligamento' && (
+        <form onSubmit={handleSubmitDesligamento} style={{ padding:'0 16px 32px', display:'flex', flexDirection:'column', gap:14 }}>
+          <div style={{ background:'#fef9c3', border:'1px solid #fde68a', borderRadius:10, padding:'12px 14px', fontSize:13, color:'#92400e', fontWeight:600 }}>
+            ⚠️ Esta solicitação será enviada ao RH para análise. O colaborador só será inativado após aprovação.
+          </div>
+
+          {sucessoDeslig && (
+            <div style={{ background:'#dcfce7', border:'1px solid #86efac', borderRadius:10,
+              padding:'12px 16px', display:'flex', alignItems:'center', gap:8, color:'#15803d', fontWeight:700 }}>
+              <CheckCircle2 size={18}/> Solicitação de desligamento enviada ao RH!
+            </div>
+          )}
+          {erroMsg && (
+            <div style={{ background:'#fee2e2', border:'1px solid #fca5a5', borderRadius:10,
+              padding:'12px 16px', color:'#dc2626', fontWeight:700, fontSize:13 }}>
+              {erroMsg}
+            </div>
+          )}
+
+          {/* Colaborador */}
+          <div>
+            {LBL('Colaborador a ser desligado *')}
+            <select value={colabId} onChange={e => { setColabId(e.target.value); setErroMsg('') }} style={SEL(!colabId)}>
+              <option value="">Selecione…</option>
+              {colabs.map(c => <option key={c.id} value={c.id}>{c.nome}{c.chapa ? ` (${c.chapa})` : ''}</option>)}
+            </select>
+            {!colabId && <p style={{ fontSize:11, color:'#dc2626', marginTop:4, fontWeight:600 }}>⚠️ Selecione o colaborador</p>}
+          </div>
+
+          {/* Motivo */}
+          <div>
+            {LBL('Motivo do Desligamento *')}
+            <select value={motivoDeslig} onChange={e => setMotivoDeslig(e.target.value)} style={SELS}>
+              <option value="pedido_demissao">Pedido de Demissão</option>
+              <option value="demissao_sem_justa">Demissão sem Justa Causa</option>
+              <option value="demissao_com_justa">Demissão com Justa Causa</option>
+              <option value="fim_contrato">Fim de Contrato</option>
+              <option value="acordo">Acordo (§ 484-A CLT)</option>
+              <option value="aposentadoria">Aposentadoria</option>
+              <option value="falecimento">Falecimento</option>
+              <option value="outro">Outro</option>
+            </select>
+          </div>
+
+          {/* Data prevista */}
+          <div>
+            {LBL('Data Prevista do Desligamento *')}
+            <input type="date" value={dataDeslig} onChange={e => { setDataDeslig(e.target.value); setErroMsg('') }}
+              style={INP(!dataDeslig)}/>
+            {!dataDeslig && <p style={{ fontSize:11, color:'#dc2626', marginTop:4, fontWeight:600 }}>⚠️ Informe a data prevista</p>}
+          </div>
+
+          {/* Observações */}
+          <div>
+            {LBL('Observações')}
+            <textarea value={obsDeslig} onChange={e => setObsDeslig(e.target.value)} rows={3}
+              placeholder="Detalhes adicionais para o RH…"
+              style={{ width:'100%', border:'2px solid #e5e7eb', borderRadius:8, padding:'10px 12px',
+                fontSize:13, boxSizing:'border-box', background:'#fff', resize:'vertical' }}/>
+          </div>
+
+          <button type="submit" disabled={savingDeslig} style={{
+            height:52, background: savingDeslig ? '#94a3b8' : '#7c3aed', color:'#fff',
+            border:'none', borderRadius:12, fontSize:16, fontWeight:700,
+            cursor: savingDeslig ? 'not-allowed' : 'pointer',
+            display:'flex', alignItems:'center', justifyContent:'center', gap:8,
+          }}>
+            {savingDeslig
+              ? <><Loader2 size={18} className="animate-spin"/>Enviando…</>
+              : <>🚪 Solicitar Desligamento</>}
+          </button>
+        </form>
+      )}
+
+      {/* ── FORMULÁRIO OCORRÊNCIAS ── */}
+      {subAba === 'nova' && aba !== 'geral' && aba !== 'desligamento' && (
         <form onSubmit={handleSubmit} style={{ padding:'0 16px 32px', display:'flex', flexDirection:'column', gap:14 }}>
 
           {sucesso && (
