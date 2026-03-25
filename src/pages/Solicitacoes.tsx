@@ -480,6 +480,40 @@ function TabOcorrencias({ obras, colabs, perfil }: { obras: Obra[]; colabs: Cola
   const tipoLabel: Record<string,string> = { acidente:'🚨 Acidente', atestado:'🏥 Atestado', advertencia:'⚠️ Advertência', geral:'📋 Geral' }
   const isPendente = (r: any) => !r.sincronizado_em && r.status !== 'recusado'
 
+  function abrirAtestado(url: string, nome?: string) {
+    if (!url) return
+    // URL real do Supabase Storage → abre nova aba diretamente
+    if (url.startsWith('http')) {
+      window.open(url, '_blank', 'noopener,noreferrer')
+      return
+    }
+    // Base64 → converte para Blob e força download
+    try {
+      const arr   = url.split(',')
+      const mime  = arr[0].match(/:(.*?);/)?.[1] ?? 'application/octet-stream'
+      const bstr  = atob(arr[1])
+      const u8arr = new Uint8Array(bstr.length)
+      for (let i = 0; i < bstr.length; i++) u8arr[i] = bstr.charCodeAt(i)
+      const blob    = new Blob([u8arr], { type: mime })
+      const blobUrl = URL.createObjectURL(blob)
+      const ext     = mime.includes('pdf') ? 'pdf' : mime.includes('jpeg') || mime.includes('jpg') ? 'jpg' : mime.includes('png') ? 'png' : 'bin'
+      const link    = document.createElement('a')
+      link.href     = blobUrl
+      link.download = nome ?? `atestado.${ext}`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 5000)
+    } catch {
+      // fallback: tenta abrir como imagem numa nova aba
+      const win = window.open('', '_blank')
+      if (win) {
+        win.document.write(`<html><body style="margin:0;background:#000"><img src="${url}" style="max-width:100%;display:block;margin:auto"/></body></html>`)
+        win.document.close()
+      }
+    }
+  }
+
   return (
     <div>
       {/* barra de filtros */}
@@ -539,11 +573,11 @@ function TabOcorrencias({ obras, colabs, perfil }: { obras: Obra[]; colabs: Cola
                   <Button size="sm" variant="outline" onClick={() => setModal(r)} style={{ height:28, fontSize:12, padding:'0 8px' }}><Eye size={12}/></Button>
                   <Button size="sm" variant="outline" onClick={() => gerarPDF(r)} style={{ height:28, fontSize:12, padding:'0 8px' }}><FileText size={12}/></Button>
                   {r.atestado_url && (
-                    <a href={r.atestado_url} target="_blank" rel="noopener noreferrer" style={{ textDecoration:'none' }}>
-                      <Button size="sm" variant="outline" style={{ height:28, fontSize:12, padding:'0 8px', borderColor:'#2563eb', color:'#2563eb' }}>
-                        <Download size={12}/> Atestado
-                      </Button>
-                    </a>
+                    <Button size="sm" variant="outline"
+                      onClick={() => abrirAtestado(r.atestado_url, r.atestado_nome)}
+                      style={{ height:28, fontSize:12, padding:'0 8px', borderColor:'#2563eb', color:'#2563eb' }}>
+                      <Download size={12}/> Atestado
+                    </Button>
                   )}
                   {isPendente(r) && <>
                     <Button size="sm" onClick={() => aprovar(r.id)} style={{ height:28, fontSize:12, background:'#15803d', color:'#fff', padding:'0 10px' }}>
@@ -593,12 +627,12 @@ function TabOcorrencias({ obras, colabs, perfil }: { obras: Obra[]; colabs: Cola
               </div>
             ))}
             {modal.atestado_url && (
-              <a href={modal.atestado_url} target="_blank" rel="noopener noreferrer"
+              <button onClick={() => abrirAtestado(modal.atestado_url, modal.atestado_nome)}
                 style={{ display:'flex', alignItems:'center', gap:8, margin:'14px 0 0',
                   padding:'10px 14px', background:'#eff6ff', border:'1px solid #bfdbfe',
-                  borderRadius:10, color:'#1d4ed8', fontWeight:700, fontSize:13, textDecoration:'none' }}>
+                  borderRadius:10, color:'#1d4ed8', fontWeight:700, fontSize:13, cursor:'pointer', width:'100%' }}>
                 <Download size={16}/> 📄 Visualizar / Baixar Atestado
-              </a>
+              </button>
             )}
             <div style={{ display:'flex', justifyContent:'flex-end', marginTop:16, gap:8, flexWrap:'wrap' }}>
               <Button variant="outline" onClick={() => gerarPDF(modal)} style={{ height:32, fontSize:12 }}><FileText size={13}/> PDF</Button>
