@@ -1,9 +1,9 @@
-import React, { useEffect, useState, useCallback } from 'react'
+import React, { useEffect, useState, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { getPortalSession } from '@/hooks/usePortalAuth'
 import PortalLayout from './PortalLayout'
-import { AlertTriangle, Loader2, CheckCircle2, Trash2 } from 'lucide-react'
+import { AlertTriangle, Loader2, CheckCircle2, Trash2, Camera, Upload, FileText } from 'lucide-react'
 
 interface Obra        { id: string; nome: string }
 interface Colaborador { id: string; nome: string; chapa: string }
@@ -18,9 +18,39 @@ interface OcorRow {
 
 type AbaOcor = 'acidente' | 'atestado' | 'advertencia' | 'geral'
 
+// ── Compressão de imagem ──────────────────────────────────────────────────────
+const BUCKET = 'portal-documentos'
+const MAX_PX = 1600
+const QUAL   = 0.82
+
+function comprimirImagem(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onerror = reject
+    reader.onload = ev => {
+      const img = new window.Image()
+      img.onerror = reject
+      img.onload = () => {
+        let { width, height } = img
+        if (width > MAX_PX || height > MAX_PX) {
+          if (width >= height) { height = Math.round((height * MAX_PX) / width); width = MAX_PX }
+          else { width = Math.round((width * MAX_PX) / height); height = MAX_PX }
+        }
+        const canvas = document.createElement('canvas')
+        canvas.width = width; canvas.height = height
+        const ctx = canvas.getContext('2d')!
+        ctx.drawImage(img, 0, 0, width, height)
+        resolve(canvas.toDataURL('image/jpeg', QUAL))
+      }
+      img.src = ev.target?.result as string
+    }
+    reader.readAsDataURL(file)
+  })
+}
+
 export default function PortalOcorrencias() {
-  const nav     = useNavigate()
-  const session = getPortalSession()
+  const nav      = useNavigate()
+  const session  = getPortalSession()
   const obrasIds = session?.obras_ids ?? []
 
   const [obrasData, setObrasData]   = useState<Obra[]>([])
@@ -53,12 +83,53 @@ export default function PortalOcorrencias() {
   const [cid, setCid]               = useState('')
   const [medico, setMedico]         = useState('')
 
+  // ── Upload do atestado ─────────────────────────────────────────────────────
+  const fotoRef   = useRef<HTMLInputElement>(null)
+  const uploadRef = useRef<HTMLInputElement>(null)
+  const [arquivoAtestado,  setArquivoAtestado]  = useState<File | null>(null)
+  const [previewAtestado,  setPreviewAtestado]  = useState<string | null>(null)
+  const [tamanhoAtestado,  setTamanhoAtestado]  = useState('')
+  const [erroArquivo,      setErroArquivo]      = useState('')
+
+  async function selecionarAtestado(file: File | null) {
+    setArquivoAtestado(null); setPreviewAtestado(null); setTamanhoAtestado(''); setErroArquivo('')
+    if (!file) return
+    if (file.type.startsWith('image/')) {
+      try {
+        const originalKB = (file.size / 1024).toFixed(0)
+        const b64 = await comprimirImagem(file)
+        const compressedKB = Math.round((b64.length * 3) / 4 / 1024)
+        setTamanhoAtestado(`${originalKB} KB → ~${compressedKB} KB`)
+        setPreviewAtestado(b64)
+        const blob = await fetch(b64).then(r => r.blob())
+        setArquivoAtestado(new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' }))
+      } catch {
+        setArquivoAtestado(file)
+        const reader = new FileReader()
+        reader.onload = e => setPreviewAtestado(e.target?.result as string)
+        reader.readAsDataURL(file)
+        setTamanhoAtestado(`${(file.size / 1024).toFixed(0)} KB`)
+      }
+    } else {
+      if (file.size > 8 * 1024 * 1024) { setErroArquivo('Arquivo muito grande (máx. 8 MB).'); return }
+      setArquivoAtestado(file)
+      setTamanhoAtestado(`${(file.size / 1024).toFixed(0)} KB`)
+    }
+  }
+
+  function limparAtestado() {
+    setArquivoAtestado(null); setPreviewAtestado(null); setTamanhoAtestado(''); setErroArquivo('')
+    if (fotoRef.current)   fotoRef.current.value   = ''
+    if (uploadRef.current) uploadRef.current.value = ''
+  }
+
   // ── Advertência ───────────────────────────────────────────────────────────
   const [tipoAdv, setTipoAdv]       = useState('escrita')
   const [motivo, setMotivo]         = useState('')
   const [assinada, setAssinada]     = useState(false)
   const [diasSusp, setDiasSusp]     = useState('')
 
+  // ── Carregamento ──────────────────────────────────────────────────────────
   const loadBase = useCallback(async () => {
     if (!obrasIds.length) return
     const { data: o } = await supabase.from('obras').select('id,nome').in('id', obrasIds).order('nome')
@@ -91,14 +162,49 @@ export default function PortalOcorrencias() {
     setHora(''); setLocal(''); setTipoAcid('sem_afastamento'); setCatEmitida(false)
     setTipoAtest('medico'); setDiasAfas(''); setComAfas(false); setCid(''); setMedico('')
     setTipoAdv('escrita'); setMotivo(''); setAssinada(false); setDiasSusp('')
+    limparAtestado()
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!descricao.trim()) { setErroMsg('⚠️ Preencha o campo DESCRIÇÃO antes de salvar.'); return }
-    if (!obraId) { setErroMsg('⚠️ Nenhuma obra selecionada.'); return }
+    if (!obraId)           { setErroMsg('⚠️ Nenhuma obra selecionada.'); return }
+    if (aba === 'atestado' && !arquivoAtestado) {
+      setErroMsg('⚠️ Anexe o atestado (foto ou arquivo) antes de registrar.')
+      return
+    }
+
     setSaving(true); setErroMsg('')
-    const base = {
+
+    // Faz upload do atestado se houver
+    let atestadoUrl  = ''
+    let atestadoNome = ''
+    if (aba === 'atestado' && arquivoAtestado) {
+      try {
+        const ext  = arquivoAtestado.name.split('.').pop() ?? 'jpg'
+        const path = `atestados/${obraId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
+        const { error: storageErr } = await supabase.storage.from(BUCKET).upload(path, arquivoAtestado, {
+          contentType: arquivoAtestado.type, upsert: false,
+        })
+        if (!storageErr) {
+          const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(path)
+          atestadoUrl  = pub.publicUrl
+          atestadoNome = arquivoAtestado.name
+        }
+      } catch (_) { /* segue com base64 */ }
+
+      // Fallback base64
+      if (!atestadoUrl) {
+        atestadoUrl = await new Promise(res => {
+          const r = new FileReader()
+          r.onload = ev => res(ev.target?.result as string)
+          r.readAsDataURL(arquivoAtestado)
+        })
+        atestadoNome = arquivoAtestado.name
+      }
+    }
+
+    const base: Record<string,any> = {
       obra_id: obraId,
       colaborador_id: colabId || null,
       tipo: aba,
@@ -108,10 +214,11 @@ export default function PortalOcorrencias() {
       status: 'pendente',
       portal_usuario_id: session?.id,
     }
+
     let extra: Record<string,any> = {}
     if (aba === 'acidente')    extra = { hora_acidente: hora||null, local: local||null, tipo_acidente: tipoAcid, cat_emitida: catEmitida }
-    if (aba === 'atestado')    extra = { tipo_atestado: tipoAtest, dias_afastamento: diasAfas?parseInt(diasAfas):null, com_afastamento: comAfas, cid: cid||null, medico: medico||null }
-    if (aba === 'advertencia') extra = { tipo_adv: tipoAdv, motivo: motivo||null, assinada, dias_suspensao: diasSusp?parseInt(diasSusp):null }
+    if (aba === 'atestado')    extra = { tipo_atestado: tipoAtest, dias_afastamento: diasAfas ? parseInt(diasAfas) : null, com_afastamento: comAfas, cid: cid||null, medico: medico||null, atestado_url: atestadoUrl||null, atestado_nome: atestadoNome||null }
+    if (aba === 'advertencia') extra = { tipo_adv: tipoAdv, motivo: motivo||null, assinada, dias_suspensao: diasSusp ? parseInt(diasSusp) : null }
 
     const { error } = await supabase.from('portal_ocorrencias').insert({ ...base, ...extra })
     setSaving(false)
@@ -131,11 +238,18 @@ export default function PortalOcorrencias() {
     setDeletandoId(null); loadHistorico(obraId, aba)
   }
 
-  const INP = (err?: boolean): React.CSSProperties => ({ width:'100%',height:44,border:`2px solid ${err?'#fca5a5':'#e5e7eb'}`,borderRadius:8,padding:'0 12px',fontSize:13,boxSizing:'border-box',background:err?'#fff5f5':'#fff' })
+  const INP = (err?: boolean): React.CSSProperties => ({
+    width:'100%', height:44, border:`2px solid ${err?'#fca5a5':'#e5e7eb'}`, borderRadius:8,
+    padding:'0 12px', fontSize:13, boxSizing:'border-box', background:err?'#fff5f5':'#fff',
+  })
   const SEL = (err?: boolean): React.CSSProperties => ({ ...INP(err), cursor:'pointer' })
   const INPS = INP()
   const SELS = SEL()
-  const LBL = (txt: string) => <label style={{ fontSize:12,fontWeight:700,color:'#374151',display:'block',marginBottom:6,textTransform:'uppercase',letterSpacing:'0.05em' }}>{txt}</label>
+  const LBL = (txt: string) => (
+    <label style={{ fontSize:12, fontWeight:700, color:'#374151', display:'block', marginBottom:6, textTransform:'uppercase', letterSpacing:'0.05em' }}>
+      {txt}
+    </label>
+  )
 
   const ABAS: { key: AbaOcor; icon: string; label: string; cor: string }[] = [
     { key:'acidente',    icon:'⚠️', label:'Acidente',    cor:'#dc2626' },
@@ -145,52 +259,57 @@ export default function PortalOcorrencias() {
   ]
 
   const GRAV_COR: Record<string,{bg:string;cor:string}> = {
-    leve:   {bg:'#fef9c3',cor:'#a16207'},
-    moderado:{bg:'#fef3c7',cor:'#b45309'},
-    grave:  {bg:'#fee2e2',cor:'#dc2626'},
-    fatal:  {bg:'#3f0000',cor:'#fff'},
+    leve:    {bg:'#fef9c3', cor:'#a16207'},
+    moderado:{bg:'#fef3c7', cor:'#b45309'},
+    grave:   {bg:'#fee2e2', cor:'#dc2626'},
+    fatal:   {bg:'#3f0000', cor:'#fff'},
   }
 
   return (
     <PortalLayout>
-      <div style={{ padding: '16px 16px 8px' }}>
-        <div style={{ fontWeight: 800, fontSize: 18, color: '#1e3a5f' }}>⚠️ Ocorrências</div>
-        <div style={{ fontSize: 12, color: '#9ca3af' }}>Registre acidentes, atestados, advertências e ocorrências</div>
+      <div style={{ padding:'16px 16px 8px' }}>
+        <div style={{ fontWeight:800, fontSize:18, color:'#1e3a5f' }}>⚠️ Ocorrências</div>
+        <div style={{ fontSize:12, color:'#9ca3af' }}>Registre acidentes, atestados, advertências e ocorrências</div>
       </div>
 
       {/* Obra */}
       {obrasData.length > 1 && (
-        <div style={{ padding: '0 16px 10px' }}>
+        <div style={{ padding:'0 16px 10px' }}>
           <select value={obraId} onChange={e => setObraId(e.target.value)} style={SELS}>
             {obrasData.map(o => <option key={o.id} value={o.id}>{o.nome}</option>)}
           </select>
         </div>
       )}
-      {obrasData.length === 1 && <div style={{ padding:'0 16px 6px',fontSize:12,fontWeight:700,color:'#6b7280' }}>🏗️ {obrasData[0]?.nome}</div>}
+      {obrasData.length === 1 && (
+        <div style={{ padding:'0 16px 6px', fontSize:12, fontWeight:700, color:'#6b7280' }}>🏗️ {obrasData[0]?.nome}</div>
+      )}
 
-      {/* Tabs tipo ocorrência */}
-      <div style={{ display:'flex',padding:'0 16px 0',gap:6,overflowX:'auto',marginBottom:12 }}>
+      {/* Tabs tipo */}
+      <div style={{ display:'flex', padding:'0 16px', gap:6, overflowX:'auto', marginBottom:12 }}>
         {ABAS.map(a => (
-          <button type="button" key={a.key} onClick={()=>{setAba(a.key);setSubAba('nova');setErroMsg('')}} style={{
-            flexShrink:0, height:36, padding:'0 14px', border:`2px solid ${aba===a.key?a.cor:'#e5e7eb'}`,
+          <button type="button" key={a.key} onClick={() => { setAba(a.key); setSubAba('nova'); setErroMsg('') }} style={{
+            flexShrink:0, height:36, padding:'0 14px',
+            border:`2px solid ${aba===a.key ? a.cor : '#e5e7eb'}`,
             borderRadius:20, cursor:'pointer', fontWeight:700, fontSize:12,
-            background: aba===a.key?a.cor:'#fff', color: aba===a.key?'#fff':'#6b7280',
+            background: aba===a.key ? a.cor : '#fff',
+            color: aba===a.key ? '#fff' : '#6b7280',
           }}>
             {a.icon} {a.label}
           </button>
         ))}
       </div>
 
-      {/* Abas Nova / Histórico */}
+      {/* Sub-abas Nova / Histórico */}
       {aba !== 'geral' && (
-        <div style={{ display:'flex',margin:'0 16px 12px',background:'#f3f4f6',borderRadius:10,padding:4 }}>
+        <div style={{ display:'flex', margin:'0 16px 12px', background:'#f3f4f6', borderRadius:10, padding:4 }}>
           {(['nova','historico'] as const).map(s => (
-            <button type="button" key={s} onClick={()=>setSubAba(s)} style={{
+            <button type="button" key={s} onClick={() => setSubAba(s)} style={{
               flex:1, height:34, border:'none', borderRadius:8, cursor:'pointer', fontWeight:700, fontSize:12,
-              background:subAba===s?'#fff':'transparent', color:subAba===s?'#1e3a5f':'#9ca3af',
-              boxShadow:subAba===s?'0 1px 4px rgba(0,0,0,0.1)':'none',
+              background: subAba===s ? '#fff' : 'transparent',
+              color: subAba===s ? '#1e3a5f' : '#9ca3af',
+              boxShadow: subAba===s ? '0 1px 4px rgba(0,0,0,0.1)' : 'none',
             }}>
-              {s==='nova'?'+ Nova Ocorrência':`Histórico (${historico.length})`}
+              {s==='nova' ? '+ Nova Ocorrência' : `Histórico (${historico.length})`}
             </button>
           ))}
         </div>
@@ -198,39 +317,44 @@ export default function PortalOcorrencias() {
 
       {/* ── FORMULÁRIO ── */}
       {subAba === 'nova' && aba !== 'geral' && (
-        <form onSubmit={handleSubmit} style={{ padding:'0 16px 32px',display:'flex',flexDirection:'column',gap:14 }}>
+        <form onSubmit={handleSubmit} style={{ padding:'0 16px 32px', display:'flex', flexDirection:'column', gap:14 }}>
+
           {sucesso && (
-            <div style={{ background:'#dcfce7',border:'1px solid #86efac',borderRadius:10,padding:'12px 16px',display:'flex',alignItems:'center',gap:8,color:'#15803d',fontWeight:700 }}>
+            <div style={{ background:'#dcfce7', border:'1px solid #86efac', borderRadius:10,
+              padding:'12px 16px', display:'flex', alignItems:'center', gap:8, color:'#15803d', fontWeight:700 }}>
               <CheckCircle2 size={18}/> Ocorrência registrada com sucesso!
             </div>
           )}
           {erroMsg && (
-            <div style={{ background:'#fee2e2',border:'1px solid #fca5a5',borderRadius:10,padding:'12px 16px',color:'#dc2626',fontWeight:700,fontSize:13 }}>
-              ⚠️ {erroMsg}
+            <div style={{ background:'#fee2e2', border:'1px solid #fca5a5', borderRadius:10,
+              padding:'12px 16px', color:'#dc2626', fontWeight:700, fontSize:13 }}>
+              {erroMsg}
             </div>
           )}
 
           {/* Colaborador */}
           <div>
             {LBL('Colaborador *')}
-            <select value={colabId} onChange={e=>setColabId(e.target.value)} style={SEL(!colabId)}>
+            <select value={colabId} onChange={e => { setColabId(e.target.value); setErroMsg('') }} style={SEL(!colabId)}>
               <option value="">Selecione…</option>
-              {colabs.map(c=><option key={c.id} value={c.id}>{c.nome}{c.chapa?` (${c.chapa})`:''}</option>)}
+              {colabs.map(c => <option key={c.id} value={c.id}>{c.nome}{c.chapa ? ` (${c.chapa})` : ''}</option>)}
             </select>
-            {!colabId && <p style={{ fontSize:11,color:'#dc2626',marginTop:4,fontWeight:600 }}>⚠️ Selecione um colaborador</p>}
+            {!colabId && (
+              <p style={{ fontSize:11, color:'#dc2626', marginTop:4, fontWeight:600 }}>⚠️ Selecione um colaborador</p>
+            )}
           </div>
 
-          {/* Data + hora */}
-          <div style={{ display:'grid',gridTemplateColumns:aba==='acidente'?'1fr 1fr':'1fr',gap:10 }}>
-            <div>            {LBL('Data *')}<input type="date" value={dataOcor} onChange={e=>setDataOcor(e.target.value)} style={INPS}/></div>
-            {aba==='acidente'&&<div>{LBL('Hora')}<input type="time" value={hora} onChange={e=>setHora(e.target.value)} style={INPS}/></div>}
+          {/* Data + Hora */}
+          <div style={{ display:'grid', gridTemplateColumns: aba==='acidente' ? '1fr 1fr' : '1fr', gap:10 }}>
+            <div>{LBL('Data *')}<input type="date" value={dataOcor} onChange={e => setDataOcor(e.target.value)} style={INPS}/></div>
+            {aba==='acidente' && <div>{LBL('Hora')}<input type="time" value={hora} onChange={e => setHora(e.target.value)} style={INPS}/></div>}
           </div>
 
-          {/* Gravidade — apenas acidente e geral */}
-          {(aba==='acidente') && (
+          {/* Gravidade */}
+          {aba === 'acidente' && (
             <div>
               {LBL('Gravidade')}
-              <select value={gravidade} onChange={e=>setGravidade(e.target.value)} style={SELS}>
+              <select value={gravidade} onChange={e => setGravidade(e.target.value)} style={SELS}>
                 <option value="leve">Leve</option>
                 <option value="moderado">Moderado</option>
                 <option value="grave">Grave</option>
@@ -239,11 +363,11 @@ export default function PortalOcorrencias() {
             </div>
           )}
 
-          {/* Campos específicos por tipo */}
+          {/* ── ACIDENTE ── */}
           {aba === 'acidente' && (<>
             <div>
               {LBL('Tipo de Acidente')}
-              <select value={tipoAcid} onChange={e=>setTipoAcid(e.target.value)} style={SELS}>
+              <select value={tipoAcid} onChange={e => setTipoAcid(e.target.value)} style={SELS}>
                 <option value="sem_afastamento">Sem Afastamento</option>
                 <option value="com_afastamento">Com Afastamento</option>
                 <option value="trajeto">De Trajeto</option>
@@ -252,48 +376,115 @@ export default function PortalOcorrencias() {
             </div>
             <div>
               {LBL('Local do Acidente')}
-              <input value={local} onChange={e=>setLocal(e.target.value)} placeholder="Descreva o local…" style={INPS}/>
+              <input value={local} onChange={e => setLocal(e.target.value)} placeholder="Descreva o local…" style={INPS}/>
             </div>
-            <label style={{ display:'flex',alignItems:'center',gap:10,cursor:'pointer',userSelect:'none' }}>
-              <input type="checkbox" checked={catEmitida} onChange={e=>setCatEmitida(e.target.checked)} style={{ width:18,height:18 }}/>
-              <span style={{ fontSize:14,fontWeight:600,color:'#374151' }}>CAT Emitida</span>
+            <label style={{ display:'flex', alignItems:'center', gap:10, cursor:'pointer', userSelect:'none' }}>
+              <input type="checkbox" checked={catEmitida} onChange={e => setCatEmitida(e.target.checked)} style={{ width:18, height:18 }}/>
+              <span style={{ fontSize:14, fontWeight:600, color:'#374151' }}>CAT Emitida</span>
             </label>
           </>)}
 
+          {/* ── ATESTADO ── */}
           {aba === 'atestado' && (<>
             <div>
               {LBL('Tipo de Atestado')}
-              <select value={tipoAtest} onChange={e=>setTipoAtest(e.target.value)} style={SELS}>
+              <select value={tipoAtest} onChange={e => setTipoAtest(e.target.value)} style={SELS}>
                 <option value="medico">Médico</option>
                 <option value="odontologico">Odontológico</option>
                 <option value="acompanhamento">Acompanhamento Familiar</option>
                 <option value="outros">Outros</option>
               </select>
             </div>
-            <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:10 }}>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
               <div>
                 {LBL('Dias de Afastamento')}
-                <input type="number" value={diasAfas} onChange={e=>setDiasAfas(e.target.value)} min="0" placeholder="0" style={INPS}/>
+                <input type="number" value={diasAfas} onChange={e => setDiasAfas(e.target.value)} min="0" placeholder="0" style={INPS}/>
               </div>
               <div>
                 {LBL('CID')}
-                <input value={cid} onChange={e=>setCid(e.target.value)} placeholder="Ex.: J00" style={INPS}/>
+                <input value={cid} onChange={e => setCid(e.target.value)} placeholder="Ex.: J00" style={INPS}/>
               </div>
             </div>
             <div>
               {LBL('Médico / Hospital')}
-              <input value={medico} onChange={e=>setMedico(e.target.value)} placeholder="Nome do médico ou hospital" style={INPS}/>
+              <input value={medico} onChange={e => setMedico(e.target.value)} placeholder="Nome do médico ou hospital" style={INPS}/>
             </div>
-            <label style={{ display:'flex',alignItems:'center',gap:10,cursor:'pointer',userSelect:'none' }}>
-              <input type="checkbox" checked={comAfas} onChange={e=>setComAfas(e.target.checked)} style={{ width:18,height:18 }}/>
-              <span style={{ fontSize:14,fontWeight:600,color:'#374151' }}>Com Afastamento</span>
+            <label style={{ display:'flex', alignItems:'center', gap:10, cursor:'pointer', userSelect:'none' }}>
+              <input type="checkbox" checked={comAfas} onChange={e => setComAfas(e.target.checked)} style={{ width:18, height:18 }}/>
+              <span style={{ fontSize:14, fontWeight:600, color:'#374151' }}>Com Afastamento</span>
             </label>
+
+            {/* ── ANEXO OBRIGATÓRIO DO ATESTADO ── */}
+            <div style={{ border:`2px solid ${arquivoAtestado ? '#86efac' : '#fca5a5'}`, borderRadius:12, padding:12, background: arquivoAtestado ? '#f0fdf4' : '#fff5f5' }}>
+              <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:8 }}>
+                <span style={{ fontSize:16 }}>📎</span>
+                <span style={{ fontSize:13, fontWeight:800, color: arquivoAtestado ? '#15803d' : '#dc2626' }}>
+                  {arquivoAtestado ? '✓ Atestado anexado' : 'Anexar Atestado (obrigatório) *'}
+                </span>
+              </div>
+
+              {!arquivoAtestado && (
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+                  <button type="button" onClick={() => fotoRef.current?.click()} style={{
+                    height:80, border:'2px dashed #2563eb', borderRadius:10, cursor:'pointer',
+                    background:'#eff6ff', display:'flex', flexDirection:'column',
+                    alignItems:'center', justifyContent:'center', gap:4, color:'#2563eb',
+                  }}>
+                    <Camera size={24} strokeWidth={1.8}/>
+                    <span style={{ fontSize:12, fontWeight:800 }}>📸 Tirar Foto</span>
+                  </button>
+                  <input ref={fotoRef} type="file" accept="image/*" capture="environment"
+                    style={{ display:'none' }} onChange={e => selecionarAtestado(e.target.files?.[0] ?? null)}/>
+
+                  <button type="button" onClick={() => uploadRef.current?.click()} style={{
+                    height:80, border:'2px dashed #9ca3af', borderRadius:10, cursor:'pointer',
+                    background:'#f9fafb', display:'flex', flexDirection:'column',
+                    alignItems:'center', justifyContent:'center', gap:4, color:'#6b7280',
+                  }}>
+                    <Upload size={24} strokeWidth={1.8}/>
+                    <span style={{ fontSize:12, fontWeight:800 }}>📁 Arquivo/PDF</span>
+                  </button>
+                  <input ref={uploadRef} type="file" accept="image/*,application/pdf,.doc,.docx"
+                    style={{ display:'none' }} onChange={e => selecionarAtestado(e.target.files?.[0] ?? null)}/>
+                </div>
+              )}
+
+              {arquivoAtestado && (
+                <div>
+                  {previewAtestado ? (
+                    <img src={previewAtestado} alt="atestado" style={{ width:'100%', maxHeight:200, objectFit:'contain', borderRadius:8, marginBottom:8 }}/>
+                  ) : (
+                    <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
+                      <FileText size={28} color="#2563eb"/>
+                      <span style={{ fontSize:12, fontWeight:700 }}>{arquivoAtestado.name}</span>
+                    </div>
+                  )}
+                  {tamanhoAtestado && (
+                    <div style={{ fontSize:11, color:'#16a34a', fontWeight:700, marginBottom:6 }}>
+                      🗜️ {tamanhoAtestado}
+                    </div>
+                  )}
+                  <button type="button" onClick={limparAtestado} style={{
+                    width:'100%', height:32, border:'1px solid #fca5a5', borderRadius:7,
+                    background:'#fff', color:'#dc2626', cursor:'pointer', fontWeight:600, fontSize:12,
+                    display:'flex', alignItems:'center', justifyContent:'center', gap:6,
+                  }}>
+                    <Trash2 size={12}/> Remover atestado
+                  </button>
+                </div>
+              )}
+
+              {erroArquivo && (
+                <p style={{ fontSize:11, color:'#dc2626', fontWeight:700, marginTop:6 }}>⚠️ {erroArquivo}</p>
+              )}
+            </div>
           </>)}
 
+          {/* ── ADVERTÊNCIA ── */}
           {aba === 'advertencia' && (<>
             <div>
               {LBL('Tipo de Advertência')}
-              <select value={tipoAdv} onChange={e=>setTipoAdv(e.target.value)} style={SELS}>
+              <select value={tipoAdv} onChange={e => setTipoAdv(e.target.value)} style={SELS}>
                 <option value="verbal">Verbal</option>
                 <option value="escrita">Escrita</option>
                 <option value="suspensao">Suspensão</option>
@@ -302,34 +493,45 @@ export default function PortalOcorrencias() {
             {tipoAdv === 'suspensao' && (
               <div>
                 {LBL('Dias de Suspensão')}
-                <input type="number" value={diasSusp} onChange={e=>setDiasSusp(e.target.value)} min="1" style={INPS}/>
+                <input type="number" value={diasSusp} onChange={e => setDiasSusp(e.target.value)} min="1" style={INPS}/>
               </div>
             )}
             <div>
               {LBL('Motivo')}
-              <input value={motivo} onChange={e=>setMotivo(e.target.value)} placeholder="Motivo da advertência…" style={INPS}/>
+              <input value={motivo} onChange={e => setMotivo(e.target.value)} placeholder="Motivo da advertência…" style={INPS}/>
             </div>
-            <label style={{ display:'flex',alignItems:'center',gap:10,cursor:'pointer',userSelect:'none' }}>
-              <input type="checkbox" checked={assinada} onChange={e=>setAssinada(e.target.checked)} style={{ width:18,height:18 }}/>
-              <span style={{ fontSize:14,fontWeight:600,color:'#374151' }}>Advertência Assinada</span>
+            <label style={{ display:'flex', alignItems:'center', gap:10, cursor:'pointer', userSelect:'none' }}>
+              <input type="checkbox" checked={assinada} onChange={e => setAssinada(e.target.checked)} style={{ width:18, height:18 }}/>
+              <span style={{ fontSize:14, fontWeight:600, color:'#374151' }}>Advertência Assinada</span>
             </label>
           </>)}
 
           {/* Descrição */}
           <div>
             {LBL('Descrição *')}
-            <textarea value={descricao} onChange={e=>{ setDescricao(e.target.value); if(e.target.value.trim()) setErroMsg('') }} rows={4}
-              placeholder={aba==='acidente'?'Descreva como ocorreu o acidente…':aba==='atestado'?'Motivo do afastamento…':'Detalhes da ocorrência…'}
-              style={{ width:'100%',border:`2px solid ${!descricao.trim()?'#fca5a5':'#e5e7eb'}`,borderRadius:8,padding:'10px 12px',fontSize:13,boxSizing:'border-box',background:!descricao.trim()?'#fff5f5':'#fff',resize:'vertical' }}/>
-            {!descricao.trim() && <p style={{ fontSize:11, color:'#dc2626', marginTop:4, fontWeight:600 }}>⚠️ Campo obrigatório — preencha antes de registrar</p>}
+            <textarea
+              value={descricao}
+              onChange={e => { setDescricao(e.target.value); if (e.target.value.trim()) setErroMsg('') }}
+              rows={4}
+              placeholder={aba==='acidente' ? 'Descreva como ocorreu o acidente…' : aba==='atestado' ? 'Motivo do afastamento…' : 'Detalhes da ocorrência…'}
+              style={{ width:'100%', border:`2px solid ${!descricao.trim() ? '#fca5a5' : '#e5e7eb'}`, borderRadius:8,
+                padding:'10px 12px', fontSize:13, boxSizing:'border-box',
+                background: !descricao.trim() ? '#fff5f5' : '#fff', resize:'vertical' }}
+            />
+            {!descricao.trim() && (
+              <p style={{ fontSize:11, color:'#dc2626', marginTop:4, fontWeight:600 }}>⚠️ Campo obrigatório — preencha antes de registrar</p>
+            )}
           </div>
 
           <button type="submit" disabled={saving} style={{
-            height:52,background:saving?'#94a3b8':'#dc2626',color:'#fff',border:'none',borderRadius:12,fontSize:16,fontWeight:700,
-            cursor:saving?'not-allowed':'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8,
-            opacity:1,
+            height:52, background: saving ? '#94a3b8' : '#dc2626', color:'#fff',
+            border:'none', borderRadius:12, fontSize:16, fontWeight:700,
+            cursor: saving ? 'not-allowed' : 'pointer',
+            display:'flex', alignItems:'center', justifyContent:'center', gap:8,
           }}>
-            {saving?<><Loader2 size={18} className="animate-spin"/>Salvando…</>:<><AlertTriangle size={18}/>Registrar Ocorrência</>}
+            {saving
+              ? <><Loader2 size={18} className="animate-spin"/>Salvando…</>
+              : <><AlertTriangle size={18}/>Registrar Ocorrência</>}
           </button>
         </form>
       )}
@@ -337,47 +539,51 @@ export default function PortalOcorrencias() {
       {/* ── HISTÓRICO / GERAL ── */}
       {(subAba === 'historico' || aba === 'geral') && (
         <div style={{ padding:'0 16px 32px' }}>
-          {aba==='geral'&&(
-            <div style={{ marginBottom:12,fontWeight:700,fontSize:13,color:'var(--muted-foreground)' }}>
-              Todas as ocorrências registradas — {historico.length} registros
+          {aba === 'geral' && (
+            <div style={{ marginBottom:12, fontWeight:700, fontSize:13, color:'#6b7280' }}>
+              Todas as ocorrências — {historico.length} registros
             </div>
           )}
-          {historico.length===0?(
-            <div style={{ background:'#fff',borderRadius:12,padding:32,textAlign:'center',color:'#9ca3af' }}>
+          {historico.length === 0 ? (
+            <div style={{ background:'#fff', borderRadius:12, padding:32, textAlign:'center', color:'#9ca3af' }}>
               Nenhuma ocorrência registrada ainda
             </div>
-          ):historico.map(h=>{
-            const jaSync=!!h.sincronizado_em
-            const cNome=(h as any).colaboradores?.nome??'—'
-            const gc=GRAV_COR[h.gravidade??'']??{bg:'#f3f4f6',cor:'#374151'}
-            const tipoCor={acidente:'#dc2626',atestado:'#2563eb',advertencia:'#ea580c',geral:'#7c3aed'}[h.tipo]??'#6b7280'
-            return(
-              <div key={h.id} style={{ background:'#fff',borderRadius:12,border:`1px solid ${jaSync?'#86efac':'#e5e7eb'}`,marginBottom:8,padding:'14px 16px' }}>
-                <div style={{ display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8 }}>
+          ) : historico.map(h => {
+            const jaSync = !!h.sincronizado_em
+            const cNome  = (h as any).colaboradores?.nome ?? '—'
+            const gc     = GRAV_COR[h.gravidade ?? ''] ?? {bg:'#f3f4f6', cor:'#374151'}
+            const tipoCor: Record<string,string> = { acidente:'#dc2626', atestado:'#2563eb', advertencia:'#ea580c', geral:'#7c3aed' }
+            const cor = tipoCor[h.tipo] ?? '#6b7280'
+            return (
+              <div key={h.id} style={{ background:'#fff', borderRadius:12,
+                border:`1px solid ${jaSync ? '#86efac' : '#e5e7eb'}`, marginBottom:8, padding:'14px 16px' }}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:8 }}>
                   <div style={{ flex:1 }}>
-                    <div style={{ display:'flex',gap:6,alignItems:'center',flexWrap:'wrap',marginBottom:4 }}>
-                      <span style={{ background:tipoCor+'20',color:tipoCor,borderRadius:5,padding:'1px 8px',fontSize:11,fontWeight:700,textTransform:'uppercase' }}>{h.tipo}</span>
-                      {h.gravidade&&<span style={{ background:gc.bg,color:gc.cor,borderRadius:5,padding:'1px 8px',fontSize:11,fontWeight:700 }}>{h.gravidade}</span>}
+                    <div style={{ display:'flex', gap:6, alignItems:'center', flexWrap:'wrap', marginBottom:4 }}>
+                      <span style={{ background:cor+'20', color:cor, borderRadius:5, padding:'1px 8px', fontSize:11, fontWeight:700, textTransform:'uppercase' }}>{h.tipo}</span>
+                      {h.gravidade && <span style={{ background:gc.bg, color:gc.cor, borderRadius:5, padding:'1px 8px', fontSize:11, fontWeight:700 }}>{h.gravidade}</span>}
                     </div>
-                    <div style={{ fontWeight:700,fontSize:14,color:'#111' }}>{cNome}</div>
-                    <div style={{ fontSize:12,color:'#374151',marginTop:4,lineHeight:1.4 }}>{h.descricao}</div>
-                    {h.local&&<div style={{ fontSize:11,color:'#6b7280',marginTop:2 }}>📍 {h.local}</div>}
-                    {h.dias_afastamento&&<div style={{ fontSize:11,color:'#2563eb',marginTop:2 }}>🏥 {h.dias_afastamento} dia(s) afastamento</div>}
-                    {h.motivo&&<div style={{ fontSize:11,color:'#ea580c',marginTop:2 }}>📋 {(h as any).motivo}</div>}
+                    <div style={{ fontWeight:700, fontSize:14, color:'#111' }}>{cNome}</div>
+                    <div style={{ fontSize:12, color:'#374151', marginTop:4, lineHeight:1.4 }}>{h.descricao}</div>
+                    {h.local && <div style={{ fontSize:11, color:'#6b7280', marginTop:2 }}>📍 {h.local}</div>}
+                    {h.dias_afastamento && <div style={{ fontSize:11, color:'#2563eb', marginTop:2 }}>🏥 {h.dias_afastamento} dia(s) de afastamento</div>}
+                    {h.motivo && <div style={{ fontSize:11, color:'#ea580c', marginTop:2 }}>📋 {h.motivo}</div>}
                   </div>
-                  <div style={{ display:'flex',flexDirection:'column',alignItems:'flex-end',gap:6 }}>
-                    {jaSync?<span style={{ background:'#dcfce7',color:'#15803d',borderRadius:5,padding:'2px 8px',fontSize:11,fontWeight:700 }}>✓ Sincronizado</span>
-                           :<span style={{ background:'#fef3c7',color:'#b45309',borderRadius:5,padding:'2px 8px',fontSize:11,fontWeight:700 }}>⏳ Pendente</span>}
-                    {!jaSync&&(
-                      <button onClick={()=>excluir(h.id,h.sincronizado_em)} disabled={deletandoId===h.id}
-                        style={{ background:'none',border:'1px solid #fca5a5',borderRadius:6,padding:'3px 8px',cursor:'pointer',display:'flex',alignItems:'center',gap:4,color:'#dc2626',fontSize:11 }}>
-                        <Trash2 size={12}/>{deletandoId===h.id?'…':'Excluir'}
+                  <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:6 }}>
+                    {jaSync
+                      ? <span style={{ background:'#dcfce7', color:'#15803d', borderRadius:5, padding:'2px 8px', fontSize:11, fontWeight:700 }}>✓ Sincronizado</span>
+                      : <span style={{ background:'#fef3c7', color:'#b45309', borderRadius:5, padding:'2px 8px', fontSize:11, fontWeight:700 }}>⏳ Pendente</span>}
+                    {!jaSync && (
+                      <button type="button" onClick={() => excluir(h.id, h.sincronizado_em)} disabled={deletandoId===h.id}
+                        style={{ background:'none', border:'1px solid #fca5a5', borderRadius:6, padding:'3px 8px',
+                          cursor:'pointer', display:'flex', alignItems:'center', gap:4, color:'#dc2626', fontSize:11 }}>
+                        <Trash2 size={12}/>{deletandoId===h.id ? '…' : 'Excluir'}
                       </button>
                     )}
                   </div>
                 </div>
-                <div style={{ fontSize:10,color:'#9ca3af',marginTop:6 }}>
-                  {h.data_ocorrencia.split('-').reverse().join('/')} · {new Date(h.criado_em).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}
+                <div style={{ fontSize:10, color:'#9ca3af', marginTop:6 }}>
+                  {h.data_ocorrencia?.split('-').reverse().join('/')} · {new Date(h.criado_em).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}
                 </div>
               </div>
             )
