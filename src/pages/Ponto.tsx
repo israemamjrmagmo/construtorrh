@@ -538,6 +538,11 @@ export default function Ponto() {
 
   // Contagem de lançamentos por colaborador no mês (para sidebar)
   const [contadoresLanc, setContadoresLanc] = useState<Record<string,number>>({})
+  // Mapa colaborador_id → status do ponto no mês (para resumo/filtro)
+  // 'fechado' = aprovado/pago/liberado, 'aberto' = rascunho/aguardando/em_fechamento/recusado, 'sem' = nenhum lançamento
+  const [statusPontoMap, setStatusPontoMap] = useState<Record<string,'fechado'|'aberto'|'sem'>>({})
+  const [funcaoFiltro, setFuncaoFiltro] = useState('todas')
+  const [filtroStatus, setFiltroStatus] = useState<'todos'|'fechado'|'aberto'|'sem'>('todos')
   // Obras com pontos pendentes no portal (badge no filtro de obras)
   const [obrasPendPortal, setObrasPendPortal] = useState<Record<string,number>>({})
 
@@ -565,18 +570,26 @@ export default function Ponto() {
     load()
   },[])
 
-  // ── Carregar contadores de lançamentos para todos os colaboradores ────────
+  // ── Carregar contadores e status de lançamentos para todos os colaboradores ────
   useEffect(()=>{
     const loadContadores=async()=>{
       const mr=`${ano}-${String(mes).padStart(2,'0')}`
       const{data}=await supabase.from('ponto_lancamentos')
-        .select('colaborador_id')
+        .select('colaborador_id,status')
         .eq('mes_referencia',mr)
-      const map:Record<string,number>={}
+      const mapQtd:Record<string,number>={}
+      const mapStatus:Record<string,'fechado'|'aberto'|'sem'>={}
       ;(data??[]).forEach((r:any)=>{
-        map[r.colaborador_id]=(map[r.colaborador_id]??0)+1
+        mapQtd[r.colaborador_id]=(mapQtd[r.colaborador_id]??0)+1
+        // Determinar status: se tiver qualquer fechado → fechado; senão aberto
+        const jaFechado = mapStatus[r.colaborador_id]==='fechado'
+        const isFechado = ['aprovado','liberado','pago','em_fechamento'].includes(r.status)
+        if(!jaFechado){
+          mapStatus[r.colaborador_id] = isFechado ? 'fechado' : 'aberto'
+        }
       })
-      setContadoresLanc(map)
+      setContadoresLanc(mapQtd)
+      setStatusPontoMap(mapStatus)
     }
     loadContadores()
   },[ano,mes])
@@ -1231,10 +1244,18 @@ export default function Ponto() {
       return true
     })
     if(obraFiltro!=='todas')lista=lista.filter(c=>c.obra_id===obraFiltro)
+    if(funcaoFiltro!=='todas')lista=lista.filter(c=>c.funcao_nome===funcaoFiltro)
+    // Filtro por status de ponto
+    if(filtroStatus!=='todos'){
+      lista=lista.filter(c=>{
+        const st = statusPontoMap[c.id] ?? 'sem'
+        return st === filtroStatus
+      })
+    }
     const q=busca.toLowerCase()
     if(q)lista=lista.filter(c=>c.nome.toLowerCase().includes(q)||(c.chapa??'').toLowerCase().includes(q)||c.funcao_nome.toLowerCase().includes(q))
     return lista
-  },[colaboradores,busca,obraFiltro,ano,mes])
+  },[colaboradores,busca,obraFiltro,funcaoFiltro,filtroStatus,statusPontoMap,ano,mes])
 
   // ─────────────────────────────────────────────────────────────────────────
   return (
@@ -1243,10 +1264,42 @@ export default function Ponto() {
 
       {/* ── Painel esquerdo ── */}
       <div style={{width:272,flexShrink:0,borderRight:'1px solid var(--border)',display:'flex',flexDirection:'column',overflow:'hidden'}}>
-        <div style={{padding:'12px 10px 8px',borderBottom:'1px solid var(--border)',display:'flex',flexDirection:'column',gap:6}}>
+        <div style={{padding:'10px 10px 6px',borderBottom:'1px solid var(--border)',display:'flex',flexDirection:'column',gap:6}}>
           <div style={{fontWeight:700,fontSize:13}}>🕐 Controle de Ponto</div>
+
+          {/* ── Barra de resumo do mês ── */}
+          {(()=>{
+            const total = colabsFiltrados.length || colaboradores.length
+            const fechados   = Object.values(statusPontoMap).filter(s=>s==='fechado').length
+            const abertos    = Object.values(statusPontoMap).filter(s=>s==='aberto').length
+            const semLanc    = (colaboradores.filter(c=>{
+              const pd=`${ano}-${String(mes).padStart(2,'0')}-01`; const ud=`${ano}-${String(mes).padStart(2,'0')}-31`
+              if(c.data_admissao && c.data_admissao > ud) return false
+              if(c.status !== 'ativo' && c.data_status && c.data_status < pd) return false
+              return true
+            }).length) - fechados - abertos
+            const cards=[
+              {label:'Fechados',val:fechados,bg:'#dcfce7',cor:'#15803d',key:'fechado' as const},
+              {label:'Em Aberto',val:abertos,bg:'#fef3c7',cor:'#b45309',key:'aberto' as const},
+              {label:'Sem Ponto',val:semLanc,bg:'#fee2e2',cor:'#dc2626',key:'sem' as const},
+            ]
+            return(
+              <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:4}}>
+                {cards.map(c=>(
+                  <button key={c.key} onClick={()=>setFiltroStatus(filtroStatus===c.key?'todos':c.key)}
+                    style={{padding:'5px 4px',borderRadius:8,border:`2px solid ${filtroStatus===c.key?c.cor:'transparent'}`,
+                      background:filtroStatus===c.key?c.bg:c.bg+'88',cursor:'pointer',textAlign:'center'}}>
+                    <div style={{fontSize:16,fontWeight:900,color:c.cor}}>{c.val}</div>
+                    <div style={{fontSize:9,fontWeight:600,color:c.cor,lineHeight:1.2}}>{c.label}</div>
+                  </button>
+                ))}
+              </div>
+            )
+          })()}
+
+          {/* ── Filtro por Obra ── */}
           <Select value={obraFiltro} onValueChange={setObraFiltro}>
-            <SelectTrigger style={{fontSize:12,height:30}}><SelectValue placeholder="Todas as obras"/></SelectTrigger>
+            <SelectTrigger style={{fontSize:12,height:28}}><SelectValue placeholder="Todas as obras"/></SelectTrigger>
             <SelectContent>
               <SelectItem value="todas">
                 Todas as obras
@@ -1273,10 +1326,44 @@ export default function Ponto() {
               })}
             </SelectContent>
           </Select>
+
+          {/* ── Filtro por Função ── */}
+          {(()=>{
+            const funcoesUnicas = [...new Set(colaboradores.map(c=>c.funcao_nome))].sort()
+            return(
+              <Select value={funcaoFiltro} onValueChange={setFuncaoFiltro}>
+                <SelectTrigger style={{fontSize:12,height:28}}><SelectValue placeholder="Todas as funções"/></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todas">Todas as funções</SelectItem>
+                  {funcoesUnicas.map(f=>(
+                    <SelectItem key={f} value={f}>{f}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )
+          })()}
+
+          {/* ── Busca ── */}
           <div style={{position:'relative'}}>
             <Search size={11} style={{position:'absolute',left:7,top:'50%',transform:'translateY(-50%)',color:'var(--muted-foreground)'}}/>
-            <Input placeholder="Nome ou chapa…" value={busca} onChange={e=>setBusca(e.target.value)} style={{paddingLeft:22,fontSize:12,height:30}}/>
+            <Input placeholder="Nome ou chapa…" value={busca} onChange={e=>setBusca(e.target.value)} style={{paddingLeft:22,fontSize:12,height:28}}/>
           </div>
+
+          {/* Indicador de filtros ativos */}
+          {(filtroStatus!=='todos'||funcaoFiltro!=='todas')&&(
+            <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
+              {filtroStatus!=='todos'&&(
+                <button onClick={()=>setFiltroStatus('todos')} style={{fontSize:10,padding:'2px 8px',borderRadius:10,border:'none',background:'#e0e7ff',color:'#3730a3',cursor:'pointer',fontWeight:600}}>
+                  {filtroStatus==='fechado'?'✓ Fechados':filtroStatus==='aberto'?'⚠ Em Aberto':'✕ Sem Ponto'} ×
+                </button>
+              )}
+              {funcaoFiltro!=='todas'&&(
+                <button onClick={()=>setFuncaoFiltro('todas')} style={{fontSize:10,padding:'2px 8px',borderRadius:10,border:'none',background:'#e0e7ff',color:'#3730a3',cursor:'pointer',fontWeight:600}}>
+                  {funcaoFiltro} ×
+                </button>
+              )}
+            </div>
+          )}
         </div>
         <div style={{flex:1,overflowY:'auto'}}>
           {loadingColabs?<div style={{padding:16,textAlign:'center',fontSize:12,color:'var(--muted-foreground)'}}>Carregando…</div>
@@ -1290,20 +1377,30 @@ export default function Ponto() {
             }}>
               <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:4}}>
                 <div style={{fontSize:10,fontFamily:'monospace',fontWeight:700,opacity:0.6}}>{c.chapa??'—'}</div>
-                {(()=>{
-                  const qtd=contadoresLanc[c.id]??0
-                  const ativo=colabSel?.id===c.id
-                  if(qtd===0)return(
-                    <span title="Sem lançamento neste mês" style={{fontSize:11,background:ativo?'rgba(255,255,255,0.25)':'#fef9c3',color:ativo?'#fff':'#854d0e',borderRadius:10,padding:'1px 5px',fontWeight:700,display:'flex',alignItems:'center',gap:2}}>
-                      ⚠️
-                    </span>
-                  )
-                  return(
-                    <span title={`${qtd} lançamento${qtd!==1?'s':''}`} style={{fontSize:10,background:ativo?'rgba(255,255,255,0.25)':'var(--muted)',color:ativo?'#fff':'var(--muted-foreground)',borderRadius:10,padding:'1px 6px',fontWeight:700}}>
-                      {qtd}
-                    </span>
-                  )
-                })()}
+                <div style={{display:'flex',alignItems:'center',gap:3}}>
+                  {(()=>{
+                    const st = statusPontoMap[c.id]
+                    const ativo = colabSel?.id===c.id
+                    if(!st) return null
+                    if(st==='fechado') return <span title="Ponto fechado" style={{fontSize:9,background:ativo?'rgba(255,255,255,0.3)':'#dcfce7',color:ativo?'#fff':'#15803d',borderRadius:8,padding:'1px 5px',fontWeight:700}}>✓</span>
+                    if(st==='aberto') return <span title="Ponto em aberto" style={{fontSize:9,background:ativo?'rgba(255,255,255,0.3)':'#fef3c7',color:ativo?'#fff':'#b45309',borderRadius:8,padding:'1px 5px',fontWeight:700}}>⚠</span>
+                    return null
+                  })()}
+                  {(()=>{
+                    const qtd=contadoresLanc[c.id]??0
+                    const ativo=colabSel?.id===c.id
+                    if(qtd===0)return(
+                      <span title="Sem lançamento neste mês" style={{fontSize:11,background:ativo?'rgba(255,255,255,0.25)':'#fef9c3',color:ativo?'#fff':'#854d0e',borderRadius:10,padding:'1px 5px',fontWeight:700,display:'flex',alignItems:'center',gap:2}}>
+                        ⚠️
+                      </span>
+                    )
+                    return(
+                      <span title={`${qtd} lançamento${qtd!==1?'s':''}`} style={{fontSize:10,background:ativo?'rgba(255,255,255,0.25)':'var(--muted)',color:ativo?'#fff':'var(--muted-foreground)',borderRadius:10,padding:'1px 6px',fontWeight:700}}>
+                        {qtd}
+                      </span>
+                    )
+                  })()}
+                </div>
               </div>
               <div style={{fontSize:13,fontWeight:600}}>{c.nome}</div>
               <div style={{fontSize:11,opacity:0.7}}>{c.funcao_nome}</div>
