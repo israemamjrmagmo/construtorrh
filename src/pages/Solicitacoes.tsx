@@ -538,6 +538,13 @@ function TabOcorrencias({ obras, colabs, perfil }: { obras: Obra[]; colabs: Cola
                   <span style={{ background:b.bg, color:b.cor, borderRadius:6, padding:'2px 8px', fontSize:11, fontWeight:700 }}>{b.label}</span>
                   <Button size="sm" variant="outline" onClick={() => setModal(r)} style={{ height:28, fontSize:12, padding:'0 8px' }}><Eye size={12}/></Button>
                   <Button size="sm" variant="outline" onClick={() => gerarPDF(r)} style={{ height:28, fontSize:12, padding:'0 8px' }}><FileText size={12}/></Button>
+                  {r.atestado_url && (
+                    <a href={r.atestado_url} target="_blank" rel="noopener noreferrer" style={{ textDecoration:'none' }}>
+                      <Button size="sm" variant="outline" style={{ height:28, fontSize:12, padding:'0 8px', borderColor:'#2563eb', color:'#2563eb' }}>
+                        <Download size={12}/> Atestado
+                      </Button>
+                    </a>
+                  )}
                   {isPendente(r) && <>
                     <Button size="sm" onClick={() => aprovar(r.id)} style={{ height:28, fontSize:12, background:'#15803d', color:'#fff', padding:'0 10px' }}>
                       <Check size={12}/> Aprovar
@@ -585,6 +592,14 @@ function TabOcorrencias({ obras, colabs, perfil }: { obras: Obra[]; colabs: Cola
                 <span style={{ fontSize:12 }}>{String(value)}</span>
               </div>
             ))}
+            {modal.atestado_url && (
+              <a href={modal.atestado_url} target="_blank" rel="noopener noreferrer"
+                style={{ display:'flex', alignItems:'center', gap:8, margin:'14px 0 0',
+                  padding:'10px 14px', background:'#eff6ff', border:'1px solid #bfdbfe',
+                  borderRadius:10, color:'#1d4ed8', fontWeight:700, fontSize:13, textDecoration:'none' }}>
+                <Download size={16}/> 📄 Visualizar / Baixar Atestado
+              </a>
+            )}
             <div style={{ display:'flex', justifyContent:'flex-end', marginTop:16, gap:8, flexWrap:'wrap' }}>
               <Button variant="outline" onClick={() => gerarPDF(modal)} style={{ height:32, fontSize:12 }}><FileText size={13}/> PDF</Button>
               {isPendente(modal) && <>

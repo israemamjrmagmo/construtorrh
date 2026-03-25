@@ -85,54 +85,6 @@ export default function PortalHome() {
         </div>
       </div>
 
-      {/* Obras */}
-      <div style={{ padding: '8px 16px 16px' }}>
-        <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: '#9ca3af', marginBottom: 10 }}>
-          Suas Obras
-        </div>
-        {loading ? (
-          <div style={{ textAlign: 'center', color: '#9ca3af', padding: 24 }}>Carregando…</div>
-        ) : obras.length === 0 ? (
-          <div style={{ background: '#fff', borderRadius: 12, padding: 24, textAlign: 'center', color: '#9ca3af' }}>
-            Nenhuma obra vinculada ao seu acesso
-          </div>
-        ) : obras.map(o => {
-          const cnt = contadores[o.id] ?? { ponto: 0, ocorr: 0 }
-          return (
-            <div key={o.id} onClick={() => nav(`/portal/ponto?obra=${o.id}`)}
-              style={{
-                background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb',
-                padding: '14px 16px', marginBottom: 8, cursor: 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
-              }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <div style={{
-                  width: 40, height: 40, background: 'linear-gradient(135deg,#1e3a5f,#2d6a4f)',
-                  borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}>
-                  <Building2 size={20} color="#fff" />
-                </div>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: 14, color: '#111' }}>{o.nome}</div>
-                  {o.codigo && <div style={{ fontSize: 11, color: '#9ca3af' }}>Cód: {o.codigo}</div>}
-                  <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-                    <span style={{ fontSize: 10, background: cnt.ponto > 0 ? '#dbeafe' : '#f3f4f6', color: cnt.ponto > 0 ? '#1d4ed8' : '#6b7280', borderRadius: 4, padding: '1px 6px', fontWeight: 600 }}>
-                      📋 {cnt.ponto} ponto{cnt.ponto !== 1 ? 's' : ''} hoje
-                    </span>
-                    {cnt.ocorr > 0 && (
-                      <span style={{ fontSize: 10, background: '#fee2e2', color: '#dc2626', borderRadius: 4, padding: '1px 6px', fontWeight: 600 }}>
-                        ⚠ {cnt.ocorr} ocorrência{cnt.ocorr !== 1 ? 's' : ''}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-              <ChevronRight size={18} color="#9ca3af" />
-            </div>
-          )
-        })}
-      </div>
     </PortalLayout>
   )
 }
