@@ -131,22 +131,36 @@ function TabCadastros({ obras, funcoes, perfil }: { obras: Obra[]; funcoes: Func
 
   async function aprovar(r: any) {
     const nome = perfil?.username ?? perfil?.email ?? 'RH'
-    await supabase.from('portal_solicitacoes').update({
+    // Tenta com colunas extras; se falhar, tenta só o status
+    let { error } = await supabase.from('portal_solicitacoes').update({
       status: 'aprovado',
-      aprovado_por:  perfil?.id,
+      aprovado_por:  perfil?.id ?? null,
       aprovado_em:   new Date().toISOString(),
       aprovado_nome: nome,
     }).eq('id', r.id)
-    toast.success('Solicitação aprovada com sucesso!')
+
+    if (error) {
+      // colunas extras ainda não existem no banco — salva só o status
+      const { error: err2 } = await supabase.from('portal_solicitacoes')
+        .update({ status: 'aprovado' }).eq('id', r.id)
+      if (err2) { toast.error('Erro ao aprovar: ' + err2.message); return }
+    }
+    toast.success('Solicitação aprovada!')
     fetch()
   }
 
   async function recusar() {
     if (!recusaId) return
-    await supabase.from('portal_solicitacoes').update({
+    const { error } = await supabase.from('portal_solicitacoes').update({
       status: 'recusado',
       observacoes_admin: motivoRecusa || 'Recusado',
     }).eq('id', recusaId)
+    if (error) {
+      // tenta sem observacoes_admin caso coluna não exista
+      const { error: err2 } = await supabase.from('portal_solicitacoes')
+        .update({ status: 'recusado' }).eq('id', recusaId)
+      if (err2) { toast.error('Erro: ' + err2.message); return }
+    }
     toast.success('Solicitação recusada')
     setRecusaId(null); setMotivoRecusa(''); fetch()
   }
