@@ -400,7 +400,7 @@ export default function PortalOcorrencias() {
       {aba === 'desligamento' && (
         <form onSubmit={handleSubmitDesligamento} style={{ padding:'0 16px 32px', display:'flex', flexDirection:'column', gap:14 }}>
           <div style={{ background:'#fef9c3', border:'1px solid #fde68a', borderRadius:10, padding:'12px 14px', fontSize:13, color:'#92400e', fontWeight:600 }}>
-            ⚠️ Esta solicitação será enviada ao RH para análise. O colaborador só será inativado após aprovação.
+            ⚠️ Esta solicitação será enviada ao RH para análise. Após aprovação, o RH realizará o processo de desligamento e inativará o colaborador manualmente.
           </div>
 
           {sucessoDeslig && (

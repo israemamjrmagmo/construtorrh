@@ -1148,18 +1148,13 @@ function TabDesligamentos({ obras, perfil }: { obras: Obra[]; perfil: any }) {
 
   useEffect(() => { fetchRows() }, [fetchRows])
 
-  async function aprovar(id: string, dados: any) {
+  async function aprovar(id: string, _dados: any) {
     const nome = perfil?.nome ?? perfil?.email ?? 'RH'
     await supabase.from('portal_solicitacoes').update({
       status: 'aprovado', aprovado_nome: nome, aprovado_em: new Date().toISOString(),
     }).eq('id', id)
-    // Inativar o colaborador no sistema
-    if (dados?.colaborador_id) {
-      await supabase.from('colaboradores').update({
-        status: 'inativo',
-        data_demissao: dados?.data_prevista ?? new Date().toISOString().slice(0,10),
-      }).eq('id', dados.colaborador_id)
-    }
+    // ⚠️ Colaborador NÃO é inativado automaticamente.
+    // O RH deve inativar manualmente em Colaboradores após concluir o processo de desligamento.
     fetchRows()
   }
 
@@ -1227,6 +1222,11 @@ function TabDesligamentos({ obras, perfil }: { obras: Obra[]; perfil: any }) {
                 {r.aprovado_nome && (
                   <div style={{ fontSize:11, color:'#15803d', marginTop:4 }}>✓ Processado por: {r.aprovado_nome}</div>
                 )}
+                {r.status === 'aprovado' && (
+                  <div style={{ marginTop:8, padding:'8px 12px', borderRadius:8, background:'#fef3c7', border:'1px solid #fbbf24', fontSize:12, color:'#92400e', fontWeight:600 }}>
+                    ⚠️ Lembre-se: inative o colaborador manualmente em <strong>Colaboradores</strong> após concluir o processo de desligamento.
+                  </div>
+                )}
                 {r.observacoes_admin && (
                   <div style={{ background:'#fef9c3', borderRadius:6, padding:'6px 10px', fontSize:12, color:'#92400e', marginTop:6 }}>
                     💬 {r.observacoes_admin}
@@ -1260,7 +1260,7 @@ function TabDesligamentos({ obras, perfil }: { obras: Obra[]; perfil: any }) {
                   <button onClick={() => aprovar(r.id, d)} style={{
                     flex:1, height:36, background:'#15803d', color:'#fff', border:'none', borderRadius:8,
                     cursor:'pointer', fontWeight:700, fontSize:13,
-                  }}>✓ Aprovar e Inativar</button>
+                  }}>✓ Aprovar Solicitação</button>
                   <button onClick={() => setRecusaId(r.id)} style={{
                     flex:1, height:36, background:'#fff', color:'#dc2626', border:'1px solid #fca5a5',
                     borderRadius:8, cursor:'pointer', fontWeight:700, fontSize:13,
