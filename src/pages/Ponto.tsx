@@ -764,19 +764,30 @@ export default function Ponto() {
       fetchPlaybooks(obraIds),
     ])
 
+    // ── Pré-carregar registros reais de TODOS os lançamentos do mês ──────────
+    // Isso garante que ao montar diasUsados para qualquer lançamento,
+    // já sabemos quais datas têm ponto salvo em cada obra — independente da ordem.
+    const todosLancIds = list.map((l:any)=>l.id)
+    const {data: todosRegistros} = await supabase.from('registro_ponto')
+      .select('lancamento_id,data').in('lancamento_id', todosLancIds)
+    // Mapa: lancamento_id → Set<data> (datas com registro real no banco)
+    const registrosPorLanc = new Map<string, Set<string>>()
+    ;(todosRegistros??[]).forEach((r:any)=>{
+      if(!registrosPorLanc.has(r.lancamento_id)) registrosPorLanc.set(r.lancamento_id, new Set())
+      registrosPorLanc.get(r.lancamento_id)!.add(r.data)
+    })
+
     // Dias de cada lançamento — sequencial p/ calcular bloqueios entre lançamentos
     const newDiasMap:Record<string,DiaRegistro[]>={}
     for(const lanc of list){
       const diasUsados=new Map<string,string>()   // data → nomeObra
-      for(const [outroId,outroDias] of Object.entries(newDiasMap)){
-        if(outroId===lanc.id)continue
-        // TRAVA ANTI-DUPLICIDADE: qualquer data dentro do range de outro lançamento
-        // fica bloqueada com o nome da obra de origem — independente de ter registro.
-        const outroLanc=list.find(l=>l.id===outroId)
-        const nomeOutraObra=outroLanc?.obra_nome??'outra obra'
-        outroDias.forEach(d=>{
-          // Bloqueia apenas dias que TÊM registro real (id preenchido = ponto salvo)
-          if(d.id && !diasUsados.has(d.data))diasUsados.set(d.data,nomeOutraObra)
+      // Para cada OUTRO lançamento, bloqueia apenas datas que têm registro real no banco
+      for(const outroLanc of list){
+        if(outroLanc.id===lanc.id) continue
+        const nomeOutraObra = outroLanc.obra_nome??'outra obra'
+        const datasComRegistro = registrosPorLanc.get(outroLanc.id) ?? new Set<string>()
+        datasComRegistro.forEach(data=>{
+          if(!diasUsados.has(data)) diasUsados.set(data, nomeOutraObra)
         })
       }
       newDiasMap[lanc.id]=await fetchDiasLanc(lanc,colab,horMapFull,diasAtestado,diasSuspensao,diasUsados)
