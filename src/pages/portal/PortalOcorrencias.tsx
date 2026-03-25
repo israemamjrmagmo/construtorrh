@@ -168,7 +168,7 @@ export default function PortalOcorrencias() {
       {/* Tabs tipo ocorrência */}
       <div style={{ display:'flex',padding:'0 16px 0',gap:6,overflowX:'auto',marginBottom:12 }}>
         {ABAS.map(a => (
-          <button key={a.key} onClick={()=>{setAba(a.key);setSubAba('nova')}} style={{
+          <button type="button" key={a.key} onClick={()=>{setAba(a.key);setSubAba('nova');setErroMsg('')}} style={{
             flexShrink:0, height:36, padding:'0 14px', border:`2px solid ${aba===a.key?a.cor:'#e5e7eb'}`,
             borderRadius:20, cursor:'pointer', fontWeight:700, fontSize:12,
             background: aba===a.key?a.cor:'#fff', color: aba===a.key?'#fff':'#6b7280',
@@ -182,7 +182,7 @@ export default function PortalOcorrencias() {
       {aba !== 'geral' && (
         <div style={{ display:'flex',margin:'0 16px 12px',background:'#f3f4f6',borderRadius:10,padding:4 }}>
           {(['nova','historico'] as const).map(s => (
-            <button key={s} onClick={()=>setSubAba(s)} style={{
+            <button type="button" key={s} onClick={()=>setSubAba(s)} style={{
               flex:1, height:34, border:'none', borderRadius:8, cursor:'pointer', fontWeight:700, fontSize:12,
               background:subAba===s?'#fff':'transparent', color:subAba===s?'#1e3a5f':'#9ca3af',
               boxShadow:subAba===s?'0 1px 4px rgba(0,0,0,0.1)':'none',
