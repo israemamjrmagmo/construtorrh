@@ -889,14 +889,16 @@ export default function Ponto() {
   const totalReceber = useMemo(()=>{
     if(!colabSel)return totalProd
     if(colabSel.tipo_contrato==='autonomo'||colabSel.tipo_contrato==='pj'){
-      return horasAutonomoSemProd + totalProd
+      // Autônomo: valor bruto = horas TOTAIS + produção
+      // (não desconta dias com produção do valor de horas — o desconto é feito na tela de Pagamentos)
+      return totalHoras + totalProd
     }
     // CLT: salário = horas + DSR
     // Se produção > salário → paga salário + prêmio (= produção - salário)
     // Se salário >= produção → paga apenas salário
     const salario = totalHoras + dsrInfo.valor
     return salario + premioCLT   // premioCLT já é 0 quando salário >= produção
-  },[colabSel,horasAutonomoSemProd,totalProd,totalHoras,dsrInfo,premioCLT])
+  },[colabSel,totalHoras,totalProd,dsrInfo,premioCLT])
 
   // ── Toggle dia ────────────────────────────────────────────────────────────
   function togglePresente(lancId:string,idx:number,colab:ColabSimples){
@@ -1269,9 +1271,9 @@ export default function Ponto() {
 
                 // Sub-labels
                 const subReceber = ehAuto
-                  ? (totalProd>0||horasAutonomoSemProd>0
-                      ? `Horas: ${formatCurrency(horasAutonomoSemProd)} + Prod: ${formatCurrency(totalProd)}`
-                      : `Autônomo: R$ ${valorHoraEfetivo.toFixed(2)}/h`)
+                  ? (totalProd>0
+                      ? `Horas: ${formatCurrency(totalHoras)} + Prod: ${formatCurrency(totalProd)}`
+                      : totalHoras>0 ? `Horas: ${formatCurrency(totalHoras)}` : `Autônomo: R$ ${valorHoraEfetivo.toFixed(2)}/h`)
                   : (()=>{
                       const partes:string[]=[]
                       if(totalHoras>0) partes.push(`Horas: ${formatCurrency(totalHoras)}`)
