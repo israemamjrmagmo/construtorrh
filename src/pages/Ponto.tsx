@@ -20,6 +20,8 @@ interface ColabSimples {
   funcao_id: string | null; obra_id: string | null
   tipo_contrato: string; funcao_nome: string
   data_admissao: string | null   // data de início dos trabalhos
+  status: string                 // ativo | inativo | afastado | ferias
+  data_status: string | null     // data da mudança de status (inativo/afastado/ferias)
 }
 interface ObraSimples { id: string; nome: string }
 interface HorarioDia {
@@ -545,7 +547,7 @@ export default function Ponto() {
   useEffect(()=>{
     const load=async()=>{
       const [{data:colsRaw},{data:obsRaw}]=await Promise.all([
-        supabase.from('colaboradores').select('id,nome,chapa,funcao_id,obra_id,tipo_contrato,data_admissao,funcoes!colaboradores_funcao_id_fkey(id,nome)').order('nome'),
+        supabase.from('colaboradores').select('id,nome,chapa,funcao_id,obra_id,tipo_contrato,data_admissao,status,data_status,funcoes!colaboradores_funcao_id_fkey(id,nome)').order('nome'),
         supabase.from('obras').select('id,nome').order('nome'),
       ])
       setColaboradores((colsRaw??[]).map((c:any)=>({
@@ -554,6 +556,8 @@ export default function Ponto() {
         obra_id:c.obra_id??null,tipo_contrato:c.tipo_contrato??'clt',
         funcao_nome:c.funcoes?.nome??'Sem função',
         data_admissao:c.data_admissao??null,
+        status:c.status??'ativo',
+        data_status:c.data_status??null,
       })))
       setObras((obsRaw??[]) as ObraSimples[])
       setLoadingColabs(false)
@@ -952,16 +956,17 @@ export default function Ponto() {
   const totalReceber = useMemo(()=>{
     if(!colabSel)return totalProd
     if(colabSel.tipo_contrato==='autonomo'||colabSel.tipo_contrato==='pj'){
-      // Autônomo: valor bruto = horas TOTAIS + produção
-      // (não desconta dias com produção do valor de horas — o desconto é feito na tela de Pagamentos)
-      return totalHoras + totalProd
+      // REGRA AUTÔNOMO: dias com produção → paga só a produção (não soma horas do dia)
+      //                 dias sem produção → paga as horas normalmente
+      // horasAutonomoSemProd já exclui os dias que têm produção
+      return horasAutonomoSemProd + totalProd
     }
     // CLT: salário = horas + DSR
     // Se produção > salário → paga salário + prêmio (= produção - salário)
     // Se salário >= produção → paga apenas salário
     const salario = totalHoras + dsrInfo.valor
     return salario + premioCLT   // premioCLT já é 0 quando salário >= produção
-  },[colabSel,totalHoras,totalProd,dsrInfo,premioCLT])
+  },[colabSel,totalHoras,horasAutonomoSemProd,totalProd,dsrInfo,premioCLT])
 
   // ── Toggle dia ────────────────────────────────────────────────────────────
   function togglePresente(lancId:string,idx:number,colab:ColabSimples){
@@ -1215,11 +1220,15 @@ export default function Ponto() {
   function mesSeguinte(){if(mes===12){setAno(a=>a+1);setMes(1)}else setMes(m=>m+1)}
 
   const colabsFiltrados=useMemo(()=>{
-    // Último dia do mês visualizado — só exibe colaboradores cuja admissão seja <= esse mês
-    const ultimoDiaMes = `${ano}-${String(mes).padStart(2,'0')}-31`
+    // Primeiro dia e último do mês visualizado
+    const primeiroDiaMes = `${ano}-${String(mes).padStart(2,'0')}-01`
+    const ultimoDiaMes   = `${ano}-${String(mes).padStart(2,'0')}-31`
     let lista=colaboradores.filter(c=> {
-      if(!c.data_admissao) return true           // sem data: sempre visível
-      return c.data_admissao <= ultimoDiaMes     // admitido até o mês atual
+      // 1. Admissão posterior ao mês → não aparece ainda
+      if(c.data_admissao && c.data_admissao > ultimoDiaMes) return false
+      // 2. Inativo/afastado/férias COM data_status antes do início do mês → não aparece mais
+      if(c.status !== 'ativo' && c.data_status && c.data_status < primeiroDiaMes) return false
+      return true
     })
     if(obraFiltro!=='todas')lista=lista.filter(c=>c.obra_id===obraFiltro)
     const q=busca.toLowerCase()
@@ -1402,8 +1411,9 @@ export default function Ponto() {
                 // Sub-labels
                 const subReceber = ehAuto
                   ? (totalProd>0
-                      ? `Horas: ${formatCurrency(totalHoras)} + Prod: ${formatCurrency(totalProd)}`
-                      : totalHoras>0 ? `Horas: ${formatCurrency(totalHoras)}` : `Autônomo: R$ ${valorHoraEfetivo.toFixed(2)}/h`)
+                      // Autônomo: mostra horas dos dias SEM prod + produção separados
+                      ? `Horas (${diasComProd.size} dia${diasComProd.size!==1?'s':''} c/prod excluídos): ${formatCurrency(horasAutonomoSemProd)} + Prod: ${formatCurrency(totalProd)}`
+                      : horasAutonomoSemProd>0 ? `Horas: ${formatCurrency(horasAutonomoSemProd)}` : `Autônomo: R$ ${valorHoraEfetivo.toFixed(2)}/h`)
                   : (()=>{
                       const partes:string[]=[]
                       if(totalHoras>0) partes.push(`Horas: ${formatCurrency(totalHoras)}`)
@@ -1814,7 +1824,7 @@ export default function Ponto() {
         <div style={{background:'var(--background)',borderRadius:12,width:420,padding:28,boxShadow:'0 20px 60px rgba(0,0,0,0.3)'}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
             <h3 style={{fontWeight:800,fontSize:15,margin:0,color:'#b91c1c'}}>❌ Recusar Lançamento</h3>
-            <button onClick={()=>setModalRecusa(null)} style={{border:'none',background:'none',cursor:'pointer'}}><X size={16}/></button>
+
           </div>
           <div style={{marginBottom:16}}>
             <label style={{...LBL,color:'#b91c1c'}}>Motivo da recusa *</label>
@@ -1849,7 +1859,7 @@ export default function Ponto() {
         <div style={{background:'var(--background)',borderRadius:12,width:460,padding:28,boxShadow:'0 20px 60px rgba(0,0,0,0.3)'}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
             <h3 style={{fontWeight:800,fontSize:16,margin:0}}>Novo Lançamento de Ponto</h3>
-            <button onClick={()=>setModalLanc(false)} style={{border:'none',background:'none',cursor:'pointer'}}><X size={18}/></button>
+
           </div>
           <div style={{display:'flex',flexDirection:'column',gap:14}}>
             <div>
@@ -1936,7 +1946,7 @@ export default function Ponto() {
                 <div style={{fontWeight:800,fontSize:15}}>Lançar Produção</div>
                 <div style={{fontSize:11,color:'var(--muted-foreground)'}}>{lanc?.obra_nome} · {MESES[mes-1]}/{ano}</div>
               </div>
-              <button onClick={()=>setModalProd(false)} style={{border:'none',background:'none',cursor:'pointer'}}><X size={16}/></button>
+
             </div>
             <div style={{padding:'18px 22px',display:'flex',flexDirection:'column',gap:18}}>
               <div>
@@ -1999,7 +2009,7 @@ export default function Ponto() {
                 {portalStep==='periodo'?'Selecione o período e obra que deseja importar':'Revise e crie os lançamentos automaticamente'}
               </div>
             </div>
-            <button onClick={()=>setModalPortal(false)} style={{border:'none',background:'none',cursor:'pointer',padding:4}}><X size={18}/></button>
+
           </div>
 
           {/* ── STEP 1: Período ── */}

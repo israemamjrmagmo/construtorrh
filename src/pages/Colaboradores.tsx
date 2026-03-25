@@ -89,7 +89,7 @@ type FormData = {
   vt_cartao_numero: string
   vt_trechos_ida: VtTrecho[]
   vt_trechos_volta: VtTrecho[]
-  status: string; observacoes: string
+  status: string; data_status: string; observacoes: string
 }
 
 const EMPTY: FormData = {
@@ -102,6 +102,7 @@ const EMPTY: FormData = {
   vt_modalidade: 'nenhum', vt_gasolina_valor_dia: '',
   vt_cartao_tipo: '', vt_cartao_numero: '',
   vt_trechos_ida: [], vt_trechos_volta: [],
+  data_status: '',
   status: 'ativo', observacoes: '',
 }
 
@@ -1204,7 +1205,8 @@ export default function Colaboradores() {
       vt_cartao_numero: (c as any).vt_dados?.cartao_numero ?? '',
       vt_trechos_ida: ((c as any).vt_dados?.trechos_ida ?? []) as VtTrecho[],
       vt_trechos_volta: ((c as any).vt_dados?.trechos_volta ?? []) as VtTrecho[],
-      status: c.status ?? 'ativo', observacoes: c.observacoes ?? '',
+      status: c.status ?? 'ativo',
+      data_status: (c as any).data_status ?? '', observacoes: c.observacoes ?? '',
     })
     // Carregar EPIs do colaborador
     const { data: colabEpiData } = await supabase
@@ -1324,6 +1326,7 @@ export default function Colaboradores() {
     // Campos JSONB/extras via cast (não tipados na interface Colaborador)
     const payloadFull: any = {
       ...payload,
+      data_status: form.data_status || null,
       pix_tipo: form.pix_tipo || null,
       vt_dados: form.vt_modalidade === 'nenhum' ? null : {
         modalidade: form.vt_modalidade,
@@ -1797,16 +1800,29 @@ export default function Colaboradores() {
                 <Sec title="Status">
                   <Grid cols={2}>
                     <Field label="Status">
-                      <Select value={form.status} onValueChange={v => set('status', v)}>
+                      <Select value={form.status} onValueChange={v => { set('status', v); if(v==='ativo') set('data_status','') }}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="ativo">Ativo</SelectItem>
-                          <SelectItem value="inativo">Inativo</SelectItem>
-                          <SelectItem value="afastado">Afastado</SelectItem>
-                          <SelectItem value="ferias">Férias</SelectItem>
+                          <SelectItem value="ativo">✅ Ativo</SelectItem>
+                          <SelectItem value="inativo">🔴 Inativo</SelectItem>
+                          <SelectItem value="afastado">🟡 Afastado</SelectItem>
+                          <SelectItem value="ferias">🌴 Férias</SelectItem>
                         </SelectContent>
                       </Select>
                     </Field>
+                    {form.status !== 'ativo' && (
+                      <Field label={`Data de ${form.status === 'inativo' ? 'inativação' : form.status === 'afastado' ? 'afastamento' : 'início das férias'} *`}>
+                        <Input
+                          type="date"
+                          value={form.data_status}
+                          onChange={e => set('data_status', e.target.value)}
+                          style={{ borderColor: !form.data_status ? '#dc2626' : undefined }}
+                        />
+                        {!form.data_status && (
+                          <div style={{fontSize:10,color:'#dc2626',marginTop:2}}>Obrigatório para status não-ativo</div>
+                        )}
+                      </Field>
+                    )}
                     <Field label="Observações" span={2}>
                       <Textarea value={form.observacoes} onChange={e => set('observacoes', e.target.value)} rows={2} placeholder="Observações gerais…" />
                     </Field>

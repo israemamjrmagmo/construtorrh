@@ -929,7 +929,7 @@ export default function FechamentoPonto() {
           <div style={{ background: 'var(--background)', borderRadius: 12, width: 420, padding: 28, boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
               <h3 style={{ fontWeight: 800, fontSize: 15, margin: 0, color: '#b91c1c' }}>❌ Recusar Lançamento</h3>
-              <button onClick={() => setModalRecusar(null)} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><X size={16} /></button>
+              
             </div>
             <div style={{ marginBottom: 16 }}>
               <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 6 }}>Motivo da recusa *</label>

@@ -1172,7 +1172,7 @@ export default function ValeTransportePage() {
                     <div style={{ fontSize: 12, color: 'var(--muted-foreground)' }}>Configure globalmente e selecione os lançamentos a enviar para pagamento</div>
                   </div>
                 </div>
-                <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setModalLote(false)}><X size={16} /></Button>
+                
               </div>
 
               {/* ── Configurações Globais ── */}
