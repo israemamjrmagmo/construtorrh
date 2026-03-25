@@ -90,10 +90,15 @@ export default function PortalOcorrencias() {
   const [previewAtestado,  setPreviewAtestado]  = useState<string | null>(null)
   const [tamanhoAtestado,  setTamanhoAtestado]  = useState('')
   const [erroArquivo,      setErroArquivo]      = useState('')
+  // base64 sempre disponível para fallback garantido no submit
+  const [atestadoB64,      setAtestadoB64]      = useState<string | null>(null)
+  const [atestadoNomeSel,  setAtestadoNomeSel]  = useState('')
 
   async function selecionarAtestado(file: File | null) {
-    setArquivoAtestado(null); setPreviewAtestado(null); setTamanhoAtestado(''); setErroArquivo('')
+    setArquivoAtestado(null); setPreviewAtestado(null); setTamanhoAtestado('')
+    setErroArquivo(''); setAtestadoB64(null); setAtestadoNomeSel('')
     if (!file) return
+    const nomeBase = file.name || `atestado_${Date.now()}`
     if (file.type.startsWith('image/')) {
       try {
         const originalKB = (file.size / 1024).toFixed(0)
@@ -101,24 +106,38 @@ export default function PortalOcorrencias() {
         const compressedKB = Math.round((b64.length * 3) / 4 / 1024)
         setTamanhoAtestado(`${originalKB} KB → ~${compressedKB} KB`)
         setPreviewAtestado(b64)
+        setAtestadoB64(b64)   // ← guarda base64 já pronto
+        const nomeJpg = nomeBase.replace(/\.[^.]+$/, '.jpg')
+        setAtestadoNomeSel(nomeJpg)
         const blob = await fetch(b64).then(r => r.blob())
-        setArquivoAtestado(new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' }))
+        setArquivoAtestado(new File([blob], nomeJpg, { type: 'image/jpeg' }))
       } catch {
+        // Se compressão falhou, lê como base64 direto
+        const b64raw = await new Promise<string>(res => {
+          const r = new FileReader(); r.onload = e => res(e.target?.result as string); r.readAsDataURL(file)
+        })
+        setPreviewAtestado(b64raw)
+        setAtestadoB64(b64raw)
+        setAtestadoNomeSel(nomeBase)
         setArquivoAtestado(file)
-        const reader = new FileReader()
-        reader.onload = e => setPreviewAtestado(e.target?.result as string)
-        reader.readAsDataURL(file)
         setTamanhoAtestado(`${(file.size / 1024).toFixed(0)} KB`)
       }
     } else {
       if (file.size > 8 * 1024 * 1024) { setErroArquivo('Arquivo muito grande (máx. 8 MB).'); return }
+      // PDF/doc: lê como base64 para garantir fallback
+      const b64pdf = await new Promise<string>(res => {
+        const r = new FileReader(); r.onload = e => res(e.target?.result as string); r.readAsDataURL(file)
+      })
+      setAtestadoB64(b64pdf)
+      setAtestadoNomeSel(nomeBase)
       setArquivoAtestado(file)
       setTamanhoAtestado(`${(file.size / 1024).toFixed(0)} KB`)
     }
   }
 
   function limparAtestado() {
-    setArquivoAtestado(null); setPreviewAtestado(null); setTamanhoAtestado(''); setErroArquivo('')
+    setArquivoAtestado(null); setPreviewAtestado(null); setTamanhoAtestado('')
+    setErroArquivo(''); setAtestadoB64(null); setAtestadoNomeSel('')
     if (fotoRef.current)   fotoRef.current.value   = ''
     if (uploadRef.current) uploadRef.current.value = ''
   }
@@ -225,7 +244,8 @@ export default function PortalOcorrencias() {
     // Faz upload do atestado se houver
     let atestadoUrl  = ''
     let atestadoNome = ''
-    if (aba === 'atestado' && arquivoAtestado) {
+    if (aba === 'atestado' && arquivoAtestado && atestadoB64) {
+      // Tenta Storage primeiro (se bucket existir e estiver público)
       try {
         const ext  = arquivoAtestado.name.split('.').pop() ?? 'jpg'
         const path = `atestados/${obraId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
@@ -235,18 +255,14 @@ export default function PortalOcorrencias() {
         if (!storageErr) {
           const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(path)
           atestadoUrl  = pub.publicUrl
-          atestadoNome = arquivoAtestado.name
+          atestadoNome = atestadoNomeSel || arquivoAtestado.name
         }
       } catch (_) { /* segue com base64 */ }
 
-      // Fallback base64
+      // Fallback garantido: base64 já lido na seleção (sem novo FileReader)
       if (!atestadoUrl) {
-        atestadoUrl = await new Promise(res => {
-          const r = new FileReader()
-          r.onload = ev => res(ev.target?.result as string)
-          r.readAsDataURL(arquivoAtestado)
-        })
-        atestadoNome = arquivoAtestado.name
+        atestadoUrl  = atestadoB64
+        atestadoNome = atestadoNomeSel || arquivoAtestado.name || 'atestado'
       }
     }
 
