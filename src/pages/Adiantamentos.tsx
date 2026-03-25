@@ -548,12 +548,9 @@ export default function Adiantamentos() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>✅ Aprovar adiantamento?</AlertDialogTitle>
-            <AlertDialogDescription asChild>
-              <div style={{ fontSize:13, lineHeight:1.6 }}>
-                <strong>{aprovarRow?.colaboradores?.nome}</strong> — {formatCurrency(aprovarRow?.valor ?? 0)}<br/>
-                <span style={{ color:'#6b7280' }}>Competência: {mesLabel(aprovarRow?.competencia ?? '')}</span><br/><br/>
-                Ao aprovar, este adiantamento será automaticamente enviado para a tela de <strong>Pagamentos</strong> com status <strong>Pendente de pagamento</strong>.
-              </div>
+            <AlertDialogDescription>
+              {aprovarRow?.colaboradores?.nome} — {formatCurrency(aprovarRow?.valor ?? 0)} | Competência: {mesLabel(aprovarRow?.competencia ?? '')}.
+              Ao aprovar, o adiantamento será enviado para Pagamentos com status Pendente.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -570,11 +567,8 @@ export default function Adiantamentos() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>❌ Cancelar adiantamento?</AlertDialogTitle>
-            <AlertDialogDescription asChild>
-              <div style={{ fontSize:13, lineHeight:1.6 }}>
-                O adiantamento de <strong>{cancelarRow?.colaboradores?.nome}</strong> será cancelado e <strong>removido da fila de Pagamentos</strong>.<br/><br/>
-                <span style={{ color:'#dc2626', fontWeight:600 }}>⚠️ Só é possível cancelar se o pagamento ainda não foi efetivado.</span>
-              </div>
+            <AlertDialogDescription>
+              O adiantamento de {cancelarRow?.colaboradores?.nome} será cancelado e removido da fila de Pagamentos. Só é possível cancelar se o pagamento ainda não foi efetivado.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
