@@ -6,21 +6,16 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import {
-  Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow,
-} from '@/components/ui/table'
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-} from '@/components/ui/dialog'
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select'
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select'
 import { toast } from 'sonner'
 import {
-  DollarSign, Plus, Search, Pencil, Trash2, CheckCircle, Clock, XCircle, RefreshCw,
+  DollarSign, Plus, Search, Pencil, Trash2, ChevronLeft, ChevronRight,
+  CheckCircle2, XCircle, Clock, RefreshCw,
 } from 'lucide-react'
 
 // ─── tipos ───────────────────────────────────────────────────────────────────
@@ -29,14 +24,11 @@ type AdiantRow = {
   colaborador_id: string
   obra_id: string | null
   competencia: string
-  data_solicitacao: string
-  data_pagamento: string | null
   valor: number
-  status: 'pendente' | 'aprovado' | 'cancelado'
+  status: 'pendente' | 'aprovado' | 'cancelado' | 'pago'
   tipo: string
   observacoes: string | null
-  descontado_em: string | null
-  pagamento_id: string | null      // referência ao registro criado em pagamentos
+  pagamento_id: string | null
   colaboradores?: { nome: string; chapa: string }
   obras?: { nome: string } | null
 }
@@ -45,7 +37,6 @@ type FormData = {
   colaborador_id: string
   obra_id: string
   competencia: string
-  data_solicitacao: string
   valor: string
   tipo: string
   observacoes: string
@@ -57,36 +48,44 @@ const TIPOS = [
   { value: 'ajuda_custo',  label: '🚗 Ajuda de Custo' },
   { value: 'outro',        label: '📋 Outro' },
 ]
-
 const TIPO_LABEL: Record<string, string> = {
-  adiantamento: '💵 Adiantamento Salarial',
-  vale:         '🎫 Vale',
-  ajuda_custo:  '🚗 Ajuda de Custo',
-  outro:        '📋 Outro',
+  adiantamento: 'Adiantamento Salarial',
+  vale:         'Vale',
+  ajuda_custo:  'Ajuda de Custo',
+  outro:        'Outro',
 }
 
-const STATUS_CFG: Record<string, { bg: string; color: string; label: string; icon: React.ReactNode }> = {
-  pendente:  { bg: '#fef3c7', color: '#b45309', label: 'Pendente',  icon: <Clock    size={11}/> },
-  aprovado:  { bg: '#dcfce7', color: '#15803d', label: 'Aprovado',  icon: <CheckCircle size={11}/> },
-  cancelado: { bg: '#fee2e2', color: '#dc2626', label: 'Cancelado', icon: <XCircle  size={11}/> },
+const STATUS_CFG: Record<string, { bg: string; color: string; label: string }> = {
+  pendente:  { bg: '#fef3c7', color: '#b45309', label: '⏳ Pendente'  },
+  aprovado:  { bg: '#dcfce7', color: '#15803d', label: '✅ Aprovado'  },
+  cancelado: { bg: '#fee2e2', color: '#dc2626', label: '❌ Cancelado' },
+  pago:      { bg: '#eff6ff', color: '#1d4ed8', label: '💳 Pago'      },
 }
+
+// ─── helpers ─────────────────────────────────────────────────────────────────
+const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
 
 function mesLabel(ym: string) {
   if (!ym) return '—'
   const [y, m] = ym.split('-')
-  const meses = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
-  return `${meses[+m - 1]}/${y}`
+  return `${MESES[+m - 1]} / ${y}`
 }
-function fmtDate(d?: string | null) {
-  if (!d) return '—'
-  return d.slice(8) + '/' + d.slice(5, 7) + '/' + d.slice(0, 4)
+
+function prevMes(ym: string) {
+  const [y, m] = ym.split('-').map(Number)
+  const d = new Date(y, m - 2, 1)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+function nextMes(ym: string) {
+  const [y, m] = ym.split('-').map(Number)
+  const d = new Date(y, m, 1)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 }
 
 const EMPTY: FormData = {
   colaborador_id: '',
   obra_id: '',
   competencia: new Date().toISOString().slice(0, 7),
-  data_solicitacao: new Date().toISOString().slice(0, 10),
   valor: '',
   tipo: 'adiantamento',
   observacoes: '',
@@ -94,18 +93,17 @@ const EMPTY: FormData = {
 
 // ─── componente ──────────────────────────────────────────────────────────────
 export default function Adiantamentos() {
-  const [rows,    setRows]    = useState<AdiantRow[]>([])
-  const [colabs,  setColabs]  = useState<{ id: string; nome: string; chapa: string }[]>([])
-  const [obras,   setObras]   = useState<{ id: string; nome: string }[]>([])
+  const [rows,   setRows]   = useState<AdiantRow[]>([])
+  const [colabs, setColabs] = useState<{ id: string; nome: string; chapa: string }[]>([])
+  const [obras,  setObras]  = useState<{ id: string; nome: string }[]>([])
   const [loading, setLoading] = useState(true)
 
-  // filtros
-  const [filtroComp,   setFiltroComp]   = useState(new Date().toISOString().slice(0, 7))
-  const [filtroNome,   setFiltroNome]   = useState('')
+  const [competencia, setCompetencia] = useState(new Date().toISOString().slice(0, 7))
+  const [filtroNome,  setFiltroNome]  = useState('')
   const [filtroStatus, setFiltroStatus] = useState('todos')
   const [filtroTipo,   setFiltroTipo]   = useState('todos')
 
-  // modal criar/editar
+  // modal
   const [modalOpen, setModalOpen] = useState(false)
   const [editando,  setEditando]  = useState<AdiantRow | null>(null)
   const [form,      setForm]      = useState<FormData>(EMPTY)
@@ -122,7 +120,8 @@ export default function Adiantamentos() {
     const [{ data: aData }, { data: cData }, { data: oData }] = await Promise.all([
       supabase.from('adiantamentos')
         .select('*, colaboradores(nome,chapa), obras(nome)')
-        .order('data_solicitacao', { ascending: false }),
+        .eq('competencia', competencia)
+        .order('created_at', { ascending: false }),
       supabase.from('colaboradores').select('id,nome,chapa').eq('status','ativo').order('nome'),
       supabase.from('obras').select('id,nome').order('nome'),
     ])
@@ -130,38 +129,40 @@ export default function Adiantamentos() {
     setColabs(cData ?? [])
     setObras(oData ?? [])
     setLoading(false)
-  }, [])
+  }, [competencia])
 
   useEffect(() => { fetchData() }, [fetchData])
 
-  // ─── filtro ──────────────────────────────────────────────────────────────
+  // ─── filtro local ─────────────────────────────────────────────────────────
   const filtered = rows.filter(r => {
-    const matchComp   = filtroComp   ? r.competencia === filtroComp : true
     const matchNome   = filtroNome   ? r.colaboradores?.nome.toLowerCase().includes(filtroNome.toLowerCase()) : true
     const matchStatus = filtroStatus !== 'todos' ? r.status === filtroStatus : true
     const matchTipo   = filtroTipo   !== 'todos' ? r.tipo   === filtroTipo   : true
-    return matchComp && matchNome && matchStatus && matchTipo
+    return matchNome && matchStatus && matchTipo
   })
 
-  const totalPendente = filtered.filter(r => r.status === 'pendente').reduce((s, r) => s + r.valor, 0)
-  const totalAprovado = filtered.filter(r => r.status === 'aprovado').reduce((s, r) => s + r.valor, 0)
-  const totalGeral    = filtered.reduce((s, r) => s + r.valor, 0)
+  // ─── cards resumo ─────────────────────────────────────────────────────────
+  const totalPend  = rows.filter(r => r.status === 'pendente').reduce((s, r) => s + r.valor, 0)
+  const totalAprov = rows.filter(r => r.status === 'aprovado').reduce((s, r) => s + r.valor, 0)
+  const totalPago  = rows.filter(r => r.status === 'pago').reduce((s, r) => s + r.valor, 0)
+  const totalGeral = rows.reduce((s, r) => s + r.valor, 0)
+  const qtdPend    = rows.filter(r => r.status === 'pendente').length
 
   // ─── modal helpers ────────────────────────────────────────────────────────
   function setF(k: keyof FormData, v: string) { setForm(p => ({ ...p, [k]: v })) }
 
   function openCreate() {
     setEditando(null)
-    setForm({ ...EMPTY, competencia: filtroComp || EMPTY.competencia })
+    setForm({ ...EMPTY, competencia })
     setModalOpen(true)
   }
   function openEdit(r: AdiantRow) {
+    if (r.status !== 'pendente') { toast.error('Só é possível editar adiantamentos pendentes.'); return }
     setEditando(r)
     setForm({
       colaborador_id: r.colaborador_id,
       obra_id:        r.obra_id ?? '',
       competencia:    r.competencia,
-      data_solicitacao: r.data_solicitacao,
       valor:          String(r.valor),
       tipo:           r.tipo,
       observacoes:    r.observacoes ?? '',
@@ -175,31 +176,27 @@ export default function Adiantamentos() {
     if (!form.valor || +form.valor <= 0) return toast.error('Valor deve ser maior que zero')
     setSaving(true)
     const payload: any = {
-      colaborador_id:   form.colaborador_id,
-      obra_id:          form.obra_id || null,
-      competencia:      form.competencia,
-      data_solicitacao: form.data_solicitacao || null,
-      valor:            parseFloat(form.valor),
-      tipo:             form.tipo,
-      observacoes:      form.observacoes || null,
-      status:           'pendente',
+      colaborador_id: form.colaborador_id,
+      obra_id:        form.obra_id || null,
+      competencia:    form.competencia,
+      valor:          parseFloat(form.valor),
+      tipo:           form.tipo,
+      observacoes:    form.observacoes || null,
+      status:         'pendente',
     }
     const { error } = editando
       ? await supabase.from('adiantamentos').update(payload).eq('id', editando.id)
       : await supabase.from('adiantamentos').insert(payload)
     setSaving(false)
     if (error) { toast.error('Erro: ' + error.message); return }
-    toast.success(editando ? 'Adiantamento atualizado!' : 'Adiantamento registrado! Aguardando aprovação.')
+    toast.success(editando ? 'Atualizado!' : 'Registrado! Aguardando aprovação.')
     setModalOpen(false)
     fetchData()
   }
 
-  // ─── aprovar → cria em pagamentos ─────────────────────────────────────────
+  // ─── aprovar ──────────────────────────────────────────────────────────────
   async function confirmarAprovar() {
     if (!aprovarRow) return
-    const colab = colabs.find(c => c.id === aprovarRow.colaborador_id)
-
-    // 1. Cria registro na tabela pagamentos (tipo adiantamento, status pendente)
     const { data: pag, error: errPag } = await supabase.from('pagamentos').insert({
       colaborador_id: aprovarRow.colaborador_id,
       obra_id:        aprovarRow.obra_id ?? null,
@@ -210,42 +207,31 @@ export default function Adiantamentos() {
       status:         'pendente',
       observacoes:    `${TIPO_LABEL[aprovarRow.tipo] ?? aprovarRow.tipo}${aprovarRow.observacoes ? ' — ' + aprovarRow.observacoes : ''}`,
     }).select('id').single()
-
     if (errPag) { toast.error('Erro ao criar pagamento: ' + errPag.message); return }
-
-    // 2. Atualiza adiantamento para aprovado + referência ao pagamento
     const { error: errAdiant } = await supabase.from('adiantamentos').update({
-      status:       'aprovado',
-      pagamento_id: pag.id,
+      status: 'aprovado', pagamento_id: pag.id,
     }).eq('id', aprovarRow.id)
-
     if (errAdiant) {
-      // rollback: remove pagamento criado
       await supabase.from('pagamentos').delete().eq('id', pag.id)
       toast.error('Erro ao aprovar: ' + errAdiant.message); return
     }
-
-    toast.success(`✅ Aprovado! Adiantamento de ${colab?.nome ?? ''} enviado para Pagamentos.`)
-    setAprovarRow(null)
-    fetchData()
+    toast.success('✅ Aprovado! Enviado para Pagamentos.')
+    setAprovarRow(null); fetchData()
   }
 
-  // ─── cancelar → remove de pagamentos se existir ───────────────────────────
+  // ─── cancelar ─────────────────────────────────────────────────────────────
   async function confirmarCancelar() {
     if (!cancelarRow) return
-
-    // Remove da tabela pagamentos se existir (somente se ainda não foi pago)
     if (cancelarRow.pagamento_id) {
       const { data: pag } = await supabase.from('pagamentos').select('status').eq('id', cancelarRow.pagamento_id).single()
       if (pag?.status === 'pago') {
-        toast.error('Este adiantamento já foi pago e não pode ser cancelado.')
+        toast.error('Já foi pago — não pode cancelar.')
         setCancelarRow(null); return
       }
       await supabase.from('pagamentos').delete().eq('id', cancelarRow.pagamento_id)
     }
-
     await supabase.from('adiantamentos').update({ status: 'cancelado', pagamento_id: null }).eq('id', cancelarRow.id)
-    toast.success('Adiantamento cancelado.')
+    toast.success('Cancelado.')
     setCancelarRow(null); fetchData()
   }
 
@@ -253,19 +239,15 @@ export default function Adiantamentos() {
   async function handleDelete() {
     if (!deleteId) return
     const row = rows.find(r => r.id === deleteId)
-    // Se aprovado e tem pagamento associado, verifica se não foi pago
     if (row?.pagamento_id) {
       const { data: pag } = await supabase.from('pagamentos').select('status').eq('id', row.pagamento_id).single()
-      if (pag?.status === 'pago') {
-        toast.error('Este adiantamento já foi pago e não pode ser excluído.')
-        setDeleteId(null); return
-      }
+      if (pag?.status === 'pago') { toast.error('Já foi pago — não pode excluir.'); setDeleteId(null); return }
       await supabase.from('pagamentos').delete().eq('id', row.pagamento_id)
     }
     const { error } = await supabase.from('adiantamentos').delete().eq('id', deleteId)
     setDeleteId(null)
     if (error) toast.error('Erro ao excluir')
-    else { toast.success('Adiantamento removido!'); fetchData() }
+    else { toast.success('Excluído!'); fetchData() }
   }
 
   // ─── render ───────────────────────────────────────────────────────────────
@@ -273,79 +255,82 @@ export default function Adiantamentos() {
     <div style={{ padding: 24 }}>
 
       {/* ── Header ── */}
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:20 }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom: 20 }}>
         <div>
           <h1 style={{ fontWeight:800, fontSize:22, margin:0, display:'flex', alignItems:'center', gap:8 }}>
             <DollarSign size={22} style={{ color:'#7c3aed' }}/> Adiantamentos
           </h1>
           <p style={{ fontSize:13, color:'var(--muted-foreground)', marginTop:4 }}>
-            Solicitações de adiantamento salarial e vales — aprovadas são enviadas para Pagamentos
+            Controle de adiantamentos e vales por colaborador
           </p>
         </div>
-        <Button onClick={openCreate} style={{ background:'#7c3aed', color:'#fff', gap:6 }}>
-          <Plus size={15}/> Novo Adiantamento
-        </Button>
+
+        {/* Navegação de mês */}
+        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+          <button onClick={() => setCompetencia(prevMes(competencia))}
+            style={{ width:32, height:32, borderRadius:8, border:'1.5px solid var(--border)', background:'var(--background)', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+            <ChevronLeft size={16}/>
+          </button>
+          <span style={{ fontWeight:700, fontSize:15, minWidth:130, textAlign:'center' }}>{mesLabel(competencia)}</span>
+          <button onClick={() => setCompetencia(nextMes(competencia))}
+            style={{ width:32, height:32, borderRadius:8, border:'1.5px solid var(--border)', background:'var(--background)', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+            <ChevronRight size={16}/>
+          </button>
+        </div>
       </div>
 
       {/* ── Cards resumo ── */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(180px,1fr))', gap:12, marginBottom:20 }}>
-        <div style={{ background:'#fef3c7', border:'1px solid #fde68a', borderRadius:10, padding:'14px 18px' }}>
-          <div style={{ fontSize:11, color:'#92400e', fontWeight:700, marginBottom:4, display:'flex', alignItems:'center', gap:5 }}><Clock size={12}/>⏳ Pendentes</div>
-          <div style={{ fontWeight:800, fontSize:20, color:'#b45309' }}>{formatCurrency(totalPendente)}</div>
-          <div style={{ fontSize:11, color:'#92400e' }}>{filtered.filter(r=>r.status==='pendente').length} lançamento(s)</div>
-        </div>
-        <div style={{ background:'#dcfce7', border:'1px solid #bbf7d0', borderRadius:10, padding:'14px 18px' }}>
-          <div style={{ fontSize:11, color:'#14532d', fontWeight:700, marginBottom:4, display:'flex', alignItems:'center', gap:5 }}><CheckCircle size={12}/>✅ Aprovados</div>
-          <div style={{ fontWeight:800, fontSize:20, color:'#15803d' }}>{formatCurrency(totalAprovado)}</div>
-          <div style={{ fontSize:11, color:'#14532d' }}>{filtered.filter(r=>r.status==='aprovado').length} lançamento(s)</div>
-        </div>
-        <div style={{ background:'#ede9fe', border:'1px solid #ddd6fe', borderRadius:10, padding:'14px 18px' }}>
-          <div style={{ fontSize:11, color:'#4c1d95', fontWeight:700, marginBottom:4, display:'flex', alignItems:'center', gap:5 }}><DollarSign size={12}/>📊 Total no período</div>
-          <div style={{ fontWeight:800, fontSize:20, color:'#7c3aed' }}>{formatCurrency(totalGeral)}</div>
-          <div style={{ fontSize:11, color:'#4c1d95' }}>{filtered.length} lançamento(s)</div>
-        </div>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(160px,1fr))', gap:12, marginBottom:20 }}>
+        {[
+          { label:'⏳ Pendentes',   value: formatCurrency(totalPend),  sub: `${qtdPend} lançamento(s)`,            bg:'#fef3c7', border:'#fde68a', color:'#b45309' },
+          { label:'✅ Aprovados',   value: formatCurrency(totalAprov), sub: `${rows.filter(r=>r.status==='aprovado').length} lançamento(s)`, bg:'#dcfce7', border:'#bbf7d0', color:'#15803d' },
+          { label:'💳 Pagos',       value: formatCurrency(totalPago),  sub: `${rows.filter(r=>r.status==='pago').length} lançamento(s)`,    bg:'#eff6ff', border:'#bfdbfe', color:'#1d4ed8' },
+          { label:'📊 Total mês',   value: formatCurrency(totalGeral), sub: `${rows.length} lançamento(s)`,        bg:'#ede9fe', border:'#ddd6fe', color:'#7c3aed' },
+        ].map((c, i) => (
+          <div key={i} style={{ background:c.bg, border:`1px solid ${c.border}`, borderRadius:10, padding:'14px 18px' }}>
+            <div style={{ fontSize:11, fontWeight:700, color:c.color, marginBottom:4 }}>{c.label}</div>
+            <div style={{ fontWeight:800, fontSize:18, color:c.color }}>{c.value}</div>
+            <div style={{ fontSize:11, color:c.color, opacity:.75, marginTop:2 }}>{c.sub}</div>
+          </div>
+        ))}
       </div>
 
-      {/* ── Filtros ── */}
+      {/* ── Barra de filtros + botão novo ── */}
       <div style={{ display:'flex', gap:10, flexWrap:'wrap', marginBottom:16, alignItems:'flex-end' }}>
-        <div>
-          <Label style={{ fontSize:11, marginBottom:3, display:'block' }}>Competência</Label>
-          <input type="month" value={filtroComp} onChange={e => setFiltroComp(e.target.value)}
-            style={{ height:32, padding:'0 10px', fontSize:13, border:'1.5px solid var(--border)', borderRadius:6, background:'var(--background)', color:'var(--foreground)' }}/>
-        </div>
+        {/* busca nome */}
         <div style={{ position:'relative' }}>
-          <Label style={{ fontSize:11, marginBottom:3, display:'block' }}>Colaborador</Label>
-          <Search size={13} style={{ position:'absolute', left:8, top:28, color:'#9ca3af', pointerEvents:'none' }}/>
-          <input placeholder="Nome..." value={filtroNome} onChange={e => setFiltroNome(e.target.value)}
+          <Search size={13} style={{ position:'absolute', left:8, top:'50%', transform:'translateY(-50%)', color:'#9ca3af', pointerEvents:'none' }}/>
+          <input placeholder="Buscar colaborador…" value={filtroNome} onChange={e => setFiltroNome(e.target.value)}
             style={{ height:32, paddingLeft:26, paddingRight:10, fontSize:13, border:'1.5px solid var(--border)', borderRadius:6, background:'var(--background)', color:'var(--foreground)', width:180 }}/>
         </div>
-        <div>
-          <Label style={{ fontSize:11, marginBottom:3, display:'block' }}>Status</Label>
-          <select value={filtroStatus} onChange={e => setFiltroStatus(e.target.value)}
-            style={{ height:32, padding:'0 10px', fontSize:13, border:'1.5px solid var(--border)', borderRadius:6, background:'var(--background)', color:'var(--foreground)' }}>
-            <option value="todos">Todos</option>
-            <option value="pendente">⏳ Pendente</option>
-            <option value="aprovado">✅ Aprovado</option>
-            <option value="cancelado">❌ Cancelado</option>
-          </select>
-        </div>
-        <div>
-          <Label style={{ fontSize:11, marginBottom:3, display:'block' }}>Tipo</Label>
-          <select value={filtroTipo} onChange={e => setFiltroTipo(e.target.value)}
-            style={{ height:32, padding:'0 10px', fontSize:13, border:'1.5px solid var(--border)', borderRadius:6, background:'var(--background)', color:'var(--foreground)' }}>
-            <option value="todos">Todos</option>
-            {TIPOS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-          </select>
-        </div>
+        {/* status */}
+        <select value={filtroStatus} onChange={e => setFiltroStatus(e.target.value)}
+          style={{ height:32, padding:'0 10px', fontSize:13, border:'1.5px solid var(--border)', borderRadius:6, background:'var(--background)', color:'var(--foreground)' }}>
+          <option value="todos">Todos os status</option>
+          <option value="pendente">⏳ Pendente</option>
+          <option value="aprovado">✅ Aprovado</option>
+          <option value="pago">💳 Pago</option>
+          <option value="cancelado">❌ Cancelado</option>
+        </select>
+        {/* tipo */}
+        <select value={filtroTipo} onChange={e => setFiltroTipo(e.target.value)}
+          style={{ height:32, padding:'0 10px', fontSize:13, border:'1.5px solid var(--border)', borderRadius:6, background:'var(--background)', color:'var(--foreground)' }}>
+          <option value="todos">Todos os tipos</option>
+          {TIPOS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+        </select>
         {(filtroNome || filtroStatus !== 'todos' || filtroTipo !== 'todos') && (
           <button onClick={() => { setFiltroNome(''); setFiltroStatus('todos'); setFiltroTipo('todos') }}
-            style={{ height:32, padding:'0 12px', fontSize:12, border:'1.5px solid var(--border)', borderRadius:6, background:'transparent', cursor:'pointer', color:'var(--muted-foreground)' }}>
+            style={{ height:32, padding:'0 10px', fontSize:12, border:'1.5px solid var(--border)', borderRadius:6, background:'transparent', cursor:'pointer', color:'var(--muted-foreground)' }}>
             ✕ Limpar
           </button>
         )}
-        <button onClick={fetchData} style={{ height:32, width:32, borderRadius:6, border:'1.5px solid var(--border)', background:'var(--background)', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', marginLeft:'auto' }}>
+        <button onClick={fetchData}
+          style={{ width:32, height:32, borderRadius:6, border:'1.5px solid var(--border)', background:'var(--background)', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
           <RefreshCw size={13}/>
         </button>
+        <Button onClick={openCreate} style={{ marginLeft:'auto', background:'#7c3aed', color:'#fff', gap:6 }}>
+          <Plus size={15}/> Novo Adiantamento
+        </Button>
       </div>
 
       {/* ── Tabela ── */}
@@ -353,217 +338,187 @@ export default function Adiantamentos() {
         <div style={{ padding:40, textAlign:'center', color:'var(--muted-foreground)' }}>Carregando…</div>
       ) : filtered.length === 0 ? (
         <div style={{ padding:60, textAlign:'center', color:'var(--muted-foreground)', border:'1px dashed var(--border)', borderRadius:12 }}>
-          <DollarSign size={32} style={{ opacity:0.3, marginBottom:8 }}/>
-          <div style={{ fontWeight:600 }}>Nenhum adiantamento encontrado</div>
-          <div style={{ fontSize:12, marginTop:4 }}>Altere os filtros ou crie um novo adiantamento.</div>
+          <DollarSign size={32} style={{ opacity:.3, marginBottom:8 }}/>
+          <div style={{ fontWeight:600 }}>Nenhum adiantamento em {mesLabel(competencia)}</div>
+          <div style={{ fontSize:12, marginTop:4 }}>Clique em "+ Novo Adiantamento" para registrar.</div>
         </div>
       ) : (
         <div style={{ border:'1px solid var(--border)', borderRadius:10, overflow:'hidden' }}>
-          <Table>
-            <TableHeader>
-              <TableRow style={{ background:'var(--muted)' }}>
-                <TableHead>Colaborador</TableHead>
-                <TableHead>Tipo</TableHead>
-                <TableHead className="text-center">Competência</TableHead>
-                <TableHead className="text-center">Solicitação</TableHead>
-                <TableHead className="text-right">Valor</TableHead>
-                <TableHead className="text-center">Status</TableHead>
-                <TableHead className="text-center">Pagamento</TableHead>
-                <TableHead className="text-right">Ações</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map(r => {
-                const badge  = STATUS_CFG[r.status] ?? STATUS_CFG.pendente
-                const isPend = r.status === 'pendente'
-                const isAprov= r.status === 'aprovado'
+          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
+            <thead>
+              <tr style={{ background:'var(--muted)', borderBottom:'2px solid var(--border)' }}>
+                <th style={{ padding:'10px 14px', textAlign:'left', fontWeight:700 }}>Colaborador</th>
+                <th style={{ padding:'10px 14px', textAlign:'left', fontWeight:700 }}>Tipo</th>
+                <th style={{ padding:'10px 14px', textAlign:'right', fontWeight:700 }}>Valor</th>
+                <th style={{ padding:'10px 14px', textAlign:'center', fontWeight:700 }}>Status</th>
+                <th style={{ padding:'10px 14px', textAlign:'left', fontWeight:700 }}>Obs.</th>
+                <th style={{ padding:'10px 14px', textAlign:'right', fontWeight:700 }}>Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((r, i) => {
+                const badge = STATUS_CFG[r.status] ?? STATUS_CFG.pendente
                 return (
-                  <TableRow key={r.id}>
-                    <TableCell>
-                      <div style={{ fontWeight:600, fontSize:13 }}>{r.colaboradores?.nome ?? '—'}</div>
-                      <div style={{ fontSize:10, color:'var(--muted-foreground)' }}>{r.colaboradores?.chapa}</div>
-                    </TableCell>
-                    <TableCell style={{ fontSize:12 }}>
-                      {TIPO_LABEL[r.tipo]?.replace(/^.+? /, '') ?? r.tipo}
-                    </TableCell>
-                    <TableCell className="text-center">{mesLabel(r.competencia)}</TableCell>
-                    <TableCell className="text-center" style={{ color:'var(--muted-foreground)', fontSize:12 }}>
-                      {fmtDate(r.data_solicitacao)}
-                    </TableCell>
-                    <TableCell className="text-right" style={{ fontWeight:700, color:'#7c3aed', fontSize:13 }}>
+                  <tr key={r.id} style={{ borderBottom:'1px solid var(--border)', background: i%2===0 ? 'var(--card)' : 'transparent' }}>
+                    <td style={{ padding:'10px 14px' }}>
+                      <div style={{ fontWeight:600 }}>{r.colaboradores?.nome ?? '—'}</div>
+                      <div style={{ fontSize:11, color:'var(--muted-foreground)' }}>{r.colaboradores?.chapa}</div>
+                    </td>
+                    <td style={{ padding:'10px 14px', color:'var(--muted-foreground)' }}>
+                      {TIPO_LABEL[r.tipo] ?? r.tipo}
+                    </td>
+                    <td style={{ padding:'10px 14px', textAlign:'right', fontWeight:700, color:'#7c3aed' }}>
                       {formatCurrency(r.valor)}
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <span style={{ fontSize:11, fontWeight:600, borderRadius:6, padding:'3px 9px', background:badge.bg, color:badge.color, display:'inline-flex', alignItems:'center', gap:4 }}>
-                        {badge.icon} {badge.label}
+                    </td>
+                    <td style={{ padding:'10px 14px', textAlign:'center' }}>
+                      <span style={{ fontSize:11, fontWeight:600, borderRadius:6, padding:'3px 9px', background:badge.bg, color:badge.color }}>
+                        {badge.label}
                       </span>
-                    </TableCell>
-                    <TableCell className="text-center">
-                      {isAprov ? (
-                        <span style={{ fontSize:11, background:'#eff6ff', color:'#1d4ed8', borderRadius:5, padding:'2px 7px', fontWeight:600 }}>
-                          💳 Em Pagamentos
-                        </span>
-                      ) : (
-                        <span style={{ fontSize:11, color:'var(--muted-foreground)' }}>—</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right">
+                    </td>
+                    <td style={{ padding:'10px 14px', color:'var(--muted-foreground)', fontSize:12, maxWidth:160 }}>
+                      <span style={{ display:'block', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }} title={r.observacoes ?? ''}>
+                        {r.observacoes || '—'}
+                      </span>
+                    </td>
+                    <td style={{ padding:'10px 14px', textAlign:'right' }}>
                       <div style={{ display:'flex', gap:4, justifyContent:'flex-end' }}>
-                        {/* Aprovar — só para pendente */}
-                        {isPend && (
-                          <button title="Aprovar e enviar para Pagamentos" onClick={() => setAprovarRow(r)}
-                            style={{ height:28, padding:'0 10px', borderRadius:6, border:'1px solid #bbf7d0', background:'#f0fdf4', color:'#15803d', cursor:'pointer', fontSize:11, fontWeight:700, display:'flex', alignItems:'center', gap:4 }}>
-                            <CheckCircle size={12}/> Aprovar
+                        {r.status === 'pendente' && (
+                          <button onClick={() => setAprovarRow(r)} title="Aprovar"
+                            style={{ height:28, padding:'0 10px', borderRadius:6, border:'1px solid #bbf7d0', background:'#f0fdf4', color:'#15803d', cursor:'pointer', fontSize:11, fontWeight:700 }}>
+                            <CheckCircle2 size={12} style={{ display:'inline', marginRight:4 }}/>Aprovar
                           </button>
                         )}
-                        {/* Editar — só pendente */}
-                        {isPend && (
-                          <button title="Editar" onClick={() => openEdit(r)}
+                        {r.status === 'pendente' && (
+                          <button onClick={() => openEdit(r)} title="Editar"
                             style={{ width:28, height:28, borderRadius:6, border:'1px solid var(--border)', background:'var(--muted)', color:'var(--foreground)', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
                             <Pencil size={12}/>
                           </button>
                         )}
-                        {/* Cancelar — só aprovado (ainda não pago) */}
-                        {isAprov && (
-                          <button title="Cancelar aprovação" onClick={() => setCancelarRow(r)}
-                            style={{ height:28, padding:'0 10px', borderRadius:6, border:'1px solid #fecaca', background:'#fff5f5', color:'#dc2626', cursor:'pointer', fontSize:11, fontWeight:700, display:'flex', alignItems:'center', gap:4 }}>
-                            <XCircle size={12}/> Cancelar
+                        {r.status === 'aprovado' && (
+                          <button onClick={() => setCancelarRow(r)} title="Cancelar aprovação"
+                            style={{ height:28, padding:'0 10px', borderRadius:6, border:'1px solid #fecaca', background:'#fff5f5', color:'#dc2626', cursor:'pointer', fontSize:11, fontWeight:700 }}>
+                            <XCircle size={12} style={{ display:'inline', marginRight:4 }}/>Cancelar
                           </button>
                         )}
-                        {/* Excluir — só pendente ou cancelado */}
-                        {(isPend || r.status === 'cancelado') && (
-                          <button title="Excluir" onClick={() => setDeleteId(r.id)}
+                        {(r.status === 'pendente' || r.status === 'cancelado') && (
+                          <button onClick={() => setDeleteId(r.id)} title="Excluir"
                             style={{ width:28, height:28, borderRadius:6, border:'1px solid #fecaca', background:'#fff5f5', color:'#dc2626', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
                             <Trash2 size={12}/>
                           </button>
                         )}
                       </div>
-                    </TableCell>
-                  </TableRow>
+                    </td>
+                  </tr>
                 )
               })}
-            </TableBody>
-            <TableFooter>
-              <TableRow>
-                <TableCell colSpan={4} style={{ fontSize:12, color:'var(--muted-foreground)' }}>
-                  Total — {filtered.length} lançamento(s)
-                </TableCell>
-                <TableCell className="text-right" style={{ fontWeight:700, color:'#7c3aed', fontSize:13 }}>
+            </tbody>
+            <tfoot>
+              <tr style={{ background:'var(--muted)', borderTop:'2px solid var(--border)' }}>
+                <td colSpan={2} style={{ padding:'10px 14px', fontSize:12, color:'var(--muted-foreground)' }}>
+                  {filtered.length} lançamento(s) exibido(s)
+                </td>
+                <td style={{ padding:'10px 14px', textAlign:'right', fontWeight:800, color:'#7c3aed', fontSize:14 }}>
                   {formatCurrency(filtered.reduce((s, r) => s + r.valor, 0))}
-                </TableCell>
-                <TableCell colSpan={3}/>
-              </TableRow>
-            </TableFooter>
-          </Table>
+                </td>
+                <td colSpan={3}/>
+              </tr>
+            </tfoot>
+          </table>
         </div>
       )}
 
       {/* ══ MODAL CRIAR / EDITAR ══ */}
-      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent style={{ maxWidth:520 }}>
-          <DialogHeader>
-            <DialogTitle>{editando ? '✏️ Editar Adiantamento' : '💵 Novo Adiantamento'}</DialogTitle>
-          </DialogHeader>
-
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14, paddingTop:4 }}>
-            {/* Colaborador */}
-            <div style={{ gridColumn:'1/-1' }}>
-              <Label className="mb-1 block">Colaborador *</Label>
-              <Select value={form.colaborador_id} onValueChange={v => setF('colaborador_id', v)}>
-                <SelectTrigger><SelectValue placeholder="Selecionar colaborador"/></SelectTrigger>
-                <SelectContent>
-                  {colabs.map(c => <SelectItem key={c.id} value={c.id}>{c.chapa} — {c.nome}</SelectItem>)}
-                </SelectContent>
-              </Select>
+      {modalOpen && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.5)', zIndex:50, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
+          <div style={{ background:'var(--background)', borderRadius:14, padding:28, width:'100%', maxWidth:500, boxShadow:'0 25px 50px rgba(0,0,0,.25)' }}>
+            <h2 style={{ fontWeight:800, fontSize:17, margin:'0 0 20px' }}>
+              {editando ? '✏️ Editar Adiantamento' : '💵 Novo Adiantamento'}
+            </h2>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+              {/* Colaborador */}
+              <div style={{ gridColumn:'1/-1' }}>
+                <Label className="mb-1 block">Colaborador *</Label>
+                <Select value={form.colaborador_id} onValueChange={v => setF('colaborador_id', v)}>
+                  <SelectTrigger><SelectValue placeholder="Selecionar…"/></SelectTrigger>
+                  <SelectContent>
+                    {colabs.map(c => <SelectItem key={c.id} value={c.id}>{c.chapa} — {c.nome}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              {/* Tipo */}
+              <div>
+                <Label className="mb-1 block">Tipo *</Label>
+                <Select value={form.tipo} onValueChange={v => setF('tipo', v)}>
+                  <SelectTrigger><SelectValue/></SelectTrigger>
+                  <SelectContent>
+                    {TIPOS.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              {/* Valor */}
+              <div>
+                <Label className="mb-1 block">Valor (R$) *</Label>
+                <Input type="number" min="0" step="0.01" value={form.valor}
+                  onChange={e => setF('valor', e.target.value)} placeholder="0,00"/>
+              </div>
+              {/* Competência */}
+              <div>
+                <Label className="mb-1 block">Competência *</Label>
+                <input type="month" value={form.competencia} onChange={e => setF('competencia', e.target.value)}
+                  style={{ height:36, width:'100%', padding:'0 10px', fontSize:13, border:'1.5px solid var(--border)', borderRadius:6, background:'var(--background)', color:'var(--foreground)', boxSizing:'border-box' }}/>
+              </div>
+              {/* Obra */}
+              <div>
+                <Label className="mb-1 block">Obra</Label>
+                <Select value={form.obra_id || 'nenhuma'} onValueChange={v => setF('obra_id', v === 'nenhuma' ? '' : v)}>
+                  <SelectTrigger><SelectValue placeholder="Sem obra"/></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="nenhuma">Sem obra</SelectItem>
+                    {obras.map(o => <SelectItem key={o.id} value={o.id}>{o.nome}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              {/* Observações */}
+              <div style={{ gridColumn:'1/-1' }}>
+                <Label className="mb-1 block">Observações / Motivo</Label>
+                <Textarea value={form.observacoes} onChange={e => setF('observacoes', e.target.value)}
+                  placeholder="Motivo, detalhes…" rows={3}/>
+              </div>
             </div>
-
-            {/* Tipo */}
-            <div>
-              <Label className="mb-1 block">Tipo *</Label>
-              <Select value={form.tipo} onValueChange={v => setF('tipo', v)}>
-                <SelectTrigger><SelectValue/></SelectTrigger>
-                <SelectContent>
-                  {TIPOS.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
-                </SelectContent>
-              </Select>
+            <div style={{ background:'#eff6ff', border:'1px solid #bfdbfe', borderRadius:8, padding:'10px 14px', fontSize:12, color:'#1e40af', marginTop:14 }}>
+              💡 Após registrar, clique em <strong>Aprovar</strong> para enviar à tela de <strong>Pagamentos</strong>.
             </div>
-
-            {/* Valor */}
-            <div>
-              <Label className="mb-1 block">Valor (R$) *</Label>
-              <Input type="number" min="0" step="0.01" value={form.valor}
-                onChange={e => setF('valor', e.target.value)} placeholder="0,00"/>
-            </div>
-
-            {/* Competência */}
-            <div>
-              <Label className="mb-1 block">Competência *</Label>
-              <input type="month" value={form.competencia} onChange={e => setF('competencia', e.target.value)}
-                style={{ height:36, width:'100%', padding:'0 10px', fontSize:13, border:'1.5px solid var(--border)', borderRadius:6, background:'var(--background)', color:'var(--foreground)', boxSizing:'border-box' }}/>
-            </div>
-
-            {/* Data Solicitação */}
-            <div>
-              <Label className="mb-1 block">Data Solicitação</Label>
-              <input type="date" value={form.data_solicitacao} onChange={e => setF('data_solicitacao', e.target.value)}
-                style={{ height:36, width:'100%', padding:'0 10px', fontSize:13, border:'1.5px solid var(--border)', borderRadius:6, background:'var(--background)', color:'var(--foreground)', boxSizing:'border-box' }}/>
-            </div>
-
-            {/* Obra */}
-            <div>
-              <Label className="mb-1 block">Obra</Label>
-              <Select value={form.obra_id || 'nenhuma'} onValueChange={v => setF('obra_id', v === 'nenhuma' ? '' : v)}>
-                <SelectTrigger><SelectValue placeholder="Sem obra"/></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="nenhuma">Sem obra</SelectItem>
-                  {obras.map(o => <SelectItem key={o.id} value={o.id}>{o.nome}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Observações */}
-            <div style={{ gridColumn:'1/-1' }}>
-              <Label className="mb-1 block">Observações / Motivo</Label>
-              <Textarea value={form.observacoes} onChange={e => setF('observacoes', e.target.value)}
-                placeholder="Motivo, detalhes…" rows={3}/>
+            <div style={{ display:'flex', justifyContent:'flex-end', gap:10, marginTop:18 }}>
+              <Button variant="outline" onClick={() => setModalOpen(false)}>Cancelar</Button>
+              <Button disabled={saving} onClick={handleSave} style={{ background:'#7c3aed', color:'#fff' }}>
+                {saving ? 'Salvando…' : editando ? '💾 Salvar' : '💵 Registrar'}
+              </Button>
             </div>
           </div>
-
-          {/* Aviso fluxo */}
-          <div style={{ background:'#eff6ff', border:'1px solid #bfdbfe', borderRadius:8, padding:'10px 14px', fontSize:12, color:'#1e40af', marginTop:4 }}>
-            💡 Após registrar, use o botão <strong>Aprovar</strong> para enviar o adiantamento à tela de <strong>Pagamentos</strong> onde será efetivado.
-          </div>
-
-          <DialogFooter style={{ marginTop:8 }}>
-            <Button variant="outline" onClick={() => setModalOpen(false)}>Cancelar</Button>
-            <Button disabled={saving} onClick={handleSave} style={{ background:'#7c3aed', color:'#fff' }}>
-              {saving ? 'Salvando…' : editando ? '💾 Salvar' : '💵 Registrar'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </div>
+      )}
 
       {/* ══ CONFIRMAR APROVAR ══ */}
-      <AlertDialog open={!!aprovarRow} onOpenChange={open => { if (!open) setAprovarRow(null) }}>
+      <AlertDialog open={!!aprovarRow} onOpenChange={o => { if (!o) setAprovarRow(null) }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>✅ Aprovar adiantamento?</AlertDialogTitle>
             <AlertDialogDescription>
-              {aprovarRow?.colaboradores?.nome} — {formatCurrency(aprovarRow?.valor ?? 0)} | Competência: {mesLabel(aprovarRow?.competencia ?? '')}.
-              Ao aprovar, o adiantamento será enviado para Pagamentos com status Pendente.
+              {aprovarRow?.colaboradores?.nome} — {formatCurrency(aprovarRow?.valor ?? 0)} ({mesLabel(aprovarRow?.competencia ?? '')}).
+              O adiantamento será enviado para Pagamentos como pendente de pagamento.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel>Voltar</AlertDialogCancel>
             <AlertDialogAction onClick={confirmarAprovar} style={{ background:'#15803d', color:'#fff' }}>
-              ✅ Confirmar aprovação
+              ✅ Confirmar
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
       {/* ══ CONFIRMAR CANCELAR ══ */}
-      <AlertDialog open={!!cancelarRow} onOpenChange={open => { if (!open) setCancelarRow(null) }}>
+      <AlertDialog open={!!cancelarRow} onOpenChange={o => { if (!o) setCancelarRow(null) }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>❌ Cancelar adiantamento?</AlertDialogTitle>
@@ -574,17 +529,17 @@ export default function Adiantamentos() {
           <AlertDialogFooter>
             <AlertDialogCancel>Voltar</AlertDialogCancel>
             <AlertDialogAction onClick={confirmarCancelar} style={{ background:'#dc2626', color:'#fff' }}>
-              ❌ Confirmar cancelamento
+              ❌ Confirmar
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
       {/* ══ CONFIRMAR EXCLUIR ══ */}
-      <AlertDialog open={!!deleteId} onOpenChange={open => { if (!open) setDeleteId(null) }}>
+      <AlertDialog open={!!deleteId} onOpenChange={o => { if (!o) setDeleteId(null) }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>🗑️ Confirmar exclusão?</AlertDialogTitle>
+            <AlertDialogTitle>🗑️ Excluir adiantamento?</AlertDialogTitle>
             <AlertDialogDescription>Esta ação não pode ser desfeita.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

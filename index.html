@@ -4,47 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ConstrutorRH</title>
-    <style>
-      body { margin: 0; background: #fff; font-family: monospace; }
-      #err { padding: 20px; color: #dc2626; white-space: pre-wrap; display: none; }
-    </style>
-    <script>
-      // Captura erros de módulo ES (não pegos por window.onerror)
-      window.addEventListener('error', function(e) {
-        var d = document.getElementById('err');
-        d.style.display = 'block';
-        d.textContent += '\n[ERROR] ' + e.message + '\n  src: ' + e.filename + ':' + e.lineno + '\n  ' + (e.error ? e.error.stack : '');
-      }, true);
-
-      window.addEventListener('unhandledrejection', function(e) {
-        var d = document.getElementById('err');
-        d.style.display = 'block';
-        d.textContent += '\n[PROMISE REJECTED] ' + (e.reason && e.reason.stack ? e.reason.stack : e.reason);
-      });
-
-      window.onerror = function(msg, src, line, col, err) {
-        var d = document.getElementById('err');
-        d.style.display = 'block';
-        d.textContent += '\n[ONERROR] ' + msg + '\n  ' + src + ':' + line + '\n  ' + (err ? err.stack : '');
-        return false;
-      };
-
-      document.addEventListener('DOMContentLoaded', function() {
-        setTimeout(function() {
-          var root = document.getElementById('root');
-          var err  = document.getElementById('err');
-          if (root && !root.children.length) {
-            if (!err.textContent.trim()) {
-              err.textContent = '[TIMEOUT] React nao montou em 6s. Nenhum erro JS capturado.\nPode ser falha de rede ao carregar o bundle.';
-            }
-            err.style.display = 'block';
-          }
-        }, 6000);
-      });
-    </script>
   </head>
   <body>
-    <div id="err"></div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
