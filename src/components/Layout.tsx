@@ -46,7 +46,7 @@ const NAV_GROUPS = [
       { to: '/vt',               label: 'Vale Transporte',  icon: Bus },
       { to: '/adiantamentos',    label: 'Adiantamentos',    icon: Wallet },
       { to: '/premios',          label: 'Prêmios',          icon: Award },
-      { to: '/fechamento-ponto', label: 'Fechamento',       icon: Lock },
+      { to: '/fechamento-ponto', label: 'Fechamento',       icon: Lock,        fechBadge: true },
       { to: '/pagamentos',       label: 'Pagamentos',       icon: DollarSign },
       { to: '/encargos',         label: 'Encargos',         icon: Briefcase },
       { to: '/provisoes',        label: 'Provisões FGTS',   icon: Calculator },
@@ -72,6 +72,20 @@ export function Layout({ children }: LayoutProps) {
   const { profile } = useProfile()
   const navigate = useNavigate()
   const [solicitacoesPendentes, setSolicitacoesPendentes] = useState(0)
+  const [fechamentosPendentes, setFechamentosPendentes] = useState(0)
+
+  const fetchFechamentosPendentes = useCallback(async () => {
+    const { count } = await supabase.from('ponto_lancamentos')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'aguardando_aprovacao')
+    setFechamentosPendentes(count ?? 0)
+  }, [])
+
+  useEffect(() => {
+    fetchFechamentosPendentes()
+    const t = setInterval(fetchFechamentosPendentes, 60_000)
+    return () => clearInterval(t)
+  }, [fetchFechamentosPendentes])
 
   const fetchSolicitacoesPendentes = useCallback(async () => {
     const [cad, ocor, epi, doc] = await Promise.all([
@@ -150,11 +164,13 @@ export function Layout({ children }: LayoutProps) {
                   {group.label}
                 </div>
               )}
-              {group.items.map(({ to, label, icon: Icon, adminOnly, badge: hasBadge }: any) => {
+              {group.items.map((item: any) => {
+                const { to, label, icon: Icon, adminOnly, badge: hasBadge, fechBadge } = item
                 if (adminOnly && role !== 'admin') return null
                 const isFinanceiro = ['/ponto','/vt','/adiantamentos','/premios','/fechamento-ponto','/pagamentos','/encargos','/provisoes'].includes(to)
                 if (isFinanceiro && !roleMeta.canViewFinanceiro) return null
-                const badgeCount = hasBadge ? solicitacoesPendentes : 0
+                const badgeCount = hasBadge ? solicitacoesPendentes : (fechBadge ? fechamentosPendentes : 0)
+                const badgeColor  = fechBadge ? '#b45309' : '#ef4444'
 
                 return (
                   <NavLink key={to} to={to} end={to === '/'} title={collapsed ? label : undefined}
@@ -164,14 +180,14 @@ export function Layout({ children }: LayoutProps) {
                     <span className="nav-icon" style={{ position:'relative' }}>
                       <Icon size={15} />
                       {collapsed && badgeCount > 0 && (
-                        <span style={{ position:'absolute', top:-4, right:-5, background:'#ef4444', color:'#fff', borderRadius:10, fontSize:8, fontWeight:800, padding:'0 3px', minWidth:13, textAlign:'center', lineHeight:'13px' }}>
+                        <span style={{ position:'absolute', top:-4, right:-5, background:badgeColor, color:'#fff', borderRadius:10, fontSize:8, fontWeight:800, padding:'0 3px', minWidth:13, textAlign:'center', lineHeight:'13px' }}>
                           {badgeCount > 99 ? '99+' : badgeCount}
                         </span>
                       )}
                     </span>
                     {!collapsed && <span className="nav-label" style={{ flex:1 }}>{label}</span>}
                     {!collapsed && badgeCount > 0 && (
-                      <span style={{ background:'#ef4444', color:'#fff', borderRadius:10, padding:'0 6px', fontSize:10, fontWeight:800, marginLeft:'auto', minWidth:18, textAlign:'center' }}>
+                      <span style={{ background:badgeColor, color:'#fff', borderRadius:10, padding:'0 6px', fontSize:10, fontWeight:800, marginLeft:'auto', minWidth:18, textAlign:'center' }}>
                         {badgeCount > 99 ? '99+' : badgeCount}
                       </span>
                     )}

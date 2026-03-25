@@ -106,6 +106,21 @@ export default function FechamentoPonto() {
   const [modalLiberar, setModalLiberar] = useState<LancItem | null>(null)
 
   const mesRef = `${ano}-${String(mes).padStart(2, '0')}`
+  const [filtroObraFech,   setFiltroObraFech]   = useState('todos')
+  const [filtroFuncaoFech, setFiltroFuncaoFech] = useState('todos')
+  const [obras,   setObras]   = useState<{ id: string; nome: string }[]>([])
+  const [funcoes, setFuncoes] = useState<{ id: string; nome: string }[]>([])
+
+  // Fetch obras e funções para filtros
+  useEffect(() => {
+    Promise.all([
+      supabase.from('obras').select('id,nome').order('nome'),
+      supabase.from('funcoes').select('id,nome').order('nome'),
+    ]).then(([oRes, fRes]) => {
+      if (oRes.data) setObras(oRes.data)
+      if (fRes.data) setFuncoes(fRes.data)
+    })
+  }, [])
 
   // ── Fetch lançamentos aprovados ──────────────────────────────────────────
   const fetchLancamentos = useCallback(async (mr: string) => {
@@ -469,7 +484,9 @@ export default function FechamentoPonto() {
       statusAba.includes(l.status) &&
       (!q || l.colaborador_nome.toLowerCase().includes(q) ||
         (l.colaborador_chapa ?? '').toLowerCase().includes(q) ||
-        l.obra_nome.toLowerCase().includes(q))
+        l.obra_nome.toLowerCase().includes(q)) &&
+      (filtroObraFech === 'todos' || l.obra_id === filtroObraFech) &&
+      (filtroFuncaoFech === 'todos' || l.funcao_id === filtroFuncaoFech)
     )
     const mapa: Record<string, { nome: string; chapa: string | null; funcao: string; tipo: string; lancs: LancItem[] }> = {}
     filtrados.forEach(l => {
@@ -486,7 +503,7 @@ export default function FechamentoPonto() {
       totalVt: v.lancs.reduce((s, l) => s + l.desconto_vt, 0),
       totalAdiant: v.lancs.reduce((s, l) => s + l.desconto_adiant, 0),
     }))
-  }, [lancamentos, busca, abaFechamento])
+  }, [lancamentos, busca, abaFechamento, filtroObraFech, filtroFuncaoFech])
 
   const totalGeral  = useMemo(() => lancamentos.reduce((s, l) => s + l.valor_total, 0), [lancamentos])
   const pendentes    = lancamentos.filter(l => ['em_fechamento','aguardando_aprovacao','aprovado','liberado','rascunho'].includes(l.status))
@@ -665,6 +682,22 @@ export default function FechamentoPonto() {
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <Input placeholder="Colaborador, obra..." value={busca} onChange={e => setBusca(e.target.value)} className="pl-8 h-9" />
         </div>
+        <select value={filtroObraFech} onChange={e=>setFiltroObraFech(e.target.value)}
+          className="h-9 px-3 text-sm border border-input rounded-md bg-background text-foreground min-w-40">
+          <option value="todos">Todas as obras</option>
+          {obras.map(o => <option key={o.id} value={o.id}>{o.nome}</option>)}
+        </select>
+        <select value={filtroFuncaoFech} onChange={e=>setFiltroFuncaoFech(e.target.value)}
+          className="h-9 px-3 text-sm border border-input rounded-md bg-background text-foreground min-w-40">
+          <option value="todos">Todas as funções</option>
+          {funcoes.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}
+        </select>
+        {(filtroObraFech!=='todos'||filtroFuncaoFech!=='todos') && (
+          <button onClick={()=>{setFiltroObraFech('todos');setFiltroFuncaoFech('todos')}}
+            className="h-9 px-3 text-sm border border-input rounded-md bg-background text-muted-foreground hover:bg-muted">
+            ✕ Limpar
+          </button>
+        )}
       </div>
 
       {/* ── Abas de status ── */}

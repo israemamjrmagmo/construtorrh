@@ -23,7 +23,7 @@ import {
 import { toast } from 'sonner'
 import { traduzirErro } from '@/lib/erros'
 import {
-  DollarSign, Plus, Search, Pencil, Trash2, CheckCircle, RotateCcw, Calendar, Building2, Clock,
+  DollarSign, Plus, Search, Pencil, Trash2, CheckCircle, RotateCcw, Calendar, Building2, Clock, Gift,
 } from 'lucide-react'
 
 // ─── tipos ───────────────────────────────────────────────────────────────────
@@ -94,7 +94,9 @@ function calcLiquido(form: FormData): number {
 export default function Pagamentos() {
   const [rows, setRows] = useState<PagamentoRow[]>([])
   const [colaboradores, setColaboradores] = useState<Pick<Colaborador, 'id' | 'nome' | 'chapa'>[]>([])
-  const [obras, setObras] = useState<Pick<Obra, 'id' | 'nome'>[]>([])
+  const [obras,    setObras]    = useState<Pick<Obra, 'id' | 'nome'>[]>([])
+  const [funcoes,  setFuncoes]  = useState<{ id: string; nome: string }[]>([])
+  const [filtroFuncaoId, setFiltroFuncaoId] = useState('todos')
   const [loading, setLoading] = useState(true)
 
   // filtros
@@ -102,6 +104,7 @@ export default function Pagamentos() {
   const [filtroColaborador, setFiltroColaborador] = useState('')
   const [filtroTipo, setFiltroTipo] = useState('todos')
   const [filtroStatus, setFiltroStatus] = useState('todos')
+  const [filtroObraId, setFiltroObraId]     = useState('todos')
 
   // modal
   const [modalOpen, setModalOpen] = useState(false)
@@ -129,7 +132,7 @@ export default function Pagamentos() {
   // ─── fetch ─────────────────────────────────────────────────────────────────
   const fetchData = useCallback(async () => {
     setLoading(true)
-    const [pagRes, colRes, obrRes] = await Promise.all([
+    const [pagRes, colRes, obrRes, funcRes] = await Promise.all([
       supabase
         .from('pagamentos')
         .select('*, colaboradores(nome,chapa)')
@@ -140,11 +143,13 @@ export default function Pagamentos() {
         .eq('status', 'ativo')
         .order('nome'),
       supabase.from('obras').select('id,nome').order('nome'),
+      supabase.from('funcoes').select('id,nome').order('nome'),
     ])
     if (pagRes.error) toast.error('Erro ao carregar pagamentos')
     else setRows((pagRes.data as PagamentoRow[]) ?? [])
     if (colRes.data) setColaboradores(colRes.data)
     if (obrRes.data) setObras(obrRes.data)
+    if (funcRes?.data) setFuncoes(funcRes.data)
     setLoading(false)
   }, [])
 
@@ -153,7 +158,7 @@ export default function Pagamentos() {
     setLoadingLancs(true)
     const { data } = await supabase
       .from('ponto_lancamentos')
-      .select('id, colaborador_id, obra_id, mes_referencia, data_inicio, data_fim, status, motivo_recusa, data_pagamento, obs_pagamento, snap_liquido, snap_valor_total, snap_inss, snap_ir, snap_desconto_vt, snap_desconto_adiant, colaboradores(nome, chapa, tipo_contrato), obras(nome)')
+      .select('id, colaborador_id, obra_id, mes_referencia, data_inicio, data_fim, status, motivo_recusa, data_pagamento, obs_pagamento, snap_liquido, snap_valor_total, snap_inss, snap_ir, snap_desconto_vt, snap_desconto_adiant, colaboradores(nome, chapa, tipo_contrato, funcao_id, funcoes(nome)), obras(nome)')
       .in('status', ['liberado', 'pago'])
       .order('mes_referencia', { ascending: false })
     setLancsPendentes(data ?? [])
@@ -369,30 +374,37 @@ export default function Pagamentos() {
     fetchData()
   }
 
-  // ─── render ────────────────────────────────────────────────────────────────
-  // ─── aba ativa ──────────────────────────────────────────────────────────────
+  // ─── filtros da aba Agendados/Realizados ─────────────────────────────────
+  // BUG FIX: filtroMesLanc NÃO restringe os agendados por padrão
+  // — agendados: TODOS os liberados, independente da competência
+  // — realizados: filtrado pelo mês selecionado
   const [aba, setAba] = useState<'agendados'|'realizados'>('agendados')
   const [abaReal, setAbaReal] = useState<'folha'|'vt'|'outros'>('folha')
 
-  // ─── filtros avulsos ─────────────────────────────────────────────────────────
-  const [filtroNomeLanc, setFiltroNomeLanc]       = useState('')
-  const [filtroDataIni, setFiltroDataIni]         = useState('')
-  const [filtroDataFim, setFiltroDataFim]         = useState('')
-  const [filtroMesLanc, setFiltroMesLanc]         = useState(new Date().toISOString().slice(0, 7))
+  // ─── filtros das tabelas de lançamentos ──────────────────────────────────
+  const [filtroNomeLanc, setFiltroNomeLanc]   = useState('')
+  const [filtroDataIni, setFiltroDataIni]     = useState('')
+  const [filtroDataFim, setFiltroDataFim]     = useState('')
+  const [filtroMesLanc, setFiltroMesLanc]     = useState(new Date().toISOString().slice(0, 7))
+  const [filtroObraLanc, setFiltroObraLanc]   = useState('todos')
+  const [filtroFuncaoLanc, setFiltroFuncaoLanc] = useState('todos')
 
-  // ─── render ────────────────────────────────────────────────────────────────
   // Filtros lançamentos da folha
-  const lancsAgendados  = lancsPendentes.filter(l => {
-    const matchNome = filtroNomeLanc ? l.colaboradores?.nome?.toLowerCase().includes(filtroNomeLanc.toLowerCase()) : true
-    const matchMes  = filtroMesLanc  ? l.mes_referencia === filtroMesLanc : true
-    return l.status === 'liberado' && matchNome && matchMes
+  // BUG FIX: agendados mostra TODOS os liberados (sem filtro por mês)
+  const lancsAgendados  = lancsPendentes.filter((l: any) => {
+    const matchNome   = filtroNomeLanc ? l.colaboradores?.nome?.toLowerCase().includes(filtroNomeLanc.toLowerCase()) : true
+    const matchObra   = filtroObraLanc !== 'todos' ? l.obra_id === filtroObraLanc : true
+    const matchFuncao = filtroFuncaoLanc !== 'todos' ? l.colaboradores?.funcao_id === filtroFuncaoLanc : true
+    return l.status === 'liberado' && matchNome && matchObra && matchFuncao
   })
-  const lancsRealizados = lancsPendentes.filter(l => {
-    const matchNome = filtroNomeLanc ? l.colaboradores?.nome?.toLowerCase().includes(filtroNomeLanc.toLowerCase()) : true
-    const matchMes  = filtroMesLanc  ? l.mes_referencia === filtroMesLanc : true
-    const matchDtIni = filtroDataIni ? (l.data_pagamento ?? '') >= filtroDataIni : true
-    const matchDtFim = filtroDataFim ? (l.data_pagamento ?? '') <= filtroDataFim : true
-    return l.status === 'pago' && matchNome && matchMes && matchDtIni && matchDtFim
+  const lancsRealizados = lancsPendentes.filter((l: any) => {
+    const matchNome   = filtroNomeLanc ? l.colaboradores?.nome?.toLowerCase().includes(filtroNomeLanc.toLowerCase()) : true
+    const matchMes    = filtroMesLanc  ? l.mes_referencia === filtroMesLanc : true
+    const matchDtIni  = filtroDataIni  ? (l.data_pagamento ?? '') >= filtroDataIni : true
+    const matchDtFim  = filtroDataFim  ? (l.data_pagamento ?? '') <= filtroDataFim : true
+    const matchObra   = filtroObraLanc !== 'todos'   ? l.obra_id === filtroObraLanc : true
+    const matchFuncao = filtroFuncaoLanc !== 'todos' ? l.colaboradores?.funcao_id === filtroFuncaoLanc : true
+    return l.status === 'pago' && matchNome && matchMes && matchDtIni && matchDtFim && matchObra && matchFuncao
   })
 
   const totalAgendado  = lancsAgendados.reduce((s: number, l: any) => s + (l.snap_liquido ?? l.valor_liquido ?? 0), 0)
@@ -411,18 +423,22 @@ export default function Pagamentos() {
         }
       />
 
-      {/* Cards resumo — padrão var(--card) / var(--border) */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+      {/* Cards resumo — valores financeiros completos */}
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 mb-6">
         {[
-          { icon: <Clock size={16}/>,       label: 'Agendados',       value: `${lancsPendentes.filter(l=>l.status==='liberado').length} lançamento(s)`,  color:'#b45309' },
-          { icon: <CheckCircle size={16}/>, label: 'Realizados (mês)', value: `${lancsPendentes.filter(l=>l.status==='pago'&&l.mes_referencia===filtroMesLanc).length} lançamento(s)`, color:'#15803d' },
-          { icon: <DollarSign size={16}/>,  label: 'Avulsos',         value: `${rows.length} registro(s)`,  color:'#7c3aed' },
+          { icon: <Clock size={15}/>,        label: '⏳ Em Aberto',    value: formatCurrency(lancsPendentes.filter((l:any)=>l.status==='liberado').reduce((s:number,l:any)=>s+(l.snap_liquido??0),0)), sub: `${lancsPendentes.filter((l:any)=>l.status==='liberado').length} lanç.`,  color:'#b45309', bg:'#fef3c7', border:'#fde68a' },
+          { icon: <Calendar size={15}/>,     label: '📅 Realizados',   value: formatCurrency(lancsPendentes.filter((l:any)=>l.status==='pago'&&l.mes_referencia===filtroMesLanc).reduce((s:number,l:any)=>s+(l.snap_liquido??0),0)), sub:`${lancsPendentes.filter((l:any)=>l.status==='pago'&&l.mes_referencia===filtroMesLanc).length} lanç.`, color:'#15803d', bg:'#dcfce7', border:'#bbf7d0' },
+          { icon: <DollarSign size={15}/>,   label: '💳 Avulsos',      value: formatCurrency(rows.filter(r=>r.status==='pendente').reduce((s,r)=>s+(r.valor_liquido??r.valor_bruto??0),0)), sub:`${rows.filter(r=>r.status==='pendente').length} pend.`,  color:'#7c3aed', bg:'#ede9fe', border:'#ddd6fe' },
+          { icon: <CheckCircle size={15}/>,  label: '✅ Avulsos Pagos', value: formatCurrency(rows.filter(r=>r.status==='pago'&&r.competencia===filtroMesLanc).reduce((s,r)=>s+(r.valor_liquido??r.valor_bruto??0),0)), sub:`${rows.filter(r=>r.status==='pago'&&r.competencia===filtroMesLanc).length} reg.`, color:'#0f766e', bg:'#f0fdfa', border:'#99f6e4' },
+          { icon: <DollarSign size={15}/>,   label: '💵 Adiantamentos', value: formatCurrency(rows.filter(r=>r.tipo==='adiantamento'&&r.status==='pendente').reduce((s,r)=>s+(r.valor_liquido??r.valor_bruto??0),0)), sub:`${rows.filter(r=>r.tipo==='adiantamento'&&r.status==='pendente').length} pend.`, color:'#9a3412', bg:'#fff7ed', border:'#fed7aa' },
+          { icon: <Gift size={15}/>,         label: '🏆 Prêmios',       value: formatCurrency(rows.filter(r=>r.tipo==='premio'&&r.status==='pendente').reduce((s,r)=>s+(r.valor_liquido??r.valor_bruto??0),0)), sub:`${rows.filter(r=>r.tipo==='premio'&&r.status==='pendente').length} pend.`,color:'#b45309', bg:'#fef3c7', border:'#fde68a' },
         ].map((c,i) => (
-          <div key={i} style={{ background:'var(--card)', border:'1px solid var(--border)', borderRadius:10, padding:'14px 16px' }}>
+          <div key={i} style={{ background:c.bg, border:`1.5px solid ${c.border}`, borderRadius:10, padding:'12px 14px' }}>
             <div style={{ display:'flex', alignItems:'center', gap:6, color:c.color, marginBottom:4 }}>
-              {c.icon}<span style={{ fontSize:11, fontWeight:600 }}>{c.label}</span>
+              {c.icon}<span style={{ fontSize:11, fontWeight:700 }}>{c.label}</span>
             </div>
-            <div style={{ fontSize:20, fontWeight:800, color:c.color }}>{c.value}</div>
+            <div style={{ fontSize:17, fontWeight:800, color:c.color }}>{c.value}</div>
+            <div style={{ fontSize:11, color:c.color, opacity:.7, marginTop:1 }}>{c.sub}</div>
           </div>
         ))}
       </div>
@@ -463,6 +479,22 @@ export default function Pagamentos() {
               className="h-9 pl-8 pr-3 text-sm border border-input rounded-md bg-background text-foreground w-48" />
           </div>
         </div>
+        <div>
+          <label className="text-xs font-semibold text-muted-foreground block mb-1">Obra</label>
+          <select value={filtroObraLanc} onChange={e=>setFiltroObraLanc(e.target.value)}
+            className="h-9 px-3 text-sm border border-input rounded-md bg-background text-foreground w-44">
+            <option value="todos">Todas as obras</option>
+            {obras.map(o => <option key={o.id} value={o.id}>{o.nome}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="text-xs font-semibold text-muted-foreground block mb-1">Função</label>
+          <select value={filtroFuncaoLanc} onChange={e=>setFiltroFuncaoLanc(e.target.value)}
+            className="h-9 px-3 text-sm border border-input rounded-md bg-background text-foreground w-44">
+            <option value="todos">Todas as funções</option>
+            {funcoes.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}
+          </select>
+        </div>
         {aba==='realizados' && (<>
           <div>
             <label className="text-xs font-semibold text-muted-foreground block mb-1">Data pgto de</label>
@@ -475,8 +507,8 @@ export default function Pagamentos() {
               className="h-9 px-3 text-sm border border-input rounded-md bg-background text-foreground" />
           </div>
         </>)}
-        {(filtroNomeLanc||filtroDataIni||filtroDataFim) && (
-          <Button variant="outline" size="sm" onClick={()=>{setFiltroNomeLanc('');setFiltroDataIni('');setFiltroDataFim('')}}>
+        {(filtroNomeLanc||filtroDataIni||filtroDataFim||filtroObraLanc!=='todos'||filtroFuncaoLanc!=='todos') && (
+          <Button variant="outline" size="sm" onClick={()=>{setFiltroNomeLanc('');setFiltroDataIni('');setFiltroDataFim('');setFiltroObraLanc('todos');setFiltroFuncaoLanc('todos')}}>
             ✕ Limpar
           </Button>
         )}
