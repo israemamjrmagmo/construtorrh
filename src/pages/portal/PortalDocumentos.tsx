@@ -94,28 +94,33 @@ export default function PortalDocumentos() {
     setErroUpload('')
 
     let arquivoUrl = ''
-    let arquivoNome = arquivo.name
+    const arquivoNome = arquivo.name
 
-    // Tenta upload no Storage
-    const ext  = arquivo.name.split('.').pop() ?? 'bin'
-    const path = `${obraId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
-    const { error: storageErr } = await supabase.storage.from(BUCKET).upload(path, arquivo, {
-      contentType: arquivo.type, upsert: false,
-    })
-    if (!storageErr) {
-      const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(path)
-      arquivoUrl = pub.publicUrl
-    } else {
-      // Fallback: base64 para imagens pequenas (< 1MB)
-      if (arquivo.type.startsWith('image/') && arquivo.size < 1 * 1024 * 1024) {
-        arquivoUrl = await new Promise(res => {
-          const r = new FileReader(); r.onload = e => res(e.target?.result as string); r.readAsDataURL(arquivo)
-        })
-      } else {
-        setErroUpload('Não foi possível fazer o upload. Verifique a conexão.')
+    // 1. Tenta upload no Storage do Supabase
+    try {
+      const ext  = arquivo.name.split('.').pop() ?? 'bin'
+      const path = `${obraId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
+      const { error: storageErr } = await supabase.storage.from(BUCKET).upload(path, arquivo, {
+        contentType: arquivo.type, upsert: false,
+      })
+      if (!storageErr) {
+        const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(path)
+        arquivoUrl = pub.publicUrl
+      }
+    } catch (_) { /* segue para fallback */ }
+
+    // 2. Fallback: base64 para imagens/PDFs até 3MB
+    if (!arquivoUrl) {
+      if (arquivo.size > 3 * 1024 * 1024) {
+        setErroUpload('Arquivo muito grande (máx. 3 MB). Reduza o tamanho ou use Wi-Fi.')
         setSaving(false)
         return
       }
+      arquivoUrl = await new Promise(res => {
+        const r = new FileReader()
+        r.onload = ev => res(ev.target?.result as string)
+        r.readAsDataURL(arquivo)
+      })
     }
 
     await supabase.from('portal_documentos').insert({

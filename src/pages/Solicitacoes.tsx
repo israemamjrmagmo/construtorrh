@@ -385,7 +385,7 @@ function stBadge(s: string) {
 function TabOcorrencias({ obras, colabs, perfil }: { obras: Obra[]; colabs: Colab[]; perfil: any }) {
   const [rows,       setRows]       = useState<any[]>([])
   const [load,       setLoad]       = useState(true)
-  const [filtro,     setFiltro]     = useState<'pendente'|'todos'>('pendente')
+  const [filtro,     setFiltro]     = useState<'pendente'|'aprovado'|'recusado'|'todos'>('pendente')
   const [modal,      setModal]      = useState<any|null>(null)
   const [recusaId,   setRecusaId]   = useState<string|null>(null)
   const [motivoRec,  setMotivoRec]  = useState('')
@@ -393,7 +393,9 @@ function TabOcorrencias({ obras, colabs, perfil }: { obras: Obra[]; colabs: Cola
   const doFetch = useCallback(async () => {
     setLoad(true)
     const q = supabase.from('portal_ocorrencias').select('*').order('criado_em', { ascending: false })
-    if (filtro === 'pendente') q.is('sincronizado_em', null)
+    if (filtro === 'pendente')  q.is('sincronizado_em', null).neq('status','recusado')
+    if (filtro === 'aprovado')  q.not('sincronizado_em', 'is', null)
+    if (filtro === 'recusado')  q.eq('status','recusado')
     const { data } = await q
     setRows(data ?? [])
     setLoad(false)
@@ -482,14 +484,14 @@ function TabOcorrencias({ obras, colabs, perfil }: { obras: Obra[]; colabs: Cola
     <div>
       {/* barra de filtros */}
       <div style={{ display:'flex', gap:6, marginBottom:16, flexWrap:'wrap' }}>
-        {(['pendente','todos'] as const).map(f => (
+        {(['pendente','aprovado','recusado','todos'] as const).map(f => (
           <button key={f} onClick={() => setFiltro(f)} style={{
-            height:32, padding:'0 14px', borderRadius:7, cursor:'pointer', fontWeight:600, fontSize:12,
+            height:32, padding:'0 12px', borderRadius:7, cursor:'pointer', fontWeight:600, fontSize:12,
             border:`1px solid ${filtro===f?'var(--primary)':'var(--border)'}`,
             background:filtro===f?'var(--primary)':'var(--card)',
             color:filtro===f?'#fff':'var(--foreground)',
           }}>
-            {f==='pendente'?'⏳ Pendentes':'Todas'}
+            {f==='pendente'?'⏳ Pendentes':f==='aprovado'?'✓ Aprovadas':f==='recusado'?'✗ Recusadas':'Todas'}
           </button>
         ))}
         <button onClick={doFetch} style={{ height:32, width:32, borderRadius:7, border:'1px solid var(--border)', background:'var(--card)', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
@@ -500,7 +502,7 @@ function TabOcorrencias({ obras, colabs, perfil }: { obras: Obra[]; colabs: Cola
       {load ? <div style={{ textAlign:'center', padding:48, color:'var(--muted-foreground)' }}>Carregando…</div>
       : rows.length === 0 ? (
         <div style={{ background:'var(--card)', border:'1px solid var(--border)', borderRadius:12, padding:48, textAlign:'center', color:'var(--muted-foreground)' }}>
-          <div style={{ fontSize:32, marginBottom:8 }}>✅</div>Nenhuma ocorrência {filtro==='pendente'?'pendente':'registrada'}
+          <div style={{ fontSize:32, marginBottom:8 }}>✅</div>Nenhuma ocorrência {filtro==='pendente'?'pendente':filtro==='aprovado'?'aprovada':filtro==='recusado'?'recusada':'registrada'}
         </div>
       ) : (
         <div style={{ background:'var(--card)', border:'1px solid var(--border)', borderRadius:12, overflow:'hidden' }}>
@@ -624,7 +626,7 @@ function TabOcorrencias({ obras, colabs, perfil }: { obras: Obra[]; colabs: Cola
 function TabEpis({ obras, colabs, perfil }: { obras: Obra[]; colabs: Colab[]; perfil: any }) {
   const [rows,      setRows]      = useState<any[]>([])
   const [load,      setLoad]      = useState(true)
-  const [filtro,    setFiltro]    = useState<'pendente'|'todos'>('pendente')
+  const [filtro,    setFiltro]    = useState<'pendente'|'aprovado'|'recusado'|'todos'>('pendente')
   const [modal,     setModal]     = useState<any|null>(null)
   const [recusaId,  setRecusaId]  = useState<string|null>(null)
   const [motivoRec, setMotivoRec] = useState('')
@@ -632,7 +634,7 @@ function TabEpis({ obras, colabs, perfil }: { obras: Obra[]; colabs: Colab[]; pe
   const doFetch = useCallback(async () => {
     setLoad(true)
     const q = supabase.from('portal_epi_solicitacoes').select('*').order('criado_em', { ascending: false })
-    if (filtro === 'pendente') q.eq('status','pendente')
+    if (filtro !== 'todos') q.eq('status', filtro)
     const { data } = await q
     setRows(data ?? [])
     setLoad(false)
@@ -706,14 +708,14 @@ function TabEpis({ obras, colabs, perfil }: { obras: Obra[]; colabs: Colab[]; pe
   return (
     <div>
       <div style={{ display:'flex', gap:6, marginBottom:16, flexWrap:'wrap' }}>
-        {(['pendente','todos'] as const).map(f => (
+        {(['pendente','aprovado','recusado','todos'] as const).map(f => (
           <button key={f} onClick={() => setFiltro(f)} style={{
-            height:32, padding:'0 14px', borderRadius:7, cursor:'pointer', fontWeight:600, fontSize:12,
+            height:32, padding:'0 12px', borderRadius:7, cursor:'pointer', fontWeight:600, fontSize:12,
             border:`1px solid ${filtro===f?'var(--primary)':'var(--border)'}`,
             background:filtro===f?'var(--primary)':'var(--card)',
             color:filtro===f?'#fff':'var(--foreground)',
           }}>
-            {f==='pendente'?'⏳ Pendentes':'Todas'}
+            {f==='pendente'?'⏳ Pendentes':f==='aprovado'?'✓ Aprovadas':f==='recusado'?'✗ Recusadas':'Todas'}
           </button>
         ))}
         <button onClick={doFetch} style={{ height:32, width:32, borderRadius:7, border:'1px solid var(--border)', background:'var(--card)', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
@@ -724,7 +726,7 @@ function TabEpis({ obras, colabs, perfil }: { obras: Obra[]; colabs: Colab[]; pe
       {load ? <div style={{ textAlign:'center', padding:48, color:'var(--muted-foreground)' }}>Carregando…</div>
       : rows.length === 0 ? (
         <div style={{ background:'var(--card)', border:'1px solid var(--border)', borderRadius:12, padding:48, textAlign:'center', color:'var(--muted-foreground)' }}>
-          <div style={{ fontSize:32, marginBottom:8 }}>🦺</div>Nenhuma solicitação {filtro==='pendente'?'pendente':'registrada'}
+          <div style={{ fontSize:32, marginBottom:8 }}>🦺</div>Nenhuma solicitação {filtro==='pendente'?'pendente':filtro==='aprovado'?'aprovada':filtro==='recusado'?'recusada':'registrada'}
         </div>
       ) : (
         <div style={{ background:'var(--card)', border:'1px solid var(--border)', borderRadius:12, overflow:'hidden' }}>
@@ -843,7 +845,7 @@ function TabEpis({ obras, colabs, perfil }: { obras: Obra[]; colabs: Colab[]; pe
 function TabDocumentos({ obras, colabs, perfil }: { obras: Obra[]; colabs: Colab[]; perfil: any }) {
   const [rows,      setRows]      = useState<any[]>([])
   const [load,      setLoad]      = useState(true)
-  const [filtro,    setFiltro]    = useState<'pendente'|'todos'>('pendente')
+  const [filtro,    setFiltro]    = useState<'pendente'|'aprovado'|'recusado'|'todos'>('pendente')
   const [modal,     setModal]     = useState<any|null>(null)
   const [recusaId,  setRecusaId]  = useState<string|null>(null)
   const [motivoRec, setMotivoRec] = useState('')
@@ -851,7 +853,7 @@ function TabDocumentos({ obras, colabs, perfil }: { obras: Obra[]; colabs: Colab
   const doFetch = useCallback(async () => {
     setLoad(true)
     const q = supabase.from('portal_documentos').select('*').order('criado_em', { ascending: false })
-    if (filtro === 'pendente') q.eq('status','pendente')
+    if (filtro !== 'todos') q.eq('status', filtro)
     const { data } = await q
     setRows(data ?? [])
     setLoad(false)
@@ -930,14 +932,14 @@ function TabDocumentos({ obras, colabs, perfil }: { obras: Obra[]; colabs: Colab
   return (
     <div>
       <div style={{ display:'flex', gap:6, marginBottom:16, flexWrap:'wrap' }}>
-        {(['pendente','todos'] as const).map(f => (
+        {(['pendente','aprovado','recusado','todos'] as const).map(f => (
           <button key={f} onClick={() => setFiltro(f)} style={{
-            height:32, padding:'0 14px', borderRadius:7, cursor:'pointer', fontWeight:600, fontSize:12,
+            height:32, padding:'0 12px', borderRadius:7, cursor:'pointer', fontWeight:600, fontSize:12,
             border:`1px solid ${filtro===f?'var(--primary)':'var(--border)'}`,
             background:filtro===f?'var(--primary)':'var(--card)',
             color:filtro===f?'#fff':'var(--foreground)',
           }}>
-            {f==='pendente'?'⏳ Pendentes':'Todos'}
+            {f==='pendente'?'⏳ Pendentes':f==='aprovado'?'✓ Aprovados':f==='recusado'?'✗ Recusados':'Todos'}
           </button>
         ))}
         <button onClick={doFetch} style={{ height:32, width:32, borderRadius:7, border:'1px solid var(--border)', background:'var(--card)', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
@@ -948,7 +950,7 @@ function TabDocumentos({ obras, colabs, perfil }: { obras: Obra[]; colabs: Colab
       {load ? <div style={{ textAlign:'center', padding:48, color:'var(--muted-foreground)' }}>Carregando…</div>
       : rows.length === 0 ? (
         <div style={{ background:'var(--card)', border:'1px solid var(--border)', borderRadius:12, padding:48, textAlign:'center', color:'var(--muted-foreground)' }}>
-          <div style={{ fontSize:32, marginBottom:8 }}>📭</div>Nenhum documento {filtro==='pendente'?'pendente':'registrado'}
+          <div style={{ fontSize:32, marginBottom:8 }}>📭</div>Nenhum documento {filtro==='pendente'?'pendente':filtro==='aprovado'?'aprovado':filtro==='recusado'?'recusado':'registrado'}
         </div>
       ) : (
         <div style={{ background:'var(--card)', border:'1px solid var(--border)', borderRadius:12, overflow:'hidden' }}>

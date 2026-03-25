@@ -213,7 +213,7 @@ function DocBadge({ url, nome }: { url: string | null; nome: string | null }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-type Aba = 'acidentes' | 'atestados' | 'advertencias' | 'portal'
+type Aba = 'acidentes' | 'atestados' | 'advertencias'
 
 // ─── ABA OCORRÊNCIAS DO PORTAL ────────────────────────────────────────────────
 function OcorrenciasPortalTab({ obras, colaboradores }: { obras: {id:string;nome:string}[]; colaboradores: {id:string;nome:string;chapa:string}[] }) {
@@ -749,7 +749,6 @@ export default function Ocorrencias() {
           { key: 'acidentes',    icon: <AlertTriangle size={13} />, label: 'Acidentes' },
           { key: 'atestados',    icon: <Stethoscope size={13} />,  label: 'Atestados' },
           { key: 'advertencias', icon: <FileWarning size={13} />,  label: 'Advertências' },
-          { key: 'portal',       icon: <span style={{fontSize:12}}>📲</span>,          label: 'Do Portal' },
         ] as const).map(t => (
           <button key={t.key} style={tabStyle(aba === t.key)} onClick={() => setAba(t.key)}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>{t.icon}{t.label}</span>
@@ -947,10 +946,6 @@ export default function Ocorrencias() {
       )}
 
       {/* ══ ABA DO PORTAL ══ */}
-      {aba === 'portal' && (
-        <OcorrenciasPortalTab obras={obras} colaboradores={colaboradores} />
-      )}
-
       {/* ══ MODAL ACIDENTE ══ */}
       <Dialog open={acidOpen} onOpenChange={setAcidOpen}>
         <DialogContent style={{ maxWidth: 600, maxHeight: '90vh', overflowY: 'auto' }}
