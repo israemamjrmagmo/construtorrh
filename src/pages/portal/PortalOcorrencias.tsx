@@ -31,6 +31,7 @@ export default function PortalOcorrencias() {
   const [historico, setHistorico]   = useState<OcorRow[]>([])
   const [saving, setSaving]         = useState(false)
   const [sucesso, setSucesso]       = useState(false)
+  const [erroMsg, setErroMsg]       = useState('')
   const [deletandoId, setDeletandoId] = useState<string|null>(null)
 
   // ── Campos comuns ──────────────────────────────────────────────────────────
@@ -94,24 +95,31 @@ export default function PortalOcorrencias() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!colabId || !descricao.trim()) return
-    setSaving(true)
+    if (!descricao.trim()) { setErroMsg('Preencha a descrição da ocorrência.'); return }
+    setSaving(true); setErroMsg('')
     const base = {
-      obra_id: obraId, colaborador_id: colabId, tipo: aba,
-      data_ocorrencia: dataOcor, descricao, gravidade,
+      obra_id: obraId,
+      colaborador_id: colabId || null,
+      tipo: aba,
+      data_ocorrencia: dataOcor,
+      descricao,
+      gravidade,
+      status: 'pendente',
       portal_usuario_id: session?.id,
     }
     let extra: Record<string,any> = {}
-    if (aba === 'acidente')     extra = { hora_acidente: hora||null, local: local||null, tipo_acidente: tipoAcid, cat_emitida: catEmitida }
-    if (aba === 'atestado')     extra = { tipo_atestado: tipoAtest, dias_afastamento: diasAfas?parseInt(diasAfas):null, com_afastamento: comAfas, cid: cid||null, medico: medico||null }
-    if (aba === 'advertencia')  extra = { tipo_adv: tipoAdv, motivo: motivo||null, assinada, dias_suspensao: diasSusp?parseInt(diasSusp):null }
+    if (aba === 'acidente')    extra = { hora_acidente: hora||null, local: local||null, tipo_acidente: tipoAcid, cat_emitida: catEmitida }
+    if (aba === 'atestado')    extra = { tipo_atestado: tipoAtest, dias_afastamento: diasAfas?parseInt(diasAfas):null, com_afastamento: comAfas, cid: cid||null, medico: medico||null }
+    if (aba === 'advertencia') extra = { tipo_adv: tipoAdv, motivo: motivo||null, assinada, dias_suspensao: diasSusp?parseInt(diasSusp):null }
 
     const { error } = await supabase.from('portal_ocorrencias').insert({ ...base, ...extra })
     setSaving(false)
-    if (!error) {
-      setSucesso(true); resetForm(); loadHistorico(obraId, aba)
-      setTimeout(() => { setSucesso(false); setSubAba('historico') }, 1600)
+    if (error) {
+      setErroMsg('Erro ao salvar: ' + error.message)
+      return
     }
+    setSucesso(true); resetForm(); loadHistorico(obraId, aba)
+    setTimeout(() => { setSucesso(false); setSubAba('historico') }, 1600)
   }
 
   async function excluir(id: string, sync: string|null) {
@@ -191,6 +199,11 @@ export default function PortalOcorrencias() {
           {sucesso && (
             <div style={{ background:'#dcfce7',border:'1px solid #86efac',borderRadius:10,padding:'12px 16px',display:'flex',alignItems:'center',gap:8,color:'#15803d',fontWeight:700 }}>
               <CheckCircle2 size={18}/> Ocorrência registrada com sucesso!
+            </div>
+          )}
+          {erroMsg && (
+            <div style={{ background:'#fee2e2',border:'1px solid #fca5a5',borderRadius:10,padding:'12px 16px',color:'#dc2626',fontWeight:700,fontSize:13 }}>
+              ⚠️ {erroMsg}
             </div>
           )}
 
@@ -306,7 +319,7 @@ export default function PortalOcorrencias() {
               style={{ width:'100%',border:'1px solid #e5e7eb',borderRadius:8,padding:'10px 12px',fontSize:13,boxSizing:'border-box',background:'#fff',resize:'vertical' }}/>
           </div>
 
-          <button type="submit" disabled={saving||!colabId||!descricao.trim()} style={{
+          <button type="submit" disabled={saving||!descricao.trim()} style={{
             height:52,background:saving?'#94a3b8':'#dc2626',color:'#fff',border:'none',borderRadius:12,fontSize:16,fontWeight:700,
             cursor:saving?'not-allowed':'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8,
           }}>
