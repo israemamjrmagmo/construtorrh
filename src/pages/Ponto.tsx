@@ -1235,11 +1235,6 @@ export default function Ponto() {
                 <button onClick={mesSeguinte} style={{border:'1px solid var(--border)',borderRadius:5,background:'none',cursor:'pointer',padding:'3px 7px',display:'flex'}}><ChevronRight size={13}/></button>
               </div>
               <Button variant="outline" size="sm" onClick={()=>window.print()} style={{gap:4,height:30,fontSize:12}}><Printer size={12}/></Button>
-              <Button size="sm" variant="outline"
-                onClick={() => nav('/solicitacoes')}
-                style={{gap:4,height:30,fontSize:12,borderColor:'#3b82f6',color:'#1d4ed8',background:'#eff6ff'}}>
-                📥 Solicitações
-              </Button>
               <Button size="sm"
                 disabled={!colabSel||lancamentos.some(l=>['rascunho','recusado','aguardando_aprovacao'].includes(l.status))}
                 title={lancamentos.some(l=>['rascunho','recusado','aguardando_aprovacao'].includes(l.status))?'Envie os lançamentos em aberto para o Fechamento antes de criar um novo':undefined}

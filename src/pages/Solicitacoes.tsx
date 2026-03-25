@@ -806,23 +806,9 @@ function TabRelatorio({ obras, colabs }: { obras: Obra[]; colabs: Colab[] }) {
   const [loading,   setLoading]   = useState(false)
   const [resultado, setResultado] = useState<ResultadoRel | null>(null)
 
-  interface DiaRel { data: string; status: string; entrada: string; saida: string; he: number; hf: number; obs: string }
-  interface ColabRel { nome: string; obra: string; dias: DiaRel[]; presentes: number; faltas: number; he: number; hf: number }
-  interface ResultadoRel { periodo: string; registros: ColabRel[] }
-
-  function toMin(t: string) {
-    if (!t || !t.includes(':')) return 0
-    const [h, m] = t.split(':').map(Number)
-    return h * 60 + m
-  }
-  function calcHE(d: any) {
-    if (!d.hora_entrada || !d.hora_saida) return 0
-    const jornada = 8 * 60
-    let trabalhado = toMin(d.hora_saida) - toMin(d.hora_entrada)
-    if (d.saida_almoco && d.retorno_almoco) trabalhado -= (toMin(d.retorno_almoco) - toMin(d.saida_almoco))
-    if (d.he_entrada && d.he_saida) trabalhado += toMin(d.he_saida) - toMin(d.he_entrada)
-    return Math.max(0, trabalhado - jornada)
-  }
+  interface DiaRel   { data:string; status:string; he:number; hf:number; obs:string; sincronizado:boolean }
+  interface ColabRel { nome:string; obra:string; dias:DiaRel[]; presentes:number; faltas:number; he:number; hf:number }
+  interface ResultadoRel { periodo:string; registros:ColabRel[] }
 
   async function gerar() {
     setLoading(true); setResultado(null)
@@ -830,71 +816,63 @@ function TabRelatorio({ obras, colabs }: { obras: Obra[]; colabs: Colab[] }) {
     const inicio = `${ano}-${String(mes).padStart(2,'0')}-01`
     const fim    = `${ano}-${String(mes).padStart(2,'0')}-31`
 
-    // Busca lançamentos do período
-    let qLanc = supabase.from('ponto_lancamentos').select(`
-      id, obra_id, colaborador_id, data_inicio, data_fim,
-      colaboradores(nome), obras(nome)
-    `).gte('data_inicio', inicio).lte('data_fim', fim).eq('status', 'aprovado')
+    // Busca registros do portal (portal_ponto_diario)
+    let q = supabase
+      .from('portal_ponto_diario')
+      .select('id,colaborador_id,obra_id,data,status,horas_extra,horas_falta,observacoes,sincronizado_em,colaboradores(nome),obras(nome)')
+      .gte('data', inicio).lte('data', fim)
+      .order('colaborador_id').order('data')
 
-    if (modo === 'colaborador' && colabId) qLanc = qLanc.eq('colaborador_id', colabId)
-    if (modo === 'obra' && obraId)         qLanc = qLanc.eq('obra_id', obraId)
+    if (modo === 'colaborador' && colabId) q = q.eq('colaborador_id', colabId)
+    if (modo === 'obra'        && obraId)  q = q.eq('obra_id', obraId)
 
-    const { data: lancs } = await qLanc
-    if (!lancs?.length) { toast.info('Nenhum lançamento aprovado encontrado para o período.'); setLoading(false); return }
-
-    // Busca todos os registros de ponto desses lançamentos
-    const lancIds = lancs.map((l: any) => l.id)
-    const { data: pontos } = await supabase.from('registro_ponto').select('*').in('lancamento_id', lancIds)
-    const mapaP: Record<string, any[]> = {}
-    ;(pontos ?? []).forEach((p: any) => {
-      if (!mapaP[p.lancamento_id]) mapaP[p.lancamento_id] = []
-      mapaP[p.lancamento_id].push(p)
-    })
+    const { data: rows, error } = await q
+    if (error) { toast.error('Erro ao buscar dados: ' + error.message); setLoading(false); return }
+    if (!rows?.length) { toast.info('Nenhum registro do portal encontrado para o período.'); setLoading(false); return }
 
     // Agrupa por colaborador
     const mapaColab: Record<string, ColabRel> = {}
-    for (const lanc of lancs as any[]) {
-      const cNome = (lanc.colaboradores as any)?.nome ?? 'Desconhecido'
-      const oNome = (lanc.obras as any)?.nome ?? ''
-      const key   = lanc.colaborador_id
-      if (!mapaColab[key]) mapaColab[key] = { nome: cNome, obra: oNome, dias: [], presentes: 0, faltas: 0, he: 0, hf: 0 }
+    for (const r of rows as any[]) {
+      const cNome = (r.colaboradores as any)?.nome ?? colabs.find(c => c.id === r.colaborador_id)?.nome ?? 'Desconhecido'
+      const oNome = (r.obras as any)?.nome ?? obras.find(o => o.id === r.obra_id)?.nome ?? ''
+      const key   = r.colaborador_id + '|' + r.obra_id  // separa por obra também
+      if (!mapaColab[key]) mapaColab[key] = { nome:cNome, obra:oNome, dias:[], presentes:0, faltas:0, he:0, hf:0 }
 
-      const reg = mapaP[lanc.id] ?? []
-      for (const r of reg) {
-        const presente = r.presente === true || r.status === 'presente' || r.status === 'meio_periodo'
-        const falta    = r.falta === true || r.status === 'falta'
-        const heMin    = calcHE(r)
-        const hfMin    = (!presente || falta) ? 480 : 0
-        const statusLabel =
-          r.evento === 'atestado'   ? 'Atestado'  :
-          r.evento === 'suspensao'  ? 'Suspensão' :
-          r.evento === 'feriado'    ? 'Feriado'   :
-          falta                     ? 'FALTA'     :
-          presente                  ? 'Presente'  : '—'
+      const presente = r.status === 'presente' || r.status === 'meio_periodo'
+      const falta    = r.status === 'falta'
+      const heMin    = Math.round((r.horas_extra ?? 0) * 60)
+      const hfMin    = Math.round((r.horas_falta ?? 0) * 60)
 
-        mapaColab[key].dias.push({
-          data:    r.data,
-          status:  statusLabel,
-          entrada: r.hora_entrada ?? '',
-          saida:   r.hora_saida ?? '',
-          he:      heMin,
-          hf:      hfMin,
-          obs:     r.justificativa ?? r.observacoes ?? '',
-        })
-        if (presente && !falta) mapaColab[key].presentes++
-        if (falta)              mapaColab[key].faltas++
-        mapaColab[key].he += heMin
-        mapaColab[key].hf += hfMin
-      }
-      mapaColab[key].dias.sort((a, b) => a.data.localeCompare(b.data))
+      const statusLabel =
+        r.status === 'falta'        ? 'FALTA'       :
+        r.status === 'meio_periodo' ? 'Meio período' :
+        r.status === 'presente'     ? 'Presente'    :
+        r.status === 'atestado'     ? 'Atestado'    :
+        r.status === 'feriado'      ? 'Feriado'     :
+        r.status ?? '—'
+
+      mapaColab[key].dias.push({
+        data:         r.data,
+        status:       statusLabel,
+        he:           heMin,
+        hf:           hfMin,
+        obs:          r.observacoes ?? '',
+        sincronizado: !!r.sincronizado_em,
+      })
+      if (presente) mapaColab[key].presentes++
+      if (falta)    mapaColab[key].faltas++
+      mapaColab[key].he += heMin
+      mapaColab[key].hf += hfMin
     }
+    // Ordena dias de cada colaborador
+    for (const v of Object.values(mapaColab)) v.dias.sort((a,b) => a.data.localeCompare(b.data))
 
     const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
-    setResultado({ periodo: `${MESES[mes-1]}/${ano}`, registros: Object.values(mapaColab) })
+    setResultado({ periodo:`${MESES[mes-1]}/${ano}`, registros:Object.values(mapaColab) })
     setLoading(false)
   }
 
-  function minToHM(min: number) {
+  function minToHM(min:number) {
     if (!min) return '—'
     return `${Math.floor(min/60)}h${String(min%60).padStart(2,'0')}m`
   }
@@ -904,74 +882,80 @@ function TabRelatorio({ obras, colabs }: { obras: Obra[]; colabs: Colab[] }) {
     const linhas = resultado.registros.map(c => {
       const tabDias = c.dias.map(d => {
         const dtFmt = new Date(d.data+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'})
-        const heStr = d.he ? `+${minToHM(d.he)}` : ''
-        const hfStr = d.hf ? `-${minToHM(d.hf)}` : ''
-        const cor   = d.status==='FALTA' ? '#fee2e2' : d.status==='Presente' ? '#f0fdf4' : '#fefce8'
+        const cor   = d.status==='FALTA'?'#fee2e2':d.status==='Presente'?'#f0fdf4':'#fefce8'
+        const corSt = d.status==='FALTA'?'#dc2626':d.status==='Presente'?'#15803d':'#92400e'
+        const sinc  = d.sincronizado ? '✓' : '⏳'
         return `<tr style="background:${cor}">
           <td>${dtFmt}</td>
-          <td style="font-weight:700;color:${d.status==='FALTA'?'#dc2626':d.status==='Presente'?'#15803d':'#92400e'}">${d.status}</td>
-          <td>${d.entrada||'—'}</td><td>${d.saida||'—'}</td>
-          <td style="color:#15803d">${heStr}</td>
-          <td style="color:#dc2626">${hfStr}</td>
-          <td style="font-size:11px;color:#6b7280">${d.obs}</td>
+          <td style="font-weight:700;color:${corSt}">${d.status}</td>
+          <td style="color:#15803d">${d.he?`+${minToHM(d.he)}`:''}</td>
+          <td style="color:#dc2626">${d.hf?`-${minToHM(d.hf)}`:''}</td>
+          <td style="font-size:10px;color:#6b7280">${d.obs}</td>
+          <td style="font-size:10px;color:${d.sincronizado?'#15803d':'#b45309'}">${sinc}</td>
         </tr>`
       }).join('')
-      return `
-      <div class="colaborador">
+      return `<div class="colaborador">
         <div class="cab-colab">
           <strong>${c.nome}</strong>
-          ${c.obra ? `<span class="obra">${c.obra}</span>` : ''}
-          <span class="totais">✓ ${c.presentes} presentes &nbsp;✗ ${c.faltas} faltas &nbsp;HE: ${minToHM(c.he)} &nbsp;HF: ${minToHM(c.hf)}</span>
+          ${c.obra?`<span class="obra">${c.obra}</span>`:''}
+          <span class="totais">✓ ${c.presentes} pres. &nbsp;✗ ${c.faltas} faltas &nbsp;HE:${minToHM(c.he)} &nbsp;HF:${minToHM(c.hf)}</span>
         </div>
         <table>
-          <thead><tr><th>Data</th><th>Status</th><th>Entrada</th><th>Saída</th><th>H.Extra</th><th>H.Falta</th><th>Obs</th></tr></thead>
+          <thead><tr><th>Data</th><th>Status</th><th>H.Extra</th><th>H.Falta</th><th>Observação</th><th>Lanç.</th></tr></thead>
           <tbody>${tabDias}</tbody>
+          <tfoot><tr style="background:#f1f5f9;font-weight:700">
+            <td colspan="2">TOTAIS</td>
+            <td style="color:#15803d">${minToHM(c.he)}</td>
+            <td style="color:#dc2626">${minToHM(c.hf)}</td>
+            <td colspan="2">${c.presentes} dias • ${c.faltas} falta${c.faltas!==1?'s':''}</td>
+          </tr></tfoot>
         </table>
         <div class="assinatura">
-          <div><div class="linha-ass"></div>Colaborador</div>
-          <div><div class="linha-ass"></div>Responsável / RH</div>
+          <div><div class="linha-ass"></div>Colaborador / Assinatura</div>
+          <div><div class="linha-ass"></div>Responsável RH / Carimbo</div>
         </div>
       </div>`
     }).join('<div class="quebra"></div>')
 
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/>
-    <title>Espelho de Ponto – ${resultado.periodo}</title>
+    <title>Espelho de Ponto Portal – ${resultado.periodo}</title>
     <style>
-      * { margin:0; padding:0; box-sizing:border-box; }
-      body { font-family: Arial, sans-serif; font-size: 12px; color: #111; padding: 20px; }
-      h1 { font-size: 18px; margin-bottom: 4px; color: #1e3a5f; }
-      .sub { color: #6b7280; font-size: 12px; margin-bottom: 20px; }
-      .colaborador { margin-bottom: 32px; }
-      .cab-colab { background: #1e3a5f; color: #fff; padding: 8px 12px; border-radius: 6px 6px 0 0; display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
-      .cab-colab strong { font-size: 14px; }
-      .obra { background: rgba(255,255,255,0.2); border-radius: 4px; padding: 2px 8px; font-size: 11px; }
-      .totais { margin-left: auto; font-size: 11px; opacity: 0.9; }
-      table { width: 100%; border-collapse: collapse; }
-      th { background: #f1f5f9; padding: 6px 8px; text-align: left; font-size: 11px; border-bottom: 2px solid #cbd5e1; }
-      td { padding: 5px 8px; border-bottom: 1px solid #e2e8f0; font-size: 11px; }
-      .assinatura { display: flex; gap: 60px; margin-top: 16px; padding: 0 20px; }
-      .assinatura > div { flex: 1; text-align: center; font-size: 11px; color: #6b7280; }
-      .linha-ass { border-top: 1px solid #9ca3af; margin-bottom: 4px; margin-top: 30px; }
-      .quebra { page-break-after: always; }
-      @media print { .quebra { page-break-after: always; } }
+      *{margin:0;padding:0;box-sizing:border-box}
+      body{font-family:Arial,sans-serif;font-size:12px;color:#111;padding:20px}
+      h1{font-size:18px;margin-bottom:4px;color:#1e3a5f}
+      .sub{color:#6b7280;font-size:11px;margin-bottom:20px}
+      .colaborador{margin-bottom:32px}
+      .cab-colab{background:#1e3a5f;color:#fff;padding:8px 12px;border-radius:6px 6px 0 0;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+      .cab-colab strong{font-size:14px}
+      .obra{background:rgba(255,255,255,0.2);border-radius:4px;padding:2px 8px;font-size:11px}
+      .totais{margin-left:auto;font-size:11px;opacity:.9}
+      table{width:100%;border-collapse:collapse}
+      th{background:#f1f5f9;padding:5px 8px;text-align:left;font-size:11px;border-bottom:2px solid #cbd5e1}
+      td{padding:5px 8px;border-bottom:1px solid #e2e8f0;font-size:11px}
+      .assinatura{display:flex;gap:60px;margin-top:16px;padding:0 20px}
+      .assinatura>div{flex:1;text-align:center;font-size:11px;color:#6b7280}
+      .linha-ass{border-top:1px solid #9ca3af;margin-bottom:4px;margin-top:30px}
+      .quebra{page-break-after:always}
+      @media print{.quebra{page-break-after:always}}
     </style></head><body>
-    <h1>📋 Espelho de Ponto — ${resultado.periodo}</h1>
-    <div class="sub">Gerado em ${new Date().toLocaleString('pt-BR')} — ConstrutorRH</div>
+    <h1>📋 Espelho de Ponto (Portal) — ${resultado.periodo}</h1>
+    <div class="sub">Registros lançados via portal · Gerado em ${new Date().toLocaleString('pt-BR')} — ConstrutorRH</div>
     ${linhas}
     <script>window.onload=()=>{window.print()}<\/script>
     </body></html>`
 
-    const win = window.open('', '_blank', 'width=1000,height=750')
+    const win = window.open('','_blank','width=1000,height=750')
     if (win) { win.document.write(html); win.document.close() }
   }
-
-  const semResultado = resultado && resultado.registros.length === 0
 
   return (
     <div>
       {/* Filtros */}
       <div style={{ background:'var(--card)', border:'1px solid var(--border)', borderRadius:10, padding:20, marginBottom:20 }}>
-        <div style={{ fontWeight:700, fontSize:14, marginBottom:14, color:'var(--foreground)' }}>🔍 Filtros do Relatório</div>
+        <div style={{ fontWeight:700, fontSize:14, marginBottom:6, color:'var(--foreground)' }}>📊 Espelho de Ponto — registros do portal</div>
+        <div style={{ fontSize:12, color:'var(--muted-foreground)', marginBottom:14 }}>
+          Exibe todos os pontos lançados pelo encarregado via portal da obra, com presença, faltas e horas.
+        </div>
         <div style={{ display:'flex', gap:12, flexWrap:'wrap', alignItems:'flex-end' }}>
           {/* Modo */}
           <div>
@@ -980,9 +964,8 @@ function TabRelatorio({ obras, colabs }: { obras: Obra[]; colabs: Colab[] }) {
               {(['colaborador','obra'] as const).map(m => (
                 <button key={m} onClick={() => { setModo(m); setResultado(null) }} style={{
                   padding:'7px 16px', border:'none', cursor:'pointer', fontSize:12, fontWeight:600,
-                  background: modo===m ? 'var(--primary)' : 'var(--card)',
-                  color: modo===m ? '#fff' : 'var(--muted-foreground)',
-                  transition:'all 120ms',
+                  background:modo===m?'var(--primary)':'var(--card)',
+                  color:modo===m?'#fff':'var(--muted-foreground)', transition:'all 120ms',
                 }}>
                   {m==='colaborador' ? '👷 Por Colaborador' : '🏗️ Por Obra'}
                 </button>
@@ -990,21 +973,21 @@ function TabRelatorio({ obras, colabs }: { obras: Obra[]; colabs: Colab[] }) {
             </div>
           </div>
 
-          {/* Seletor */}
+          {/* Seletor colaborador ou obra */}
           {modo === 'colaborador' ? (
             <div>
               <div style={{ fontSize:11, fontWeight:600, color:'var(--muted-foreground)', marginBottom:4 }}>COLABORADOR</div>
-              <select value={colabId} onChange={e => setColabId(e.target.value)} style={{ height:36, borderRadius:7, border:'1px solid var(--border)', padding:'0 10px', fontSize:13, minWidth:220, background:'var(--card)', color:'var(--foreground)' }}>
+              <select value={colabId} onChange={e=>setColabId(e.target.value)} style={{ height:36, borderRadius:7, border:'1px solid var(--border)', padding:'0 10px', fontSize:13, minWidth:220, background:'var(--card)', color:'var(--foreground)' }}>
                 <option value="">— Todos —</option>
-                {colabs.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                {colabs.map(c=><option key={c.id} value={c.id}>{c.nome}</option>)}
               </select>
             </div>
           ) : (
             <div>
               <div style={{ fontSize:11, fontWeight:600, color:'var(--muted-foreground)', marginBottom:4 }}>OBRA</div>
-              <select value={obraId} onChange={e => setObraId(e.target.value)} style={{ height:36, borderRadius:7, border:'1px solid var(--border)', padding:'0 10px', fontSize:13, minWidth:220, background:'var(--card)', color:'var(--foreground)' }}>
+              <select value={obraId} onChange={e=>setObraId(e.target.value)} style={{ height:36, borderRadius:7, border:'1px solid var(--border)', padding:'0 10px', fontSize:13, minWidth:220, background:'var(--card)', color:'var(--foreground)' }}>
                 <option value="">— Todas —</option>
-                {obras.map(o => <option key={o.id} value={o.id}>{o.nome}</option>)}
+                {obras.map(o=><option key={o.id} value={o.id}>{o.nome}</option>)}
               </select>
             </div>
           )}
@@ -1012,14 +995,13 @@ function TabRelatorio({ obras, colabs }: { obras: Obra[]; colabs: Colab[] }) {
           {/* Mês */}
           <div>
             <div style={{ fontSize:11, fontWeight:600, color:'var(--muted-foreground)', marginBottom:4 }}>MÊS / ANO</div>
-            <input type="month" value={mesAno} onChange={e => { setMesAno(e.target.value); setResultado(null) }} style={{ height:36, borderRadius:7, border:'1px solid var(--border)', padding:'0 10px', fontSize:13, background:'var(--card)', color:'var(--foreground)' }} />
+            <input type="month" value={mesAno} onChange={e=>{setMesAno(e.target.value);setResultado(null)}} style={{ height:36, borderRadius:7, border:'1px solid var(--border)', padding:'0 10px', fontSize:13, background:'var(--card)', color:'var(--foreground)' }} />
           </div>
 
-          {/* Botão */}
           <Button onClick={gerar} disabled={loading} style={{ height:36, gap:6, background:'#1e3a5f', color:'#fff', fontWeight:700 }}>
-            {loading ? <><RefreshCw size={14} className="animate-spin"/> Gerando…</> : <><FileBarChart2 size={14}/> Gerar Relatório</>}
+            {loading ? <><RefreshCw size={14} className="animate-spin"/> Gerando…</> : <><FileBarChart2 size={14}/> Gerar</>}
           </Button>
-          {resultado && (
+          {resultado && resultado.registros.length > 0 && (
             <Button onClick={gerarPDF} style={{ height:36, gap:6, background:'#15803d', color:'#fff', fontWeight:700 }}>
               <Download size={14}/> Imprimir / PDF
             </Button>
@@ -1027,75 +1009,82 @@ function TabRelatorio({ obras, colabs }: { obras: Obra[]; colabs: Colab[] }) {
         </div>
       </div>
 
-      {/* Preview na tela */}
+      {/* Resultado */}
+      {resultado && resultado.registros.length === 0 && (
+        <div style={{ textAlign:'center', padding:'40px 20px', color:'var(--muted-foreground)', fontSize:14 }}>
+          Nenhum registro do portal encontrado para o período selecionado.
+        </div>
+      )}
+
       {resultado && resultado.registros.length > 0 && (
         <div>
           <div style={{ fontWeight:700, fontSize:14, marginBottom:12, color:'var(--foreground)' }}>
-            📋 Espelho de Ponto — {resultado.periodo}
+            📋 {resultado.periodo}
             <span style={{ fontWeight:400, fontSize:12, color:'var(--muted-foreground)', marginLeft:10 }}>
-              {resultado.registros.length} colaborador{resultado.registros.length !== 1 ? 'es' : ''}
+              {resultado.registros.length} colaborador{resultado.registros.length!==1?'es':''}
+              {' · '}{resultado.registros.reduce((s,r)=>s+r.dias.length,0)} registros
             </span>
           </div>
 
           {resultado.registros.map((c, ci) => (
             <div key={ci} style={{ background:'var(--card)', border:'1px solid var(--border)', borderRadius:10, marginBottom:20, overflow:'hidden' }}>
-              {/* Cabeçalho colaborador */}
+              {/* Cabeçalho */}
               <div style={{ background:'#1e3a5f', color:'#fff', padding:'10px 16px', display:'flex', alignItems:'center', gap:12, flexWrap:'wrap' }}>
                 <div style={{ fontWeight:800, fontSize:14 }}>{c.nome}</div>
                 {c.obra && <span style={{ background:'rgba(255,255,255,0.18)', borderRadius:5, padding:'2px 10px', fontSize:11 }}>{c.obra}</span>}
                 <div style={{ marginLeft:'auto', display:'flex', gap:16, fontSize:12, flexWrap:'wrap' }}>
                   <span style={{ color:'#86efac' }}>✓ {c.presentes} presentes</span>
                   <span style={{ color:'#fca5a5' }}>✗ {c.faltas} faltas</span>
-                  {c.he > 0 && <span style={{ color:'#fde68a' }}>HE: {minToHM(c.he)}</span>}
-                  {c.hf > 0 && <span style={{ color:'#fca5a5' }}>HF: {minToHM(c.hf)}</span>}
+                  {c.he>0 && <span style={{ color:'#fde68a' }}>HE: {minToHM(c.he)}</span>}
+                  {c.hf>0 && <span style={{ color:'#fca5a5' }}>HF: {minToHM(c.hf)}</span>}
                 </div>
               </div>
 
-              {/* Tabela dias */}
+              {/* Tabela */}
               <div style={{ overflowX:'auto' }}>
                 <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
                   <thead>
                     <tr style={{ background:'var(--muted)' }}>
-                      {['Data','Status','Entrada','Saída','H.Extra','H.Falta','Observação'].map(h => (
+                      {['Data','Status','H.Extra','H.Falta','Observação','Lançado'].map(h=>(
                         <th key={h} style={{ padding:'7px 10px', textAlign:'left', fontWeight:700, fontSize:11, color:'var(--muted-foreground)', borderBottom:'2px solid var(--border)', whiteSpace:'nowrap' }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {c.dias.map((d, di) => {
-                      const dt = new Date(d.data+'T12:00:00')
-                      const dtFmt = dt.toLocaleDateString('pt-BR', { weekday:'short', day:'2-digit', month:'2-digit' })
-                      const corBg = d.status==='FALTA' ? '#fef2f2' : d.status==='Presente' ? '#f0fdf4' : d.status==='Atestado'||d.status==='Suspensão' ? '#fefce8' : 'var(--card)'
-                      const corSt = d.status==='FALTA' ? '#dc2626' : d.status==='Presente' ? '#15803d' : '#b45309'
+                    {c.dias.map((d,di) => {
+                      const dtFmt = new Date(d.data+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'})
+                      const corBg = d.status==='FALTA'?'#fef2f2':d.status==='Presente'?'#f0fdf4':d.status==='Atestado'||d.status==='Suspensão'?'#fefce8':'var(--card)'
+                      const corSt = d.status==='FALTA'?'#dc2626':d.status==='Presente'?'#15803d':'#b45309'
                       return (
                         <tr key={di} style={{ background:corBg, borderBottom:'1px solid var(--border)' }}>
                           <td style={{ padding:'6px 10px', fontWeight:600, whiteSpace:'nowrap' }}>{dtFmt}</td>
                           <td style={{ padding:'6px 10px', fontWeight:700, color:corSt, whiteSpace:'nowrap' }}>{d.status}</td>
-                          <td style={{ padding:'6px 10px', color:'var(--muted-foreground)' }}>{d.entrada || '—'}</td>
-                          <td style={{ padding:'6px 10px', color:'var(--muted-foreground)' }}>{d.saida || '—'}</td>
-                          <td style={{ padding:'6px 10px', color:'#15803d', fontWeight:600 }}>{d.he ? `+${minToHM(d.he)}` : '—'}</td>
-                          <td style={{ padding:'6px 10px', color:'#dc2626', fontWeight:600 }}>{d.hf ? `-${minToHM(d.hf)}` : '—'}</td>
-                          <td style={{ padding:'6px 10px', fontSize:11, color:'var(--muted-foreground)', maxWidth:200, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{d.obs}</td>
+                          <td style={{ padding:'6px 10px', color:'#15803d', fontWeight:600 }}>{d.he?`+${minToHM(d.he)}`:'—'}</td>
+                          <td style={{ padding:'6px 10px', color:'#dc2626', fontWeight:600 }}>{d.hf?`-${minToHM(d.hf)}`:'—'}</td>
+                          <td style={{ padding:'6px 10px', fontSize:11, color:'var(--muted-foreground)', maxWidth:200, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{d.obs||'—'}</td>
+                          <td style={{ padding:'6px 10px', fontSize:11 }}>
+                            {d.sincronizado
+                              ? <span style={{ color:'#15803d', fontWeight:700 }}>✓ sim</span>
+                              : <span style={{ color:'#b45309' }}>⏳ pendente</span>}
+                          </td>
                         </tr>
                       )
                     })}
                   </tbody>
-                  {/* Linha de totais */}
                   <tfoot>
                     <tr style={{ background:'var(--muted)', fontWeight:700 }}>
                       <td colSpan={2} style={{ padding:'7px 10px', fontSize:12 }}>TOTAIS</td>
-                      <td colSpan={2} style={{ padding:'7px 10px', fontSize:12 }}>{c.presentes} dias trabalhados</td>
                       <td style={{ padding:'7px 10px', color:'#15803d' }}>{minToHM(c.he)}</td>
                       <td style={{ padding:'7px 10px', color:'#dc2626' }}>{minToHM(c.hf)}</td>
-                      <td style={{ padding:'7px 10px', fontSize:11, color:'var(--muted-foreground)' }}>{c.faltas} falta{c.faltas!==1?'s':''}</td>
+                      <td colSpan={2} style={{ padding:'7px 10px', fontSize:11, color:'var(--muted-foreground)' }}>{c.presentes} dias · {c.faltas} falta{c.faltas!==1?'s':''}</td>
                     </tr>
                   </tfoot>
                 </table>
               </div>
 
-              {/* Linha de assinaturas */}
+              {/* Assinaturas */}
               <div style={{ display:'flex', gap:40, padding:'14px 40px 18px', borderTop:'1px solid var(--border)' }}>
-                {['Colaborador / Assinatura', 'Responsável RH / Carimbo'].map(l => (
+                {['Colaborador / Assinatura','Responsável RH / Carimbo'].map(l=>(
                   <div key={l} style={{ flex:1, textAlign:'center' }}>
                     <div style={{ borderTop:'1px solid var(--border)', paddingTop:6, fontSize:11, color:'var(--muted-foreground)', marginTop:28 }}>{l}</div>
                   </div>
@@ -1103,12 +1092,6 @@ function TabRelatorio({ obras, colabs }: { obras: Obra[]; colabs: Colab[] }) {
               </div>
             </div>
           ))}
-        </div>
-      )}
-
-      {semResultado && (
-        <div style={{ textAlign:'center', padding:'40px 20px', color:'var(--muted-foreground)', fontSize:14 }}>
-          Nenhum lançamento aprovado encontrado para o período selecionado.
         </div>
       )}
     </div>
