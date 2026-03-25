@@ -97,8 +97,10 @@ export default function FechamentoPonto() {
   const [saving, setSaving] = useState(false)
   const [tabelaInss, setTabelaInss] = useState<FaixaINSS[]>([])
   const [tabelaIR, setTabelaIR]     = useState<FaixaIR[]>([])
-  const [modalEstornar, setModalEstornar] = useState<string | null>(null)   // lancId
+  const [modalEstornar, setModalEstornar] = useState<string | null>(null)
   const [motivoEstorno, setMotivoEstorno] = useState('')
+  // Aba ativa: 'pendente' | 'aprovado' | 'recusado' | 'fechamento'
+  const [abaFechamento, setAbaFechamento] = useState<'pendente'|'aprovado'|'recusado'|'fechamento'>('fechamento')
 
   // Modal confirmar pagamento
   const [modalLiberar, setModalLiberar] = useState<LancItem | null>(null)
@@ -190,7 +192,10 @@ export default function FechamentoPonto() {
     const feriadosSet = new Set<string>((feriadosRaw ?? []).map((f: any) => f.data as string))
 
     // Agregar horas, faltas e datas de falta por lançamento
+    // Também guarda horas por dia para cálculo autônomo (excluir dias de produção)
     const mapaHoras: Record<string, { norm: number; extra: number; dias: number; faltas: number; diasDatas: Set<string>; datasComFalta: Set<string> }> = {}
+    // mapa de horas por dia (para autônomo excluir dias com produção)
+    const mapaHorasPorDia: Record<string, Record<string, { norm: number; extra: number }>> = {}
     ;(pontosRaw ?? []).forEach((p: any) => {
       if (!mapaHoras[p.lancamento_id]) mapaHoras[p.lancamento_id] = { norm: 0, extra: 0, dias: 0, faltas: 0, diasDatas: new Set(), datasComFalta: new Set() }
       mapaHoras[p.lancamento_id].norm   += (p.horas_trabalhadas ?? 0)
@@ -200,7 +205,11 @@ export default function FechamentoPonto() {
         mapaHoras[p.lancamento_id].faltas += 1
         if (p.data) mapaHoras[p.lancamento_id].datasComFalta.add(p.data)
       }
-      if (p.data) mapaHoras[p.lancamento_id].diasDatas.add(p.data)
+      if (p.data) {
+        mapaHoras[p.lancamento_id].diasDatas.add(p.data)
+        if (!mapaHorasPorDia[p.lancamento_id]) mapaHorasPorDia[p.lancamento_id] = {}
+        mapaHorasPorDia[p.lancamento_id][p.data] = { norm: p.horas_trabalhadas ?? 0, extra: p.horas_extras ?? 0 }
+      }
     })
 
     // Agregar produção por lançamento
@@ -311,26 +320,41 @@ export default function FechamentoPonto() {
 
       // ✅ Prioridade: snapshot do Ponto (valor_hora_snapshot) → snapshot do Fechamento (snap_valor_hora) → ao vivo (funcao_valores)
       const vh = (l.valor_hora_snapshot ?? l.snap_valor_hora ?? getVH(colab?.funcao_id ?? null, tipo)) as number
-      const valorHoras = horasAgg.norm * vh + horasAgg.extra * vh * 1.5
       const valorProd  = mapaProd[l.id] ?? 0
 
       let valorTotal = 0
       let dsr = 0
       let premio = 0
+      let valorHoras = 0
 
       if (tipo === 'clt') {
+        // CLT: horas totais (não exclui dias de produção)
+        valorHoras = horasAgg.norm * vh + horasAgg.extra * vh * 1.5
         // DSR com regra de perda por falta semanal
         const datasComFaltaLanc = (horasAgg as any).datasComFalta ?? new Set<string>()
         const dsrRes = calcDSRComFaltas(valorHoras, l.data_inicio, l.data_fim, datasComFaltaLanc)
         dsr = dsrRes.dsr
         const salario = valorHoras + dsr
-        // Regra produção: se prod > salário → paga salário + prêmio
+        // ═ REGRA PRODUÇÃO CLT ═
+        // Se prod > salário → paga salário + bônus (diferença); senão paga só salário
         premio = valorProd > salario ? valorProd - salario : 0
         valorTotal = salario + premio
       } else {
-        // Autônomo/PJ: igual ao Ponto — Total = valorHoras + produção
-        // Regra: autônomo recebe por horas trabalhadas + produção (sem DSR)
-        // Se há produção em algum dia, ainda recebe horas normais do período
+        // ═ REGRA PRODUÇÃO AUTÔNOMO/PJ (IGUAL AO PONTO.TSX) ═
+        // Dias COM produção → paga só a produção desses dias (não soma horas)
+        // Dias SEM produção → paga as horas normalmente
+        const diasComProdLanc = mapaProdDias[l.id] ?? new Set<string>()
+        const horasPorDia = mapaHorasPorDia[l.id] ?? {}
+        // Somar horas apenas dos dias SEM produção
+        let normSemProd = 0, extraSemProd = 0
+        Object.entries(horasPorDia).forEach(([data, h]) => {
+          if (!diasComProdLanc.has(data)) {
+            normSemProd  += h.norm
+            extraSemProd += h.extra
+          }
+        })
+        valorHoras = normSemProd * vh + extraSemProd * vh * 1.5
+        // Total = horas (dias sem prod) + produção
         valorTotal = valorHoras + valorProd
       }
 
@@ -422,13 +446,30 @@ export default function FechamentoPonto() {
 
   useEffect(() => { fetchLancamentos(mesRef) }, [mesRef, fetchLancamentos])
 
+  // ── Contadores para as abas ─────────────────────────────────────────────
+  const contAbas = useMemo(() => ({
+    fechamento:  lancamentos.filter(l => ['em_fechamento','rascunho'].includes(l.status)).length,
+    pendente:    lancamentos.filter(l => l.status === 'aguardando_aprovacao').length,
+    aprovado:    lancamentos.filter(l => ['aprovado','liberado','pago'].includes(l.status)).length,
+    recusado:    lancamentos.filter(l => l.status === 'recusado').length,
+  }), [lancamentos])
+
   // ── Agrupamento por colaborador ───────────────────────────────────────────
   const porColaborador = useMemo(() => {
     const q = busca.toLowerCase()
+    // Filtro por aba
+    const statusAba: string[] = abaFechamento === 'fechamento'
+      ? ['em_fechamento', 'rascunho']
+      : abaFechamento === 'pendente'
+        ? ['aguardando_aprovacao']
+        : abaFechamento === 'aprovado'
+          ? ['aprovado', 'liberado', 'pago']
+          : ['recusado']
     const filtrados = lancamentos.filter(l =>
-      !q || l.colaborador_nome.toLowerCase().includes(q) ||
-      (l.colaborador_chapa ?? '').toLowerCase().includes(q) ||
-      l.obra_nome.toLowerCase().includes(q)
+      statusAba.includes(l.status) &&
+      (!q || l.colaborador_nome.toLowerCase().includes(q) ||
+        (l.colaborador_chapa ?? '').toLowerCase().includes(q) ||
+        l.obra_nome.toLowerCase().includes(q))
     )
     const mapa: Record<string, { nome: string; chapa: string | null; funcao: string; tipo: string; lancs: LancItem[] }> = {}
     filtrados.forEach(l => {
@@ -445,11 +486,11 @@ export default function FechamentoPonto() {
       totalVt: v.lancs.reduce((s, l) => s + l.desconto_vt, 0),
       totalAdiant: v.lancs.reduce((s, l) => s + l.desconto_adiant, 0),
     }))
-  }, [lancamentos, busca])
+  }, [lancamentos, busca, abaFechamento])
 
-  const totalGeral = useMemo(() => lancamentos.reduce((s, l) => s + l.valor_total, 0), [lancamentos])
-  const pendentes   = lancamentos.filter(l => ['em_fechamento','aprovado','liberado','rascunho'].includes(l.status))
-  const pagos       = lancamentos.filter(l => l.status === 'pago')
+  const totalGeral  = useMemo(() => lancamentos.reduce((s, l) => s + l.valor_total, 0), [lancamentos])
+  const pendentes    = lancamentos.filter(l => ['em_fechamento','aguardando_aprovacao','aprovado','liberado','rascunho'].includes(l.status))
+  const pagos        = lancamentos.filter(l => l.status === 'pago')
 
   // ── Aprovar → abre popup de confirmação com resumo ──────────────────────
   function abrirModalLiberar(id: string) {
@@ -626,6 +667,53 @@ export default function FechamentoPonto() {
         </div>
       </div>
 
+      {/* ── Abas de status ── */}
+      <div style={{ display: 'flex', gap: 0, marginBottom: 20, borderBottom: '2px solid var(--border)', flexWrap: 'wrap' }}>
+        {([
+          { key: 'fechamento',  label: '🔒 Em Fechamento',         cnt: contAbas.fechamento,  cor: '#1d4ed8' },
+          { key: 'pendente',    label: '⏳ Pendente de Aprovação',  cnt: contAbas.pendente,    cor: '#b45309' },
+          { key: 'aprovado',    label: '✅ Aprovado / Liberado',    cnt: contAbas.aprovado,    cor: '#15803d' },
+          { key: 'recusado',    label: '❌ Recusado',               cnt: contAbas.recusado,    cor: '#dc2626' },
+        ] as const).map(ab => {
+          const ativo = abaFechamento === ab.key
+          return (
+            <button
+              key={ab.key}
+              onClick={() => setAbaFechamento(ab.key)}
+              style={{
+                padding: '10px 18px',
+                border: 'none',
+                borderBottom: ativo ? `3px solid ${ab.cor}` : '3px solid transparent',
+                background: ativo ? `${ab.cor}10` : 'transparent',
+                color: ativo ? ab.cor : 'var(--muted-foreground)',
+                fontWeight: ativo ? 700 : 500,
+                fontSize: 13,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                transition: 'all 0.15s',
+                marginBottom: -2,
+              }}
+            >
+              {ab.label}
+              {ab.cnt > 0 && (
+                <span style={{
+                  background: ativo ? ab.cor : '#9ca3af',
+                  color: '#fff',
+                  borderRadius: 9,
+                  padding: '1px 7px',
+                  fontSize: 11,
+                  fontWeight: 700,
+                }}>
+                  {ab.cnt}
+                </span>
+              )}
+            </button>
+          )
+        })}
+      </div>
+
       {/* ── Cards de resumo ── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         {[
@@ -649,8 +737,18 @@ export default function FechamentoPonto() {
       {loading ? <LoadingSkeleton /> : porColaborador.length === 0 ? (
         <EmptyState
           icon={<CheckCircle2 size={32} />}
-          title={`Nenhum lançamento aprovado em ${MESES[mes - 1]} / ${ano}`}
-          description="Lançamentos de ponto aprovados aparecerão aqui para liberação de pagamento."
+          title={
+            abaFechamento === 'fechamento' ? `Nenhum lançamento em fechamento em ${MESES[mes - 1]} / ${ano}` :
+            abaFechamento === 'pendente'   ? `Nenhum lançamento pendente de aprovação em ${MESES[mes - 1]} / ${ano}` :
+            abaFechamento === 'aprovado'   ? `Nenhum lançamento aprovado/liberado em ${MESES[mes - 1]} / ${ano}` :
+                                            `Nenhum lançamento recusado em ${MESES[mes - 1]} / ${ano}`
+          }
+          description={
+            abaFechamento === 'fechamento' ? 'Lançamentos enviados para fechamento aparecerão aqui.' :
+            abaFechamento === 'pendente'   ? 'Lançamentos aguardando aprovação aparecerão aqui.' :
+            abaFechamento === 'aprovado'   ? 'Lançamentos aprovados e liberados para pagamento aparecerão aqui.' :
+                                            'Lançamentos recusados aparecerão aqui.'
+          }
         />
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -745,7 +843,11 @@ export default function FechamentoPonto() {
                                     )}
                                     {lanc.valor_premio > 0 && (
                                       <><span style={{ color: '#9ca3af' }}>+</span>
-                                      <span>Prêmio: <span style={{ color: '#15803d', fontWeight: 600 }}>{formatCurrency(lanc.valor_premio)}</span></span></>
+                                      <span>🎯 Bônus: <span style={{ color: '#15803d', fontWeight: 600 }}>{formatCurrency(lanc.valor_premio)}</span></span></>
+                                    )}
+                                    {lanc.valor_producao > 0 && lanc.valor_premio === 0 && (
+                                      <><span style={{ color: '#9ca3af' }}> · </span>
+                                      <span style={{ color: '#9ca3af', fontSize: 9 }}>Prod {formatCurrency(lanc.valor_producao)} &lt; sal. (desconsiderada)</span></>
                                     )}
                                   </div>
                                 </div>
@@ -759,10 +861,10 @@ export default function FechamentoPonto() {
                                     <span style={{ fontSize: 10, color: '#6b7280', fontWeight: 600 }}>💵 Total a Receber</span>
                                     <span style={{ fontWeight: 800, color: '#7c3aed', fontSize: 13 }}>{formatCurrency(lanc.valor_total)}</span>
                                   </div>
-                                  {/* Linha 2: composição */}
+                                  {/* Linha 2: composição — dias s/prod → horas; dias c/prod → só produção */}
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'wrap', color: '#6b7280' }}>
                                     {lanc.valor_horas > 0 && (
-                                      <span>Horas: <span style={{ color: '#1d4ed8', fontWeight: 600 }}>{formatCurrency(lanc.valor_horas)}</span></span>
+                                      <span>Horas <span style={{fontSize:9,color:'#9ca3af'}}>(dias s/prod)</span>: <span style={{ color: '#1d4ed8', fontWeight: 600 }}>{formatCurrency(lanc.valor_horas)}</span></span>
                                     )}
                                     {lanc.valor_producao > 0 && (
                                       <><span style={{ color: '#9ca3af' }}>+</span>
