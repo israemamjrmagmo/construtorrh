@@ -1629,59 +1629,98 @@ export default function Ponto() {
               return(
                 <div key={lanc.id} style={{border:'1px solid var(--border)',borderRadius:10,overflow:'hidden',boxShadow:'0 1px 4px rgba(0,0,0,0.05)'}}>
 
-                  {/* Cabeçalho do card */}
-                  <div style={{display:'flex',alignItems:'center',gap:10,padding:'10px 14px',background:'var(--muted)',cursor:'pointer'}} onClick={()=>setExpandido(exp ? null : lanc.id)}>
-                    {exp?<ChevronDown size={15}/>:<ChevronRight size={15}/>}
-                    <Building2 size={14} style={{color:'var(--primary)',flexShrink:0}}/>
-                    <div style={{flex:1}}>
-                      <div style={{fontWeight:700,fontSize:14}}>{lanc.obra_nome}</div>
-                      <div style={{fontSize:11,color:'var(--muted-foreground)',fontFamily:'monospace'}}>
-                        {lanc.data_inicio.slice(8)}/{lanc.data_inicio.slice(5,7)} → {lanc.data_fim.slice(8)}/{lanc.data_fim.slice(5,7)}
-                        <span style={{marginLeft:10}}>· {tot.presentes} dias · {fmtHHMM(tot.total)}h</span>
-                        {tot.atestados>0&&<span style={{color:'#1d4ed8',marginLeft:8}}>🩺 {tot.atestados} afastamento{tot.atestados!==1?'s':''}</span>}
-                        {tot.suspensoes>0&&<span style={{color:'#dc2626',marginLeft:8}}>⛔ {tot.suspensoes} suspensão</span>}
-                      </div>
-                    </div>
-                    {/* Mini totais com DSR por lançamento */}
-                    {valorHoraEfetivo>0&&(()=>{
-                      const diasLancAtual = diasMap[lanc.id] ?? []
-                      const vhLancCard = valorHoraDoLanc(lanc.id!)
-                      const vHorasLanc = diasLancAtual.reduce((s,d)=>{
-                        if(diasComProd.has(d.data)) return s
-                        const cl=calcDia(d,feriados.has(d.data))
-                        return s + calcValorMin(cl.normais,cl.extras50,cl.extras100,vhLancCard)
-                      },0)
-                      // DSR individual com regra de falta semanal
-                      const ehCLTLanc = colabSel?.tipo_contrato === 'clt'
-                      const datasComFaltaLanc = new Set<string>()
-                      if(ehCLTLanc) diasLancAtual.forEach(d=>{ if(d.falta&&d.data) datasComFaltaLanc.add(d.data) })
-                      const dsrResLanc = ehCLTLanc
-                        ? calcDSRComFaltas(vHorasLanc, lanc.data_inicio, lanc.data_fim, datasComFaltaLanc, feriados)
-                        : {dsr:0,domingosPerdidos:0,domingosPagos:0,diasUteis:0}
-                      const dsrLanc = dsrResLanc.dsr
-                      return(
-                        <div style={{textAlign:'right'}}>
-                          <div style={{fontSize:12,fontWeight:700,color:'#15803d'}}>{formatCurrency(vHorasLanc + dsrLanc)}</div>
-                          {dsrLanc>0&&<div style={{fontSize:10,color:'#0369a1',fontWeight:600}}>DSR: {formatCurrency(dsrLanc)}</div>}
+                  {/* ── Cabeçalho do card: mini-resumo próprio por lançamento ── */}
+                  {(()=>{
+                    const tcLanc2 = ((lanc as any).tipo_contrato_lanc ?? colabSel.tipo_contrato ?? 'clt') as string
+                    const ehCLTcard = tcLanc2 === 'clt'
+                    const diasLancCard = diasMap[lanc.id] ?? []
+                    const vhCard = valorHoraDoLanc(lanc.id!)
+                    let nCard=0,e50Card=0,e100Card=0
+                    diasLancCard.forEach(d=>{
+                      if(!ehCLTcard && diasComProd.has(d.data)) return
+                      const cl=calcDia(d,feriados.has(d.data))
+                      nCard+=cl.normais; e50Card+=cl.extras50; e100Card+=cl.extras100
+                    })
+                    const vHorasCard = calcValorMin(nCard,e50Card,e100Card,vhCard)
+                    const datasComFaltaCard = new Set<string>()
+                    if(ehCLTcard) diasLancCard.forEach(d=>{ if(d.falta&&d.data) datasComFaltaCard.add(d.data) })
+                    const dsrCard = ehCLTcard
+                      ? calcDSRComFaltas(vHorasCard, lanc.data_inicio, lanc.data_fim, datasComFaltaCard, feriados).dsr
+                      : 0
+                    const prodCard = totalProdLancamento
+                    const totalCard = vHorasCard + dsrCard + prodCard
+                    const horasTotCard = nCard + e50Card + e100Card
+                    const tcCor = tcLanc2==='clt' ? '#1d4ed8' : tcLanc2==='pj' ? '#7c3aed' : '#15803d'
+                    const tcBg  = tcLanc2==='clt' ? '#dbeafe' : tcLanc2==='pj' ? '#ede9fe' : '#dcfce7'
+                    const statusCfgC:{[k:string]:{bg:string;color:string;label:string}}={
+                      rascunho:{bg:'#f1f5f9',color:'#475569',label:'📝 Rascunho'},
+                      aguardando_aprovacao:{bg:'#fef3c7',color:'#92400e',label:'⏳ Aguardando'},
+                      em_fechamento:{bg:'#ede9fe',color:'#6d28d9',label:'📋 Em Fechamento'},
+                      aprovado:{bg:'#dcfce7',color:'#15803d',label:'✅ Aprovado'},
+                      liberado:{bg:'#dbeafe',color:'#1d4ed8',label:'💜 Ag. Pagamento'},
+                      pago:{bg:'#d1fae5',color:'#065f46',label:'💰 Pago'},
+                      recusado:{bg:'#fee2e2',color:'#b91c1c',label:'❌ Recusado'},
+                    }
+                    const sC = statusCfgC[lanc.status]??statusCfgC.rascunho
+                    return(
+                      <>
+                        {/* Linha título: obra + tipo + status */}
+                        <div style={{display:'flex',alignItems:'center',gap:8,padding:'9px 14px 6px',background:'var(--muted)',cursor:'pointer'}} onClick={()=>setExpandido(exp?null:lanc.id)}>
+                          {exp?<ChevronDown size={13}/>:<ChevronRight size={13}/>}
+                          <Building2 size={13} style={{color:'var(--primary)',flexShrink:0}}/>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{fontWeight:700,fontSize:13}}>{lanc.obra_nome}</div>
+                            <div style={{fontSize:10,color:'var(--muted-foreground)',fontFamily:'monospace'}}>
+                              {lanc.data_inicio.slice(8)}/{lanc.data_inicio.slice(5,7)} → {lanc.data_fim.slice(8)}/{lanc.data_fim.slice(5,7)}
+                              <span style={{marginLeft:8}}>· {tot.presentes} dias · {fmtHHMM(horasTotCard)}h</span>
+                              {tot.atestados>0&&<span style={{color:'#1d4ed8',marginLeft:6}}>🩺 {tot.atestados}</span>}
+                              {tot.suspensoes>0&&<span style={{color:'#dc2626',marginLeft:6}}>⛔ {tot.suspensoes}</span>}
+                            </div>
+                          </div>
+                          <span style={{fontSize:10,fontWeight:800,padding:'2px 10px',borderRadius:8,background:tcBg,color:tcCor,flexShrink:0}}>
+                            {tcLanc2.toUpperCase()}
+                          </span>
+                          <span style={{fontSize:10,fontWeight:700,padding:'2px 8px',borderRadius:10,background:sC.bg,color:sC.color,flexShrink:0}}>{sC.label}</span>
                         </div>
-                      )
-                    })()}
-                    {/* Badge status */}
-                    {(() => {
-                      const cfg:{[k:string]:{bg:string;color:string;label:string}}={
-                        rascunho:{bg:'#f1f5f9',color:'#475569',label:'📝 Rascunho'},
-                        aguardando_aprovacao:{bg:'#fef3c7',color:'#92400e',label:'⏳ Aguardando'},
-                        em_fechamento:{bg:'#ede9fe',color:'#6d28d9',label:'📋 Em Fechamento'},
-                        aprovado:{bg:'#dcfce7',color:'#15803d',label:'✅ Aprovado'},
-                        liberado:{bg:'#dbeafe',color:'#1d4ed8',label:'💜 Ag. Pagamento'},
-                        pago:{bg:'#d1fae5',color:'#065f46',label:'💰 Pago'},
-                        recusado:{bg:'#fee2e2',color:'#b91c1c',label:'❌ Recusado'},
-                      }
-                      const s=cfg[lanc.status]??cfg.rascunho
-                      return<span style={{fontSize:10,fontWeight:700,padding:'2px 8px',borderRadius:10,background:s.bg,color:s.color,flexShrink:0}}>{s.label}</span>
-                    })()}
-                    {/* Ações */}
-                    <div style={{display:'flex',gap:4}} onClick={e=>e.stopPropagation()}>
+                        {/* Linha mini-resumo financeiro */}
+                        {vhCard > 0 && (
+                          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(80px,1fr))',background:'#f8fafc',borderTop:'1px solid var(--border)',borderBottom:'1px solid var(--border)'}}>
+                            <div style={{padding:'5px 10px',borderRight:'1px solid var(--border)'}}>
+                              <div style={{fontSize:9,color:'#6b7280',fontWeight:600,textTransform:'uppercase'}}>Valor/h</div>
+                              <div style={{fontSize:11,fontWeight:700,color:'#374151'}}>{snapshotPorLanc.get(lanc.id!)!=null?'🔒 ':''}{`R$ ${vhCard.toFixed(2)}`}</div>
+                            </div>
+                            <div style={{padding:'5px 10px',borderRight:'1px solid var(--border)'}}>
+                              <div style={{fontSize:9,color:'#6b7280',fontWeight:600,textTransform:'uppercase'}}>Horas</div>
+                              <div style={{fontSize:11,fontWeight:700,color:'#1d4ed8'}}>{fmtHHMM(horasTotCard)}</div>
+                              <div style={{fontSize:9,color:'#9ca3af'}}>{fmtHHMM(nCard)} n{e50Card>0?` +${fmtHHMM(e50Card)} e`:''}{e100Card>0?` +${fmtHHMM(e100Card)} f`:''}</div>
+                            </div>
+                            <div style={{padding:'5px 10px',borderRight:'1px solid var(--border)'}}>
+                              <div style={{fontSize:9,color:'#6b7280',fontWeight:600,textTransform:'uppercase'}}>R$ Horas</div>
+                              <div style={{fontSize:11,fontWeight:700,color:'#15803d'}}>{formatCurrency(vHorasCard)}</div>
+                            </div>
+                            {ehCLTcard && dsrCard>0 && (
+                              <div style={{padding:'5px 10px',borderRight:'1px solid var(--border)'}}>
+                                <div style={{fontSize:9,color:'#6b7280',fontWeight:600,textTransform:'uppercase'}}>DSR</div>
+                                <div style={{fontSize:11,fontWeight:700,color:'#0369a1'}}>{formatCurrency(dsrCard)}</div>
+                              </div>
+                            )}
+                            {prodCard>0 && (
+                              <div style={{padding:'5px 10px',borderRight:'1px solid var(--border)'}}>
+                                <div style={{fontSize:9,color:'#6b7280',fontWeight:600,textTransform:'uppercase'}}>Produção</div>
+                                <div style={{fontSize:11,fontWeight:700,color:'#b45309'}}>{formatCurrency(prodCard)}</div>
+                              </div>
+                            )}
+                            <div style={{padding:'5px 10px',background:'#1e3a5f'}}>
+                              <div style={{fontSize:9,color:'#93c5fd',fontWeight:600,textTransform:'uppercase'}}>Total</div>
+                              <div style={{fontSize:13,fontWeight:900,color:'#fff'}}>{formatCurrency(totalCard)}</div>
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    )
+                  })()}
+                  {/* Ações */}
+                  <div style={{display:'flex',gap:4,padding:'6px 10px',background:'var(--muted)',flexWrap:'wrap'}} onClick={e=>e.stopPropagation()}>
                       {/* Botão Lançar Produção — só em rascunho/recusado */}
                       {(lanc.status==='rascunho'||lanc.status==='recusado')&&(
                         <Button size="sm" variant="outline" style={{height:26,fontSize:11,gap:3,borderColor:'#f59e0b',color:pb.length===0?'#d97706':'#b45309',opacity:pb.length===0?0.6:1}} onClick={()=>{ if(pb.length===0){toast.error('Cadastre os itens de produção no Playbook desta obra antes de lançar'); return;} abrirModalProd(lanc.id)}}><Factory size={11}/> Produção{pb.length===0&&<span style={{fontSize:9,marginLeft:2}}>⚠</span>}</Button>
@@ -1698,7 +1737,6 @@ export default function Ponto() {
                       {lanc.status==='aguardando_aprovacao'&&<Button size="sm" variant="outline" style={{height:26,fontSize:11,gap:2,borderColor:'#b45309',color:'#b45309',background:'#fef3c7'}} onClick={()=>mudarStatus(lanc.id,'rascunho')}>✏️ Editar</Button>}
                       {lanc.status==='recusado'&&<Button size="sm" variant="outline" style={{height:26,fontSize:11,gap:2,borderColor:'#16a34a',color:'#15803d',background:'#f0fdf4'}} disabled={saving} onClick={async()=>{await salvarLanc(lanc.id);await mudarStatus(lanc.id,'aguardando_aprovacao')}}>↩ Salvar e Reenviar</Button>}
                       {(lanc.status==='rascunho'||lanc.status==='recusado')&&<Button size="sm" variant="ghost" style={{height:26,width:26,padding:0,color:'var(--destructive)'}} onClick={()=>excluirLancamento(lanc.id)}><Trash2 size={12}/></Button>}
-                    </div>
                   </div>
 
                   {/* Motivo recusa */}
