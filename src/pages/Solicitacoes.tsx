@@ -381,6 +381,29 @@ function stBadge(s: string) {
   return { bg:'#fef3c7', cor:'#b45309', label:'⏳ Pendente' }
 }
 
+// ─── utilitário global: abre/baixa URL ou base64 ─────────────────────────────
+function abrirArquivo(url: string, nome?: string) {
+  if (!url) return
+  if (url.startsWith('http')) { window.open(url, '_blank', 'noopener,noreferrer'); return }
+  try {
+    const arr   = url.split(',')
+    const mime  = arr[0].match(/:(.*?);/)?.[1] ?? 'application/octet-stream'
+    const bstr  = atob(arr[1])
+    const u8arr = new Uint8Array(bstr.length)
+    for (let i = 0; i < bstr.length; i++) u8arr[i] = bstr.charCodeAt(i)
+    const blob    = new Blob([u8arr], { type: mime })
+    const blobUrl = URL.createObjectURL(blob)
+    const ext     = mime.includes('pdf') ? 'pdf' : mime.includes('jpeg') || mime.includes('jpg') ? 'jpg' : mime.includes('png') ? 'png' : 'bin'
+    const link    = document.createElement('a')
+    link.href = blobUrl; link.download = nome ?? `arquivo.${ext}`
+    document.body.appendChild(link); link.click(); document.body.removeChild(link)
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 5000)
+  } catch {
+    const win = window.open('', '_blank')
+    if (win) { win.document.write(`<html><body style="margin:0;background:#000"><img src="${url}" style="max-width:100%;display:block;margin:auto"/></body></html>`); win.document.close() }
+  }
+}
+
 // ─── aba: Ocorrências ─────────────────────────────────────────────────────────
 function TabOcorrencias({ obras, colabs, perfil }: { obras: Obra[]; colabs: Colab[]; perfil: any }) {
   const [rows,       setRows]       = useState<any[]>([])
@@ -480,39 +503,8 @@ function TabOcorrencias({ obras, colabs, perfil }: { obras: Obra[]; colabs: Cola
   const tipoLabel: Record<string,string> = { acidente:'🚨 Acidente', atestado:'🏥 Atestado', advertencia:'⚠️ Advertência', geral:'📋 Geral' }
   const isPendente = (r: any) => !r.sincronizado_em && r.status !== 'recusado'
 
-  function abrirAtestado(url: string, nome?: string) {
-    if (!url) return
-    // URL real do Supabase Storage → abre nova aba diretamente
-    if (url.startsWith('http')) {
-      window.open(url, '_blank', 'noopener,noreferrer')
-      return
-    }
-    // Base64 → converte para Blob e força download
-    try {
-      const arr   = url.split(',')
-      const mime  = arr[0].match(/:(.*?);/)?.[1] ?? 'application/octet-stream'
-      const bstr  = atob(arr[1])
-      const u8arr = new Uint8Array(bstr.length)
-      for (let i = 0; i < bstr.length; i++) u8arr[i] = bstr.charCodeAt(i)
-      const blob    = new Blob([u8arr], { type: mime })
-      const blobUrl = URL.createObjectURL(blob)
-      const ext     = mime.includes('pdf') ? 'pdf' : mime.includes('jpeg') || mime.includes('jpg') ? 'jpg' : mime.includes('png') ? 'png' : 'bin'
-      const link    = document.createElement('a')
-      link.href     = blobUrl
-      link.download = nome ?? `atestado.${ext}`
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      setTimeout(() => URL.revokeObjectURL(blobUrl), 5000)
-    } catch {
-      // fallback: tenta abrir como imagem numa nova aba
-      const win = window.open('', '_blank')
-      if (win) {
-        win.document.write(`<html><body style="margin:0;background:#000"><img src="${url}" style="max-width:100%;display:block;margin:auto"/></body></html>`)
-        win.document.close()
-      }
-    }
-  }
+  // usa função global abrirArquivo
+  const abrirAtestado = (url: string, nome?: string) => abrirArquivo(url, nome)
 
   return (
     <div>
@@ -936,6 +928,7 @@ function TabDocumentos({ obras, colabs, perfil }: { obras: Obra[]; colabs: Colab
       rg:'RG', cpf:'CPF', aso:'ASO / Exame Médico', ctps:'CTPS',
       comprovante:'Comprovante de Residência', foto:'Foto do Colaborador',
       certificado:'Certificado / Treinamento', nr:'NR / Segurança', outro:'Outro',
+      atestado:'🏥 Atestado Médico',
     }
 
     const imgHtml = r.arquivo_url && r.arquivo_tipo?.startsWith('image/')
@@ -1034,9 +1027,11 @@ function TabDocumentos({ obras, colabs, perfil }: { obras: Obra[]; colabs: Colab
                   <Button size="sm" variant="outline" onClick={() => setModal(r)} style={{ height:28, fontSize:12, padding:'0 8px' }}><Eye size={12}/></Button>
                   <Button size="sm" variant="outline" onClick={() => gerarPDF(r)} style={{ height:28, fontSize:12, padding:'0 8px' }}><FileText size={12}/></Button>
                   {r.arquivo_url && (
-                    <a href={r.arquivo_url} target="_blank" rel="noopener noreferrer">
-                      <Button size="sm" variant="outline" style={{ height:28, fontSize:12, padding:'0 8px' }}><Download size={12}/></Button>
-                    </a>
+                    <Button size="sm" variant="outline"
+                      onClick={() => abrirArquivo(r.arquivo_url, r.arquivo_nome)}
+                      style={{ height:28, fontSize:12, padding:'0 8px' }}>
+                      <Download size={12}/>
+                    </Button>
                   )}
                   {pend && <>
                     <Button size="sm" onClick={() => aprovar(r.id)} style={{ height:28, fontSize:12, background:'#15803d', color:'#fff', padding:'0 10px' }}>
@@ -1065,9 +1060,10 @@ function TabDocumentos({ obras, colabs, perfil }: { obras: Obra[]; colabs: Colab
               <img src={modal.arquivo_url} alt="documento" style={{ width:'100%', maxHeight:300, objectFit:'contain', borderRadius:8, marginBottom:12, background:'#f9fafb', border:'1px solid var(--border)' }} />
             )}
             {modal.arquivo_url && !modal.arquivo_tipo?.startsWith('image/') && (
-              <a href={modal.arquivo_url} target="_blank" rel="noopener noreferrer" style={{ display:'flex', alignItems:'center', gap:8, padding:'10px 14px', background:'#eff6ff', borderRadius:8, marginBottom:12, color:'#1e3a5f', fontWeight:600, textDecoration:'none' }}>
+              <button onClick={() => abrirArquivo(modal.arquivo_url, modal.arquivo_nome)}
+                style={{ display:'flex', alignItems:'center', gap:8, padding:'10px 14px', background:'#eff6ff', borderRadius:8, marginBottom:12, color:'#1e3a5f', fontWeight:600, border:'none', cursor:'pointer', width:'100%' }}>
                 <Download size={16}/> Baixar arquivo anexado
-              </a>
+              </button>
             )}
             {[
               ['Tipo',       tipoLabel[modal.tipo] ?? modal.tipo],

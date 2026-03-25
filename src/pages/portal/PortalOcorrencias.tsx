@@ -241,39 +241,39 @@ export default function PortalOcorrencias() {
 
     setSaving(true); setErroMsg('')
 
-    // Faz upload do atestado se houver
+    // ── Upload do atestado (igual ao PortalDocumentos) ────────────────────────
     let atestadoUrl  = ''
     let atestadoNome = ''
+    let atestadoTipo = ''
     if (aba === 'atestado' && arquivoAtestado && atestadoB64) {
-      // Tenta Storage primeiro (se bucket existir e estiver público)
+      atestadoNome = atestadoNomeSel || arquivoAtestado.name || 'atestado'
+      atestadoTipo = arquivoAtestado.type
+
+      // 1. Tenta Supabase Storage
       try {
-        const ext  = arquivoAtestado.name.split('.').pop() ?? 'jpg'
+        const ext  = atestadoNome.split('.').pop() ?? 'jpg'
         const path = `atestados/${obraId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
         const { error: storageErr } = await supabase.storage.from(BUCKET).upload(path, arquivoAtestado, {
           contentType: arquivoAtestado.type, upsert: false,
         })
         if (!storageErr) {
           const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(path)
-          atestadoUrl  = pub.publicUrl
-          atestadoNome = atestadoNomeSel || arquivoAtestado.name
+          atestadoUrl = pub.publicUrl
         }
       } catch (_) { /* segue com base64 */ }
 
-      // Fallback garantido: base64 já lido na seleção (sem novo FileReader)
-      if (!atestadoUrl) {
-        atestadoUrl  = atestadoB64
-        atestadoNome = atestadoNomeSel || arquivoAtestado.name || 'atestado'
-      }
+      // 2. Fallback base64 garantido (já lido na seleção — sem novo FileReader)
+      if (!atestadoUrl) atestadoUrl = atestadoB64
     }
 
     const base: Record<string,any> = {
-      obra_id: obraId,
-      colaborador_id: colabId || null,
-      tipo: aba,
-      data_ocorrencia: dataOcor,
+      obra_id:           obraId,
+      colaborador_id:    colabId || null,
+      tipo:              aba,
+      data_ocorrencia:   dataOcor,
       descricao,
       gravidade,
-      status: 'pendente',
+      status:            'pendente',
       portal_usuario_id: session?.id,
     }
 
@@ -282,12 +282,27 @@ export default function PortalOcorrencias() {
     if (aba === 'atestado')    extra = { tipo_atestado: tipoAtest, dias_afastamento: diasAfas ? parseInt(diasAfas) : null, com_afastamento: comAfas, cid: cid||null, medico: medico||null, atestado_url: atestadoUrl||null, atestado_nome: atestadoNome||null }
     if (aba === 'advertencia') extra = { tipo_adv: tipoAdv, motivo: motivo||null, assinada, dias_suspensao: diasSusp ? parseInt(diasSusp) : null }
 
+    // Insere na portal_ocorrencias
     const { error } = await supabase.from('portal_ocorrencias').insert({ ...base, ...extra })
-    setSaving(false)
-    if (error) {
-      setErroMsg('Erro ao salvar: ' + error.message)
-      return
+    if (error) { setSaving(false); setErroMsg('Erro ao salvar: ' + error.message); return }
+
+    // ── Salva também em portal_documentos (igual ao PortalDocumentos) ─────────
+    // Assim o atestado aparece na aba Documentos do painel com preview/download
+    if (aba === 'atestado' && atestadoUrl) {
+      await supabase.from('portal_documentos').insert({
+        obra_id:           obraId,
+        colaborador_id:    colabId || null,
+        portal_usuario_id: session?.id,
+        tipo:              'atestado',
+        descricao:         `Atestado — ${descricao}`,
+        arquivo_url:       atestadoUrl,
+        arquivo_nome:      atestadoNome,
+        arquivo_tipo:      atestadoTipo || 'image/jpeg',
+        status:            'pendente',
+      })
     }
+
+    setSaving(false)
     setSucesso(true); resetForm(); loadHistorico(obraId, aba)
     setTimeout(() => { setSucesso(false); setSubAba('historico') }, 1600)
   }
