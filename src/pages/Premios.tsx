@@ -127,10 +127,30 @@ export default function Premios() {
       supabase.from('colaboradores').select('id,nome,chapa').eq('status','ativo').order('nome'),
       supabase.from('obras').select('id,nome').order('nome'),
     ])
-    if (premRes.error) toast.error('Erro ao carregar prêmios')
-    else setRows((premRes.data as PremioRow[]) ?? [])
+    if (premRes.error) { toast.error('Erro ao carregar prêmios'); setLoading(false); return }
     if (colRes.data) setColaboradores(colRes.data)
     if (obrRes.data) setObras(obrRes.data)
+
+    // ── Sincronizar status com pagamentos vinculados ──────────────────────
+    const lista = (premRes.data as PremioRow[]) ?? []
+    const comPagamento = lista.filter(r => r.pagamento_id && r.status !== 'pago')
+    if (comPagamento.length > 0) {
+      const ids = comPagamento.map(r => r.pagamento_id!)
+      const { data: pgts } = await supabase
+        .from('pagamentos').select('id,status').in('id', ids)
+      const pagoIds = new Set((pgts ?? []).filter(p => p.status === 'pago').map(p => p.id))
+      if (pagoIds.size > 0) {
+        const toUpdate = comPagamento.filter(r => pagoIds.has(r.pagamento_id!))
+        for (const r of toUpdate) {
+          await supabase.from('premios').update({ status: 'pago' }).eq('id', r.id)
+        }
+        lista.forEach(r => {
+          if (r.pagamento_id && pagoIds.has(r.pagamento_id)) r.status = 'pago'
+        })
+      }
+    }
+
+    setRows(lista)
     setLoading(false)
   }, [competencia])
 
@@ -425,10 +445,22 @@ export default function Premios() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 6,
-                        background: '#fef3c7', color: '#b45309', border: '1px solid #fde68a' }}>
-                        {TIPO_EMOJI[row.tipo ?? ''] ?? '🎁'} {row.tipo ?? '—'}
-                      </span>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 6,
+                          background: '#fef3c7', color: '#b45309', border: '1px solid #fde68a' }}>
+                          {TIPO_EMOJI[row.tipo ?? ''] ?? '🎁'} {row.tipo ?? '—'}
+                        </span>
+                        {/* Forma de quitação — só na aba Pagos */}
+                        {statusRow === 'pago' && (
+                          <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 4,
+                            background: row.pagamento_id ? '#eff6ff' : '#f0fdf4',
+                            color:      row.pagamento_id ? '#1d4ed8' : '#15803d',
+                            border:     `1px solid ${row.pagamento_id ? '#bfdbfe' : '#bbf7d0'}`,
+                            alignSelf: 'flex-start' }}>
+                            {row.pagamento_id ? '💜 Via pagamento' : '✅ Via fechamento'}
+                          </span>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell style={{ color: 'var(--muted-foreground)', fontSize: 12, maxWidth: 200 }}>
                       <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={row.descricao}>
