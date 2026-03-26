@@ -465,7 +465,7 @@ export default function FechamentoPonto() {
       const { data: adDisp } = await supabase
         .from('adiantamentos')
         .select('id,colaborador_id,valor,desconto_tipo,desconto_parcelas,desconto_parcela_atual,desconto_obs,desconto_a_partir')
-        .in('status', ['aprovado', 'pendente'])
+        .in('status', ['aprovado', 'pendente', 'pago'])
         .is('descontado_em', null)
         .or(`desconto_a_partir.is.null,desconto_a_partir.lte.${mr}`)
         .in('colaborador_id', colabIds)
@@ -562,7 +562,7 @@ export default function FechamentoPonto() {
       .from('adiantamentos')
       .select('id,valor,desconto_tipo,desconto_parcelas,desconto_parcela_atual,desconto_obs,desconto_a_partir')
       .eq('colaborador_id', lanc.colaborador_id)
-      .in('status', ['aprovado', 'pendente'])
+      .in('status', ['aprovado', 'pendente', 'pago'])
       .is('descontado_em', null)
       .or(`desconto_a_partir.is.null,desconto_a_partir.lte.${mesRef}`)
     setAdiantsDisponiveis((adData ?? []) as any[])
@@ -1256,8 +1256,11 @@ export default function FechamentoPonto() {
                                                   const parcelas = a.desconto_parcelas ?? 1
                                                   const feitas   = (a.desconto_parcela_atual ?? 0) + 1
                                                   const quitado  = feitas >= parcelas
+                                                  // Se já está 'pago' (dinheiro entregue), mantém; senão atualiza status
+                                                  const novoStatus = a.desconto_tipo === 'pago' ? 'pago'
+                                                    : quitado ? 'pago' : 'aprovado'
                                                   await supabase.from('adiantamentos').update({
-                                                    status:                 quitado ? 'pago' : 'aprovado',
+                                                    status:                 novoStatus,
                                                     desconto_parcela_atual: feitas,
                                                     descontado_em:          quitado ? mesRef : null,
                                                   }).eq('id', a.id)
