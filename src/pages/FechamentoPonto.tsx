@@ -106,7 +106,11 @@ export default function FechamentoPonto() {
   const [modalLiberar, setModalLiberar] = useState<LancItem | null>(null)
   // Estado do desconto -AD dentro do modal de liberar
   const [adDescontoAprovado, setAdDescontoAprovado] = useState(false)
-  const [adiantsDisponiveis, setAdiantsDisponiveis] = useState<{id:string;valor:number;desconto_tipo:string;desconto_parcelas:number|null;desconto_parcela_atual:number|null;desconto_obs:string|null}[]>([])
+  const [adiantsDisponiveis, setAdiantsDisponiveis] = useState<{id:string;valor:number;desconto_tipo:string;desconto_parcelas:number|null;desconto_parcela_atual:number|null;desconto_obs:string|null;desconto_a_partir:string|null}[]>([])
+  // AD disponíveis pré-carregados por lançamento (id do lanc → lista de AD)
+  const [adPorLanc, setAdPorLanc] = useState<Record<string, {id:string;valor:number;desconto_tipo:string;desconto_parcelas:number|null;desconto_parcela_atual:number|null;desconto_obs:string|null}[]>>({})
+  // Confirmação inline -AD: lancamento_id aguardando confirm
+  const [confirmADLancId, setConfirmADLancId] = useState<string | null>(null)
 
   const mesRef = `${ano}-${String(mes).padStart(2, '0')}`
   const [filtroObraFech,   setFiltroObraFech]   = useState('todos')
@@ -452,6 +456,34 @@ export default function FechamentoPonto() {
       }
     })
     setLancamentos(lista.filter(Boolean) as LancItem[])
+
+    // ── Pré-carregar adiantamentos disponíveis para desconto (-AD) por colaborador ──
+    // Busca adiantamentos aprovados com desconto_a_partir ≤ mês atual e ainda não quitados
+    if (colabIds.length > 0) {
+      const { data: adDisp } = await supabase
+        .from('adiantamentos')
+        .select('id,colaborador_id,valor,desconto_tipo,desconto_parcelas,desconto_parcela_atual,desconto_obs')
+        .in('status', ['aprovado'])
+        .is('descontado_em', null)
+        .lte('desconto_a_partir', mr)
+        .not('desconto_a_partir', 'is', null)
+        .in('colaborador_id', colabIds)
+      // Mapear lancamento_id → lista de AD (usando colaborador_id como chave)
+      const mapaAD: Record<string, typeof adDisp> = {}
+      ;(adDisp ?? []).forEach((a: any) => {
+        if (!mapaAD[a.colaborador_id]) mapaAD[a.colaborador_id] = []
+        mapaAD[a.colaborador_id]!.push(a)
+      })
+      // Converter: lançamento id → lista de AD do colaborador daquele lançamento
+      const adPorLancMap: Record<string, any[]> = {}
+      ;(lista.filter(Boolean) as LancItem[]).forEach(l => {
+        if (mapaAD[l.colaborador_id]) adPorLancMap[l.id] = mapaAD[l.colaborador_id]!
+      })
+      setAdPorLanc(adPorLancMap)
+    } else {
+      setAdPorLanc({})
+    }
+
     setLoading(false)
   }, [])
 
@@ -879,6 +911,7 @@ export default function FechamentoPonto() {
                         <TableHead className="text-right" style={{ fontSize: 11, color: '#dc2626' }}>− VT</TableHead>
                         <TableHead className="text-right" style={{ fontSize: 11, color: '#dc2626' }}>− INSS</TableHead>
                         <TableHead className="text-right" style={{ fontSize: 11, color: '#dc2626' }}>− IR</TableHead>
+                        <TableHead className="text-right" style={{ fontSize: 11, color: '#b45309', fontWeight: 700 }}>💳 -AD</TableHead>
                         <TableHead className="text-right" style={{ fontSize: 11, color: '#15803d', fontWeight: 700 }}>✅ Líquido</TableHead>
                         <TableHead className="text-center" style={{ fontSize: 11 }}>Status</TableHead>
                         <TableHead></TableHead>
@@ -1002,10 +1035,97 @@ export default function FechamentoPonto() {
                                   </span>
                                 : <span style={{ color: 'var(--muted-foreground)' }}>—</span>}
                             </TableCell>
-                            <TableCell className="text-right" style={{ color: '#b45309', fontSize: 12 }}>
-                              {lanc.desconto_adiant > 0
-                                ? <span title="Adiantamento descontado">−{formatCurrency(lanc.desconto_adiant)}</span>
-                                : <span style={{ color: 'var(--muted-foreground)' }}>—</span>}
+                            {/* ── Coluna -AD ── */}
+                            <TableCell className="text-right">
+                              {(() => {
+                                const adsLanc = adPorLanc[lanc.id] ?? []
+                                const valorAD = adsLanc.reduce((s, a) => {
+                                  const p = a.desconto_parcelas ?? 1
+                                  return s + (p > 1 ? a.valor / p : a.valor)
+                                }, 0)
+                                const jaDescontado = lanc.desconto_adiant > 0
+                                if (jaDescontado) {
+                                  return (
+                                    <span style={{ fontSize: 12, color: '#b45309', fontWeight: 700 }}>
+                                      −{formatCurrency(lanc.desconto_adiant)}
+                                      <div style={{ fontSize: 9, color: '#92400e' }}>descontado</div>
+                                    </span>
+                                  )
+                                }
+                                if (adsLanc.length === 0) {
+                                  return <span style={{ color: 'var(--muted-foreground)', fontSize: 12 }}>—</span>
+                                }
+                                // Tem AD disponível — mostrar botão de aprovar
+                                return (
+                                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+                                    <span style={{ fontSize: 11, color: '#b45309', fontWeight: 700 }}>
+                                      −{formatCurrency(valorAD)}
+                                    </span>
+                                    {lanc.status === 'em_fechamento' && confirmADLancId !== lanc.id && (
+                                      <button
+                                        onClick={() => setConfirmADLancId(lanc.id)}
+                                        title="Aprovar desconto de adiantamento neste fechamento"
+                                        style={{ fontSize: 10, fontWeight: 700, height: 22, padding: '0 7px',
+                                          borderRadius: 5, border: '1.5px solid #b45309',
+                                          background: '#fffbeb', color: '#b45309',
+                                          cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3 }}>
+                                        💳 -AD
+                                      </button>
+                                    )}
+                                    {lanc.status === 'em_fechamento' && confirmADLancId === lanc.id && (
+                                      <div style={{ display: 'flex', gap: 3 }}>
+                                        <button
+                                          onClick={async () => {
+                                            setSaving(true)
+                                            for (const a of adsLanc) {
+                                              const parcelas = a.desconto_parcelas ?? 1
+                                              const feitas   = (a.desconto_parcela_atual ?? 0) + 1
+                                              const quitado  = feitas >= parcelas
+                                              await supabase.from('adiantamentos').update({
+                                                status: quitado ? 'pago' : 'aprovado',
+                                                desconto_parcela_atual: feitas,
+                                                descontado_em: quitado ? mesRef : null,
+                                              }).eq('id', a.id)
+                                            }
+                                            const novoLiquido = lanc.valor_total - lanc.desconto_vt - lanc.inss - lanc.ir - valorAD
+                                            await supabase.from('ponto_lancamentos').update({
+                                              snap_desconto_adiant: valorAD,
+                                              snap_liquido: novoLiquido,
+                                            }).eq('id', lanc.id)
+                                            setSaving(false)
+                                            setConfirmADLancId(null)
+                                            toast.success('✅ Desconto -AD aprovado!')
+                                            fetchLancamentos(mesRef)
+                                          }}
+                                          style={{ fontSize: 10, fontWeight: 700, height: 22, padding: '0 7px',
+                                            borderRadius: 5, border: '1.5px solid #15803d',
+                                            background: '#f0fdf4', color: '#15803d',
+                                            cursor: 'pointer' }}>
+                                          ✅ Sim
+                                        </button>
+                                        <button
+                                          onClick={() => setConfirmADLancId(null)}
+                                          style={{ fontSize: 10, height: 22, padding: '0 6px',
+                                            borderRadius: 5, border: '1px solid var(--border)',
+                                            background: 'var(--muted)', color: 'var(--muted-foreground)',
+                                            cursor: 'pointer' }}>
+                                          ✕
+                                        </button>
+                                      </div>
+                                    )}
+                                    {adsLanc.map(a => {
+                                      const p = a.desconto_parcelas ?? 1
+                                      const f = a.desconto_parcela_atual ?? 0
+                                      return (
+                                        <div key={a.id} style={{ fontSize: 9, color: '#92400e' }}>
+                                          {p > 1 ? `${f+1}/${p}x` : 'Único'}
+                                          {a.desconto_obs ? ` · ${a.desconto_obs.substring(0,20)}` : ''}
+                                        </div>
+                                      )
+                                    })}
+                                  </div>
+                                )
+                              })()}
                             </TableCell>
                             <TableCell className="text-right" style={{ fontWeight: 800, color: '#15803d', fontSize: 13 }}>
                               {formatCurrency(lanc.liquido)}
