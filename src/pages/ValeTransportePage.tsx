@@ -44,6 +44,8 @@ type FormData = {
   tipo: string
   valor: string
   dias_trabalhados: string
+  num_faltas: string          // nº de faltas a descontar do VT
+  num_sabados_extras: string  // nº de sábados trabalhados a adicionar (se obra NÃO considera sáb útil)
   desconto_colaborador: string
   valor_empresa: string
   descontar_6pct: boolean
@@ -160,7 +162,7 @@ export default function ValeTransportePage() {
   const [statusFiltro, setStatusFiltro] = useState<'todos'|'sem'|'parcial'|'completo'>('todos')
 
   const [colaboradores, setColaboradores] = useState<ColaboradorVT[]>([])
-  const [obras, setObras]   = useState<{id:string;nome:string}[]>([])
+  const [obras, setObras]   = useState<{id:string;nome:string;considera_sabado_util?:boolean|null}[]>([])
   const [vtRows, setVtRows] = useState<VTRow[]>([])
   const [loading, setLoading] = useState(true)
   const [colabSel, setColabSel] = useState<ColaboradorVT | null>(null)
@@ -213,6 +215,8 @@ export default function ValeTransportePage() {
       tipo: 'cartao',
       valor: '',
       dias_trabalhados: '',
+      num_faltas: '0',
+      num_sabados_extras: '0',
       desconto_colaborador: '',
       valor_empresa: '',
       descontar_6pct: true,
@@ -229,7 +233,7 @@ export default function ValeTransportePage() {
         .select('id,nome,chapa,salario,vt_dados,obra_id,tipo_contrato,funcao_id,data_admissao,funcoes(nome,valor_hora_clt,valor_hora_autonomo),obras(nome)')
         .eq('status', 'ativo')
         .order('nome'),
-      supabase.from('obras').select('id,nome').order('nome'),
+      supabase.from('obras').select('id,nome,considera_sabado_util').order('nome'),
       supabase
         .from('vale_transporte')
         .select('*,colaboradores(id,nome,chapa,salario,vt_dados)')
@@ -336,24 +340,29 @@ export default function ValeTransportePage() {
 
   // ─── recalcula valor+dias ao mudar período/tick sábado ────────────────────
   // vtDiarioFixo: se informado (modo edição), usa essa taxa em vez de buscar do cadastro atual
-  // desconto_colaborador NÃO é calculado aqui — o 6% sobre salário bruto é apurado no Fechamento
+  // numFaltas: dias de falta a descontar do VT
+  // numSabadosExtras: sábados trabalhados a adicionar (quando obra NÃO considera sáb no cálculo padrão)
   function recalcularPeriodo(
     dataIni: string, dataFim: string, contarSab: boolean,
     comp: string, colab: ColaboradorVT | null,
-    vtDiarioFixo?: number | null
+    vtDiarioFixo?: number | null,
+    numFaltas = 0,
+    numSabadosExtras = 0
   ) {
     const diasUtil = contarDiasUteis(dataIni, dataFim, contarSab)
-    let valorBruto = 0
+    let vtDiario = 0
     if (vtDiarioFixo != null && vtDiarioFixo > 0) {
-      // Modo edição: usa a taxa diária salva no momento do lançamento original
-      valorBruto = vtDiarioFixo * diasUtil
+      vtDiario = vtDiarioFixo
     } else {
       const vtMen = colab ? vtMensalColab(colab, comp, contarSab) : 0
-      valorBruto  = vtMen > 0 ? calcValorProporcional(vtMen, dataIni, dataFim, comp, contarSab) : 0
+      const diasMes = contarDiasUteis(primeiroDia(comp), ultimoDia(comp), contarSab)
+      vtDiario = diasMes > 0 && vtMen > 0 ? vtMen / diasMes : vtDiarioColab(colab?.vt_dados as any)
     }
-    // Valor empresa = valor bruto do VT (desconto 6% salário bruto apurado no Fechamento)
+    // dias efetivos = dias úteis do período - faltas + sábados extras trabalhados
+    const diasEfetivos = Math.max(0, diasUtil - numFaltas + numSabadosExtras)
+    const valorBruto = vtDiario > 0 ? +(vtDiario * diasEfetivos).toFixed(2) : 0
     return {
-      dias_trabalhados: String(diasUtil),
+      dias_trabalhados: String(diasEfetivos),
       valor: valorBruto > 0 ? valorBruto.toFixed(2) : '',
       desconto_colaborador: '0',
       valor_empresa: valorBruto > 0 ? valorBruto.toFixed(2) : '0',
@@ -391,7 +400,9 @@ export default function ValeTransportePage() {
 
     const vtDados    = colabSel.vt_dados as any
     const tipoAuto   = modalidadeParaTipo(vtDados?.modalidade)
-    const contarSab  = false
+    // Se a obra do colaborador considera sábado útil, ativa o toggle por padrão
+    const obraColab  = obras.find(o => o.id === colabSel.obra_id)
+    const contarSab  = obraColab?.considera_sabado_util === true
     const descontar  = true
     const calc       = recalcularPeriodo(primeiroDia(competencia), ultimoDia(competencia), contarSab, competencia, colabSel)
 
@@ -403,6 +414,8 @@ export default function ValeTransportePage() {
       data_fim:     ultimoDia(competencia),
       contar_sabado: contarSab,
       tipo:         tipoAuto,
+      num_faltas: '0',
+      num_sabados_extras: '0',
       ...calc,
       descontar_6pct: descontar,
       observacoes: '',
@@ -426,6 +439,8 @@ export default function ValeTransportePage() {
       tipo:          row.tipo ?? 'cartao',
       valor:         String(valorSalvo),
       dias_trabalhados: String(diasSalvos),
+      num_faltas: '0',
+      num_sabados_extras: '0',
       desconto_colaborador: String(row.desconto_colaborador ?? ''),
       valor_empresa: String(row.valor_empresa ?? ''),
       descontar_6pct: row.descontar_6pct ?? true,
@@ -439,15 +454,16 @@ export default function ValeTransportePage() {
     setForm(prev => {
       const next = { ...prev, [key]: value }
 
-      // Mudanças que recalculam tudo (período ou tick sábado ou toggle desconto)
-      if (key === 'data_inicio' || key === 'data_fim' || key === 'contar_sabado' || key === 'descontar_6pct') {
-        const ini    = key === 'data_inicio'    ? String(value) : next.data_inicio
-        const fim    = key === 'data_fim'       ? String(value) : next.data_fim
-        const contSab = key === 'contar_sabado' ? Boolean(value) : next.contar_sabado
-        const desc   = key === 'descontar_6pct' ? Boolean(value) : next.descontar_6pct
+      // Mudanças que recalculam tudo (período, tick sábado, faltas, sábados extras ou toggle desconto)
+      if (key === 'data_inicio' || key === 'data_fim' || key === 'contar_sabado' || key === 'descontar_6pct' || key === 'num_faltas' || key === 'num_sabados_extras') {
+        const ini     = key === 'data_inicio'    ? String(value) : next.data_inicio
+        const fim     = key === 'data_fim'       ? String(value) : next.data_fim
+        const contSab = key === 'contar_sabado'  ? Boolean(value) : next.contar_sabado
+        const faltas  = parseInt(key === 'num_faltas' ? String(value) : next.num_faltas) || 0
+        const sabExt  = parseInt(key === 'num_sabados_extras' ? String(value) : next.num_sabados_extras) || 0
         // Em modo edição: usa taxa diária congelada do lançamento original (vtDiarioSnap)
         // Em novo lançamento: usa base atual do colaborador (vtDiarioSnap = null)
-        const calc   = recalcularPeriodo(ini, fim, contSab, next.competencia, colabSel, vtDiarioSnap)
+        const calc    = recalcularPeriodo(ini, fim, contSab, next.competencia, colabSel, vtDiarioSnap, faltas, sabExt)
         return { ...next, ...calc }
       }
 
@@ -1126,6 +1142,39 @@ export default function ValeTransportePage() {
                 </Label>
                 <div style={{ marginTop: 4, height: 36, display: 'flex', alignItems: 'center', padding: '0 12px', background: 'var(--muted)', border: '1px solid var(--border)', borderRadius: 6, fontSize: 14, fontWeight: 700, color: 'var(--foreground)' }}>
                   {parseFloat(form.valor) > 0 ? formatCurrency(parseFloat(form.valor)) : <span style={{ color: 'var(--muted-foreground)', fontWeight: 400 }}>Sem VT configurado no cadastro</span>}
+                </div>
+              </div>
+
+              {/* Faltas e Sábados extras — ajuste fino do VT */}
+              <div className="col-span-2">
+                <div style={{ background: '#fef9c3', border: '1px solid #fde047', borderRadius: 8, padding: '10px 14px' }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#713f12', marginBottom: 8 }}>⚠ Ajuste por falta / sábado trabalhado</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <div>
+                      <Label className="text-xs" style={{ color: '#713f12' }}>Faltas (descontar dias)</Label>
+                      <Input type="number" min={0} max={30} value={form.num_faltas}
+                        onChange={e => setField('num_faltas', e.target.value)}
+                        className="mt-1 h-8 text-sm"
+                        placeholder="0"
+                      />
+                      <div style={{ fontSize: 10, color: '#92400e', marginTop: 3 }}>
+                        Cada falta desconta 1 dia de VT
+                      </div>
+                    </div>
+                    <div>
+                      <Label className="text-xs" style={{ color: '#713f12' }}>Sáb. trabalhados extras</Label>
+                      <Input type="number" min={0} max={5} value={form.num_sabados_extras}
+                        onChange={e => setField('num_sabados_extras', e.target.value)}
+                        className="mt-1 h-8 text-sm"
+                        placeholder="0"
+                      />
+                      <div style={{ fontSize: 10, color: '#92400e', marginTop: 3 }}>
+                        {obras.find(o => o.id === colabSel?.obra_id)?.considera_sabado_util
+                          ? '✓ Obra considera sáb. útil — sáb já contado no período'
+                          : 'Obra não conta sáb. — adicione sábados trabalhados aqui'}
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
 
