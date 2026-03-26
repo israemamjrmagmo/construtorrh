@@ -78,7 +78,7 @@ export default function Juridico() {
         supabase.from('documentos_avulsos').select('*').eq('colaborador_id', c.id).order('created_at', { ascending: false }),
         supabase.from('colaborador_epi').select('*, epi_catalogo(nome,categoria,numero_ca)').eq('colaborador_id', c.id),
         supabase.from('ponto_lancamentos').select('*, obras(nome)').eq('colaborador_id', c.id).in('status', ['pago', 'liberado']).order('mes_referencia', { ascending: false }),
-        supabase.from('registro_ponto').select('*').eq('colaborador_id', c.id).order('data', { ascending: false }).limit(120),
+        supabase.from('registro_ponto').select('id,lancamento_id,colaborador_id,data,presente,falta,hora_entrada,saida_almoco,retorno_almoco,hora_saida,he_entrada,he_saida,horas_trabalhadas,horas_extras,status,observacoes,justificativa').eq('colaborador_id', c.id).order('data', { ascending: true }).limit(500),
         supabase.from('adiantamentos').select('*').eq('colaborador_id', c.id).order('competencia', { ascending: false }),
         supabase.from('premios').select('*').eq('colaborador_id', c.id).order('created_at', { ascending: false }),
         supabase.from('vale_transporte').select('*').eq('colaborador_id', c.id).order('competencia', { ascending: false }),
@@ -229,23 +229,48 @@ export default function Juridico() {
     const pontosHTML = pontos.length === 0 ? vazio : pontos.map((p:any) => {
       const linhas = regs.filter((r:any) => r.lancamento_id === p.id || (r.colaborador_id === d.id && r.data >= `${p.mes_referencia}-01` && r.data <= `${p.mes_referencia}-31`))
       const faltas = linhas.filter((r:any) => r.falta).length
-      const hExtra = linhas.reduce((s:number,r:any) => s+(r.horas_extras??0), 0)
-      return `<div style="margin-bottom:10px;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden">
-        <div style="background:#e8eef6;padding:6px 12px;display:flex;justify-content:space-between;align-items:center">
-          <strong style="font-size:11px">${fmtMes(p.mes_referencia)} — ${p.obras?.nome ?? 'Sem obra'}</strong>
-          <span style="display:flex;gap:12px;font-size:10px;color:#374151">
-            <span>Dias: ${linhas.length}</span><span>Faltas: ${faltas}</span><span>HExtra: ${hExtra.toFixed(1)}h</span>
-            ${pill(p.status)}
+      const hExtra = linhas.reduce((s:number,r:any) => s+(Number(r.horas_extras)??0), 0)
+      const hTrab  = linhas.reduce((s:number,r:any) => s+(Number(r.horas_trabalhadas)??0), 0)
+      return `<div style="margin-bottom:12px;border:1px solid #cbd5e1;border-radius:8px;overflow:hidden;page-break-inside:avoid">
+        <div style="background:#1e3a5f;padding:8px 14px;display:flex;justify-content:space-between;align-items:center">
+          <strong style="font-size:12px;color:#fff">${fmtMes(p.mes_referencia)} — ${p.obras?.nome ?? 'Sem obra'}</strong>
+          <span style="display:flex;gap:14px;font-size:11px;color:#93c5fd">
+            <span>📅 ${linhas.length} dias</span>
+            <span>⏱ ${hTrab.toFixed(1)}h trabalhadas</span>
+            ${hExtra > 0 ? `<span style="color:#86efac;font-weight:700">+${hExtra.toFixed(1)}h extras</span>` : ''}
+            ${faltas > 0 ? `<span style="color:#fca5a5;font-weight:700">✗ ${faltas} faltas</span>` : ''}
           </span>
         </div>
-        ${linhas.length > 0 ? tbl(['Data','Status','H.Extras','Faltas','Obs'],
-          linhas.slice(0,40).map((r:any) => [
-            fmtDate(r.data),
-            `<span style="font-weight:700;color:${r.falta?'#dc2626':'#15803d'}">${r.status??'—'}</span>`,
-            r.horas_extras ? r.horas_extras+'h' : '—',
-            r.falta ? '✗' : '',
-            (r.observacoes??'').substring(0,30),
-          ])) : vazio}
+        ${linhas.length > 0 ? `<table style="width:100%;border-collapse:collapse;font-size:10px">
+          <thead><tr style="background:#f1f5f9">
+            <th style="padding:4px 8px;text-align:left;border-bottom:1px solid #e2e8f0">Data</th>
+            <th style="padding:4px 8px;text-align:left;border-bottom:1px solid #e2e8f0">Status</th>
+            <th style="padding:4px 8px;text-align:center;border-bottom:1px solid #e2e8f0">Entrada</th>
+            <th style="padding:4px 8px;text-align:center;border-bottom:1px solid #e2e8f0">Saída Almoço</th>
+            <th style="padding:4px 8px;text-align:center;border-bottom:1px solid #e2e8f0">Retorno</th>
+            <th style="padding:4px 8px;text-align:center;border-bottom:1px solid #e2e8f0">Saída</th>
+            <th style="padding:4px 8px;text-align:center;border-bottom:1px solid #e2e8f0">H.Trab</th>
+            <th style="padding:4px 8px;text-align:center;border-bottom:1px solid #e2e8f0">H.Extra</th>
+            <th style="padding:4px 8px;text-align:left;border-bottom:1px solid #e2e8f0">Obs</th>
+          </tr></thead>
+          <tbody>${linhas.map((r:any,idx:number) => `<tr style="background:${r.falta?'#fff5f5':idx%2===0?'#fff':'#f8fafc'};border-bottom:1px solid #f1f5f9">
+            <td style="padding:4px 8px;font-weight:600">${fmtDate(r.data)}</td>
+            <td style="padding:4px 8px"><span style="font-weight:700;color:${r.falta?'#dc2626':'#15803d'};font-size:10px">${r.falta?'✗ FALTA':r.presente?'✓ Presente':r.status??'—'}</span></td>
+            <td style="padding:4px 8px;text-align:center;font-family:monospace">${r.hora_entrada||'—'}</td>
+            <td style="padding:4px 8px;text-align:center;font-family:monospace">${r.saida_almoco||'—'}</td>
+            <td style="padding:4px 8px;text-align:center;font-family:monospace">${r.retorno_almoco||'—'}</td>
+            <td style="padding:4px 8px;text-align:center;font-family:monospace">${r.hora_saida||'—'}</td>
+            <td style="padding:4px 8px;text-align:center;font-weight:600">${r.horas_trabalhadas?r.horas_trabalhadas+'h':'—'}</td>
+            <td style="padding:4px 8px;text-align:center;font-weight:700;color:${Number(r.horas_extras)>0?'#15803d':'#94a3b8'}">${Number(r.horas_extras)>0?'+'+r.horas_extras+'h':'—'}</td>
+            <td style="padding:4px 8px;font-size:10px;color:#64748b">${(r.observacoes??r.justificativa??'').substring(0,35)}</td>
+          </tr>`).join('')}</tbody>
+          <tfoot><tr style="background:#f1f5f9;font-weight:700">
+            <td colspan="6" style="padding:5px 8px;font-size:10px">TOTAIS</td>
+            <td style="padding:5px 8px;text-align:center;font-size:10px">${hTrab.toFixed(1)}h</td>
+            <td style="padding:5px 8px;text-align:center;font-size:10px;color:#15803d">${hExtra>0?'+'+hExtra.toFixed(1)+'h':'—'}</td>
+            <td></td>
+          </tr></tfoot>
+        </table>` : '<div style="padding:10px;text-align:center;font-size:11px;color:#64748b;font-style:italic">Nenhum dia registrado</div>'}
       </div>`
     }).join('')
 
@@ -1042,10 +1067,12 @@ function FichaCompleta({ fichaData, onPDF }: { fichaData: Record<string,any>; on
 // ── Sub-componente para cada período de ponto ─────────────────────────────────
 function PeriodoPonto({ periodo, registros, faltas, hExtra }: { periodo: any; registros: any[]; faltas: number; hExtra: number }) {
   const [aberto, setAberto] = useState(false)
-  const statusCor: Record<string, string> = { rascunho: '#b45309', fechado: '#1d4ed8', aprovado: '#15803d' }
-  const statusBgC: Record<string, string> = { rascunho: '#fef3c7', fechado: '#eff6ff', aprovado: '#dcfce7' }
+  const statusCor: Record<string, string> = { rascunho: '#b45309', fechado: '#1d4ed8', aprovado: '#15803d', liberado: '#7c3aed', pago: '#047857' }
+  const statusBgC: Record<string, string> = { rascunho: '#fef3c7', fechado: '#eff6ff', aprovado: '#dcfce7', liberado: '#ede9fe', pago: '#d1fae5' }
+  const hTrab = registros.reduce((s: number, r: any) => s + (Number(r.horas_trabalhadas) || 0), 0)
   return (
     <div style={{ border: '1px solid var(--border)', borderRadius: 8, marginBottom: 8, overflow: 'hidden' }}>
+      {/* cabeçalho do período */}
       <button onClick={() => setAberto(p => !p)} style={{ width: '100%', padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--muted)', border: 'none', cursor: 'pointer' }}>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <span style={{ fontWeight: 700, fontSize: 13 }}>{fmtMes(periodo.mes_referencia)}</span>
@@ -1054,38 +1081,67 @@ function PeriodoPonto({ periodo, registros, faltas, hExtra }: { periodo: any; re
         </div>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', fontSize: 11, color: 'var(--muted-foreground)' }}>
           <span>📅 {registros.length} dias</span>
+          <span>⏱ {hTrab.toFixed(1)}h</span>
           {faltas > 0 && <span style={{ color: '#dc2626', fontWeight: 700 }}>✗ {faltas} faltas</span>}
-          {hExtra > 0 && <span style={{ color: '#15803d', fontWeight: 700 }}>+{hExtra.toFixed(1)}h</span>}
+          {hExtra > 0 && <span style={{ color: '#15803d', fontWeight: 700 }}>+{hExtra.toFixed(1)}h extras</span>}
           {aberto ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
         </div>
       </button>
+
+      {/* tabela de espelho de ponto */}
       {aberto && registros.length > 0 && (
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
-            <thead><tr style={{ background: 'var(--muted)' }}>
-              {['Data','Status','H.Trabalh.','H.Extra','Falta','Observações'].map(h => (
-                <th key={h} style={{ padding: '5px 10px', textAlign: 'left', fontWeight: 700, fontSize: 10, color: 'var(--muted-foreground)', borderBottom: '1px solid var(--border)', textTransform: 'uppercase' }}>{h}</th>
-              ))}
-            </tr></thead>
+            <thead>
+              <tr style={{ background: 'var(--muted)' }}>
+                {['Data','Status','Entrada','S.Almoço','Retorno','Saída','H.Trab.','H.Extra','Obs'].map(h => (
+                  <th key={h} style={{ padding: '5px 10px', textAlign: 'center', fontWeight: 700, fontSize: 10, color: 'var(--muted-foreground)', borderBottom: '1px solid var(--border)', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
             <tbody>
               {registros.map((r, i) => (
-                <tr key={i} style={{ borderBottom: '1px solid var(--border)', background: r.falta ? 'rgba(239,68,68,0.04)' : 'transparent' }}>
-                  <td style={{ padding: '5px 10px', fontWeight: 600, fontSize: 12 }}>{fmtDate(r.data)}</td>
-                  <td style={{ padding: '5px 10px' }}>
-                    <span style={{ fontWeight: 700, color: r.falta ? '#dc2626' : '#15803d', fontSize: 11 }}>{r.status ?? '—'}</span>
+                <tr key={i} style={{ borderBottom: '1px solid var(--border)', background: r.falta ? 'rgba(239,68,68,0.05)' : i % 2 === 0 ? 'transparent' : 'rgba(0,0,0,0.015)' }}>
+                  <td style={{ padding: '4px 10px', fontWeight: 600, fontSize: 12, whiteSpace: 'nowrap' }}>{fmtDate(r.data)}</td>
+                  <td style={{ padding: '4px 10px', textAlign: 'center' }}>
+                    {r.falta
+                      ? <span style={{ fontWeight: 700, color: '#dc2626', fontSize: 10 }}>✗ FALTA</span>
+                      : <span style={{ fontWeight: 700, color: '#15803d', fontSize: 10 }}>✓ Presente</span>}
                   </td>
-                  <td style={{ padding: '5px 10px', fontSize: 12 }}>{r.horas_trabalhadas ? r.horas_trabalhadas + 'h' : '—'}</td>
-                  <td style={{ padding: '5px 10px', fontSize: 12, color: r.horas_extras > 0 ? '#15803d' : 'inherit', fontWeight: r.horas_extras > 0 ? 700 : 400 }}>{r.horas_extras ? '+' + r.horas_extras + 'h' : '—'}</td>
-                  <td style={{ padding: '5px 10px', textAlign: 'center' }}>{r.falta ? <span style={{ color: '#dc2626', fontWeight: 700 }}>✗</span> : <span style={{ color: '#15803d' }}>✓</span>}</td>
-                  <td style={{ padding: '5px 10px', fontSize: 11, color: 'var(--muted-foreground)', maxWidth: 200 }}>{(r.observacoes ?? '').substring(0, 40)}</td>
+                  {/* horários em fonte monoespaçada */}
+                  {(['hora_entrada','saida_almoco','retorno_almoco','hora_saida'] as const).map(campo => (
+                    <td key={campo} style={{ padding: '4px 10px', textAlign: 'center', fontFamily: 'monospace', fontSize: 11, color: r[campo] ? 'var(--foreground)' : 'var(--muted-foreground)' }}>
+                      {r[campo] || '—'}
+                    </td>
+                  ))}
+                  <td style={{ padding: '4px 10px', textAlign: 'center', fontWeight: 600 }}>
+                    {r.horas_trabalhadas ? r.horas_trabalhadas + 'h' : '—'}
+                  </td>
+                  <td style={{ padding: '4px 10px', textAlign: 'center', fontWeight: 700, color: Number(r.horas_extras) > 0 ? '#15803d' : 'var(--muted-foreground)' }}>
+                    {Number(r.horas_extras) > 0 ? '+' + r.horas_extras + 'h' : '—'}
+                  </td>
+                  <td style={{ padding: '4px 10px', fontSize: 10, color: 'var(--muted-foreground)', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {(r.observacoes ?? r.justificativa ?? '').substring(0, 40)}
+                  </td>
                 </tr>
               ))}
             </tbody>
+            {/* linha de totais */}
+            <tfoot>
+              <tr style={{ background: 'var(--muted)', fontWeight: 700 }}>
+                <td colSpan={6} style={{ padding: '5px 10px', fontSize: 11 }}>TOTAIS</td>
+                <td style={{ padding: '5px 10px', textAlign: 'center', fontSize: 11 }}>{hTrab.toFixed(1)}h</td>
+                <td style={{ padding: '5px 10px', textAlign: 'center', fontSize: 11, color: hExtra > 0 ? '#15803d' : 'var(--muted-foreground)' }}>
+                  {hExtra > 0 ? '+' + hExtra.toFixed(1) + 'h' : '—'}
+                </td>
+                <td />
+              </tr>
+            </tfoot>
           </table>
         </div>
       )}
       {aberto && registros.length === 0 && (
-        <div style={{ padding: 12, textAlign: 'center', color: 'var(--muted-foreground)', fontSize: 12, fontStyle: 'italic' }}>Nenhum dia lançado neste período</div>
+        <div style={{ padding: 12, textAlign: 'center', color: 'var(--muted-foreground)', fontSize: 12, fontStyle: 'italic' }}>Nenhum dia registrado neste período</div>
       )}
     </div>
   )
