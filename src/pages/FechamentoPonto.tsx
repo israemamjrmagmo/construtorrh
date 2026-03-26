@@ -523,14 +523,16 @@ export default function FechamentoPonto() {
     const lanc = lancamentos.find(l => l.id === id)
     if (!lanc) return
     setAdDescontoAprovado(false)
-    // Buscar adiantamentos pago + não descontados para esse colaborador no mês
+    // Buscar adiantamentos APROVADOS com desconto configurado para este mês ou anterior
+    // O adiantamento foi APROVADO mas o desconto acontece no fechamento (não tem pagamento separado)
     const { data: adData } = await supabase
       .from('adiantamentos')
-      .select('id,valor,desconto_tipo,desconto_parcelas,desconto_parcela_atual,desconto_obs')
+      .select('id,valor,desconto_tipo,desconto_parcelas,desconto_parcela_atual,desconto_obs,desconto_a_partir')
       .eq('colaborador_id', lanc.colaborador_id)
-      .eq('status', 'pago')
-      .is('descontado_em', null)
-      .lte('desconto_a_partir', mesRef)
+      .in('status', ['aprovado', 'pago'])   // aprovado = pronto p/ descontar; pago = pagamento manual feito
+      .is('descontado_em', null)             // ainda não foi quitado
+      .lte('desconto_a_partir', mesRef)      // mês de início do desconto já chegou
+      .not('desconto_a_partir', 'is', null)  // tem mês configurado
     setAdiantsDisponiveis((adData ?? []) as any[])
     setModalLiberar(lanc)
   }
@@ -581,8 +583,11 @@ export default function FechamentoPonto() {
         const feitas   = (a.desconto_parcela_atual ?? 0) + 1
         const totalQuitado = feitas >= parcelas
         await supabase.from('adiantamentos').update({
+          // Quando quitado totalmente: status = 'pago', descontado_em preenchido
+          // Quando parcial: mantém 'aprovado', só incrementa parcela
+          status:                totalQuitado ? 'pago' : 'aprovado',
           desconto_parcela_atual: feitas,
-          descontado_em: totalQuitado ? mesRef : null,
+          descontado_em:         totalQuitado ? mesRef : null,
         }).eq('id', a.id)
       }
     }
@@ -795,23 +800,29 @@ export default function FechamentoPonto() {
         })}
       </div>
 
-      {/* ── Cards de resumo ── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        {[
-          { icon: <Users size={16} />, label: 'Colaboradores', value: porColaborador.length, color: '#2563eb' },
-          { icon: <Clock size={16} />, label: 'Pendentes pgto', value: pendentes.length, color: '#b45309', suffix: ' lanç.' },
-          { icon: <CheckCircle2 size={16} />, label: 'Pagos', value: pagos.length, color: '#15803d', suffix: ' lanç.' },
-          { icon: <DollarSign size={16} />, label: 'Total a Pagar', value: formatCurrency(totalGeral), color: '#7c3aed', isMoney: true },
-        ].map((c, i) => (
-          <div key={i} style={{ background: 'var(--card)', borderRadius: 10, padding: '14px 16px', border: '1px solid var(--border)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: c.color, marginBottom: 4 }}>
-              {c.icon}<span style={{ fontSize: 11, fontWeight: 600 }}>{c.label}</span>
-            </div>
-            <div style={{ fontSize: 20, fontWeight: 800, color: c.color }}>
-              {c.isMoney ? c.value : `${c.value}${c.suffix ?? ''}`}
-            </div>
+      {/* ── Barra de resumo compacta (sem cards individuais) ── */}
+      <div style={{ display: 'flex', gap: 12, marginBottom: 18, flexWrap: 'wrap', alignItems: 'center' }}>
+        <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: '7px 14px', display: 'flex', gap: 8, alignItems: 'center' }}>
+          <Users size={13} style={{ color: '#2563eb' }} />
+          <span style={{ fontSize: 12, color: '#1e40af', fontWeight: 700 }}>{porColaborador.length} colaborador(es)</span>
+        </div>
+        {pendentes.length > 0 && (
+          <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '7px 14px', display: 'flex', gap: 8, alignItems: 'center' }}>
+            <Clock size={13} style={{ color: '#b45309' }} />
+            <span style={{ fontSize: 12, color: '#b45309', fontWeight: 700 }}>{pendentes.length} aguardando pagamento</span>
           </div>
-        ))}
+        )}
+        {pagos.length > 0 && (
+          <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, padding: '7px 14px', display: 'flex', gap: 8, alignItems: 'center' }}>
+            <CheckCircle2 size={13} style={{ color: '#15803d' }} />
+            <span style={{ fontSize: 12, color: '#15803d', fontWeight: 700 }}>{pagos.length} pago(s)</span>
+          </div>
+        )}
+        <div style={{ marginLeft: 'auto', background: '#fdf4ff', border: '1px solid #e9d5ff', borderRadius: 8, padding: '7px 16px', display: 'flex', gap: 8, alignItems: 'center' }}>
+          <DollarSign size={13} style={{ color: '#7c3aed' }} />
+          <span style={{ fontSize: 13, color: '#7c3aed', fontWeight: 800 }}>{formatCurrency(totalGeral)}</span>
+          <span style={{ fontSize: 11, color: '#a78bfa' }}>total geral</span>
+        </div>
       </div>
 
       {/* ── Lista por colaborador ── */}

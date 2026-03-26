@@ -143,7 +143,30 @@ export default function Adiantamentos() {
       supabase.from('colaboradores').select('id,nome,chapa').eq('status','ativo').order('nome'),
       supabase.from('obras').select('id,nome').order('nome'),
     ])
-    setRows((aData ?? []) as AdiantRow[])
+
+    // ── Sincronizar status com pagamentos vinculados ──────────────────────
+    // Se o pagamento_id existe e está 'pago', marca o adiantamento como 'pago'
+    const lista = (aData ?? []) as AdiantRow[]
+    const comPagamento = lista.filter(r => r.pagamento_id && r.status !== 'pago')
+    if (comPagamento.length > 0) {
+      const ids = comPagamento.map(r => r.pagamento_id!)
+      const { data: pgts } = await supabase
+        .from('pagamentos').select('id,status').in('id', ids)
+      const pagoIds = new Set((pgts ?? []).filter(p => p.status === 'pago').map(p => p.id))
+      if (pagoIds.size > 0) {
+        // Atualizar no banco e na lista local
+        const adiToUpdate = comPagamento.filter(r => pagoIds.has(r.pagamento_id!))
+        for (const r of adiToUpdate) {
+          await supabase.from('adiantamentos').update({ status: 'pago' }).eq('id', r.id)
+        }
+        // Reflete localmente sem novo fetch
+        lista.forEach(r => {
+          if (r.pagamento_id && pagoIds.has(r.pagamento_id)) r.status = 'pago'
+        })
+      }
+    }
+
+    setRows(lista)
     setColabs(cData ?? [])
     setObras(oData ?? [])
     setLoading(false)
@@ -452,10 +475,18 @@ export default function Adiantamentos() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 6,
-                        background: badge.bg, color: badge.color, border: `1px solid ${badge.border}` }}>
-                        {TIPO_LABEL[r.tipo] ?? r.tipo}
-                      </span>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 6,
+                          background: badge.bg, color: badge.color, border: `1px solid ${badge.border}` }}>
+                          {TIPO_LABEL[r.tipo] ?? r.tipo}
+                        </span>
+                        {/* Forma de quitação quando pago */}
+                        {isPago && (
+                          <span style={{ fontSize: 10, color: r.pagamento_id ? '#7c3aed' : '#059669', fontWeight: 600 }}>
+                            {r.pagamento_id ? '💜 Via pagamento' : '✅ Via fechamento'}
+                          </span>
+                        )}
+                      </div>
                     </TableCell>
                     {/* Coluna Desconto -AD */}
                     <TableCell style={{ fontSize: 11 }}>
