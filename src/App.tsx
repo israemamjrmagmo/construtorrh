@@ -224,7 +224,7 @@ export default function App() {
                   </PrivateRoute>
                 }
               />
-              <Route path="/acidentes" element={<Navigate to="/ocorrencias" replace />} />
+              <Route path="/rescisoes" element={<Navigate to="/provisoes" replace />} />
               <Route path="/atestados" element={<Navigate to="/ocorrencias" replace />} />
               <Route
                 path="/documentos"

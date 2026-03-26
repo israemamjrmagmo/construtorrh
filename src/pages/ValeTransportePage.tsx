@@ -183,9 +183,17 @@ export default function ValeTransportePage() {
   const [loteContarSabado, setLoteContarSabado] = useState(false)
   const [loteDesconto6pct, setLoteDesconto6pct] = useState(true)
 
-  // ── Lançar em Lote (criar VT mês inteiro para todos sem VT) ──────────────
+  // ── Lançar em Lote (novo fluxo completo) ─────────────────────────────────
   const [modalLancarLote, setModalLancarLote] = useState(false)
   const [savingLancarLote, setSavingLancarLote] = useState(false)
+  // passo 1 = escolha de obra, passo 2 = lista de colaboradores
+  const [loteStep, setLoteStep] = useState<1|2>(1)
+  const [loteObraSel, setLoteObraSel] = useState<string>('todas')
+  const [loteInicio, setLoteInicio] = useState('')
+  const [loteFim, setLoteFim] = useState('')
+  const [loteDesconto6, setLoteDesconto6] = useState(true)
+  // Map colaboradorId → incluir (true) ou excluir (false)
+  const [loteIncluir, setLoteIncluir] = useState<Map<string,boolean>>(new Map())
 
   const competencia = `${ano}-${String(mes).padStart(2, '0')}`
 
@@ -572,55 +580,86 @@ export default function ValeTransportePage() {
     }
   }
 
-  // ─── Lançar em Lote: cria VT mês completo para todos sem VT da lista ────
-  async function handleLancarLote() {
-    // Colaboradores SEM VT — filtra por obra (sem filtro de status para não perder ninguém)
-    const colabsParaLoteFunc = colaboradores.filter(c => {
-      if (c.data_admissao) {
-        const ultimoDiaMes = `${competencia}-31`
-        if (c.data_admissao > ultimoDiaMes) return false
-      }
-      if (obraFiltro !== 'todas' && c.obra_id !== obraFiltro) return false
-      return true
-    })
-    const semVT = colabsParaLoteFunc.filter(c => statusVTColab(c.id) === 'sem')
-    if (semVT.length === 0) { toast.error('Nenhum colaborador sem VT nesta seleção'); return }
-    setSavingLancarLote(true)
-
+  // ── abre o modal "Lançar em Lote" no passo 1 ──────────────────────────────
+  function openLancarLote() {
     const ini = primeiroDia(competencia)
     const fim = ultimoDia(competencia)
+    setLoteInicio(ini)
+    setLoteFim(fim)
+    setLoteObraSel('todas')
+    setLoteStep(1)
+    setLoteIncluir(new Map())
+    setModalLancarLote(true)
+  }
 
-    const inserts = semVT
-      .filter(c => c.vt_valor_diario && c.vt_valor_diario > 0)
-      .map(c => {
-        const qtd  = diasUteisMes.length
-        const valorBruto = +(c.vt_valor_diario! * qtd).toFixed(2)
-        return {
-          colaborador_id:       c.id,
-          competencia,
-          data_inicio:          ini,
-          data_fim:             fim,
-          dias_trabalhados:     qtd,
-          tipo:                 c.vt_tipo ?? 'cartao',
-          valor:                valorBruto,
-          desconto_colaborador: 0,
-          valor_empresa:        valorBruto,
-          descontar_6pct:       true,
-          status:               'pendente',
-        }
-      })
+  // ── passo 1 → passo 2: montar lista de colaboradores ─────────────────────
+  function loteAvancar() {
+    const map = new Map<string,boolean>()
+    colaboradores.forEach(c => {
+      if (loteObraSel !== 'todas' && c.obra_id !== loteObraSel && !(loteObraSel === '__sem_obra' && !c.obra_id)) return
+      if (loteObraSel === '__sem_obra' && c.obra_id) return
+      map.set(c.id, true) // todos marcados por padrão
+    })
+    setLoteIncluir(map)
+    setLoteStep(2)
+  }
 
-    if (inserts.length === 0) {
-      setSavingLancarLote(false)
-      toast.error('Nenhum colaborador com valor de VT configurado')
+  // ── colaboradores para o passo 2 (filtro por obra selecionada) ────────────
+  const loteColabs = colaboradores.filter(c => {
+    if (loteObraSel === 'todas') return true
+    if (loteObraSel === '__sem_obra') return !c.obra_id
+    return c.obra_id === loteObraSel
+  })
+
+  // ── confirmar lançamento em lote ──────────────────────────────────────────
+  async function handleLancarLote() {
+    const selecionadosIds = [...loteIncluir.entries()].filter(([,v]) => v).map(([k]) => k)
+    const colabsAptos = loteColabs.filter(c =>
+      selecionadosIds.includes(c.id) && c.vt_valor_diario && c.vt_valor_diario > 0
+    )
+    if (colabsAptos.length === 0) {
+      toast.error('Nenhum colaborador apto selecionado (verifique se têm VT configurado)')
       return
     }
+    setSavingLancarLote(true)
+
+    // Calcular dias úteis no período selecionado
+    const [iniY,iniM,iniD] = loteInicio.split('-').map(Number)
+    const [fimY,fimM,fimD] = loteFim.split('-').map(Number)
+    const cursor = new Date(iniY, iniM-1, iniD)
+    const fimDate= new Date(fimY, fimM-1, fimD)
+    let qtdDias = 0
+    while (cursor <= fimDate) {
+      if (cursor.getDay() !== 0) qtdDias++ // excluir domingos
+      cursor.setDate(cursor.getDate()+1)
+    }
+    if (qtdDias === 0) qtdDias = diasUteisMes.length
+
+    const inserts = colabsAptos.map(c => {
+      const isCLT = (c.tipo_contrato ?? '').toLowerCase() === 'clt'
+      const valorBruto = +(c.vt_valor_diario! * qtdDias).toFixed(2)
+      const salarioBruto = c.salario ?? 0
+      const desc6 = (loteDesconto6 && isCLT) ? +Math.min(salarioBruto * 0.06, valorBruto).toFixed(2) : 0
+      return {
+        colaborador_id:       c.id,
+        competencia,
+        data_inicio:          loteInicio,
+        data_fim:             loteFim,
+        dias_trabalhados:     qtdDias,
+        tipo:                 c.vt_tipo ?? 'cartao',
+        valor:                valorBruto,
+        desconto_colaborador: desc6,
+        valor_empresa:        +(valorBruto - desc6).toFixed(2),
+        descontar_6pct:       loteDesconto6 && isCLT,
+        status:               'pendente',
+      }
+    })
 
     const { error } = await supabase.from('vale_transporte').insert(inserts)
     setSavingLancarLote(false)
     setModalLancarLote(false)
     if (error) { toast.error(`Erro ao lançar em lote: ${error.message}`); return }
-    toast.success(`✅ ${inserts.length} VT(s) lançados para o mês completo!`)
+    toast.success(`✅ ${inserts.length} VT(s) lançados com sucesso!`)
     fetchData()
   }
 
@@ -836,7 +875,7 @@ export default function ValeTransportePage() {
                   </div>
                   <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
                     <Button variant="outline" size="sm"
-                      onClick={() => setModalLancarLote(true)}
+                      onClick={openLancarLote}
                       className="gap-2"
                       title="Cria VT do mês inteiro para todos colaboradores sem VT na lista atual">
                       <Plus size={14} /> Lançar em Lote
@@ -1383,104 +1422,241 @@ export default function ValeTransportePage() {
       })()}
 
       {/* ══ MODAL LANÇAR EM LOTE ══ */}
-      {modalLancarLote && (() => {
-        // Usa TODOS os colaboradores ativos filtrados pela obra (igual à sidebar, sem filtro de status)
-        const colabsParaLote = colaboradores.filter(c => {
-          if (c.data_admissao) {
-            const ultimoDiaMes = `${competencia}-31`
-            if (c.data_admissao > ultimoDiaMes) return false
-          }
-          if (obraFiltro !== 'todas' && c.obra_id !== obraFiltro) return false
-          return true
-        })
-        const semVT = colabsParaLote.filter(c => statusVTColab(c.id) === 'sem')
-        const comVT = colabsParaLote.filter(c => statusVTColab(c.id) !== 'sem')
-        const semConfig = semVT.filter(c => !c.vt_valor_diario || c.vt_valor_diario <= 0)
-        const aptos = semVT.filter(c => c.vt_valor_diario && c.vt_valor_diario > 0)
-        const totalEstimado = aptos.reduce((s, c) => s + (c.vt_valor_diario! * diasUteisMes.length), 0)
+      {/* ── Modal Lançar em Lote — 2 passos ── */}
+      {modalLancarLote && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', zIndex:90, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
+          <div style={{ background:'var(--card)', borderRadius:16, width:'100%', maxWidth: loteStep===1 ? 480 : 780, maxHeight:'90vh', display:'flex', flexDirection:'column', overflow:'hidden', boxShadow:'0 25px 60px rgba(0,0,0,0.35)' }}>
 
-        return (
-          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 90, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <div style={{ background: 'var(--background)', borderRadius: 14, width: 480, maxHeight: '85vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
-              {/* header */}
-              <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid var(--border)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-                  <span style={{ fontSize: 24 }}>📦</span>
-                  <h3 style={{ fontWeight: 800, fontSize: 16, margin: 0 }}>Lançar VT em Lote</h3>
+            {/* Header */}
+            <div style={{ padding:'18px 24px 14px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+              <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                <span style={{ fontSize:22 }}>📦</span>
+                <div>
+                  <div style={{ fontWeight:800, fontSize:16 }}>Lançar VT em Lote — {fmtMes(competencia)}</div>
+                  <div style={{ fontSize:11, color:'var(--muted-foreground)' }}>
+                    {loteStep===1 ? 'Passo 1 de 2 — Selecione a obra e o período' : 'Passo 2 de 2 — Selecione os colaboradores'}
+                  </div>
                 </div>
-                <p style={{ fontSize: 12, color: 'var(--muted-foreground)', margin: 0 }}>
-                  Cria VT do mês completo ({diasUteisMes.length} dias úteis) para colaboradores <strong>sem VT</strong>
-                  {obraFiltro !== 'todas' ? <> · <strong style={{color:'#7c3aed'}}>📍 {obras.find(o=>o.id===obraFiltro)?.nome ?? ''}</strong></> : ' de todas as obras'}.
-                </p>
               </div>
+              <button onClick={() => setModalLancarLote(false)} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--muted-foreground)', lineHeight:1 }}>
+                <X size={18} />
+              </button>
+            </div>
 
-              {/* resumo */}
-              <div style={{ padding: '16px 24px', overflowY: 'auto', flex: 1 }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 16 }}>
-                  {[
-                    { label: 'Aptos para lançar', value: aptos.length, color: '#15803d', bg: '#dcfce7' },
-                    { label: 'Já têm VT',         value: comVT.length,  color: '#1d4ed8', bg: '#dbeafe' },
-                    { label: 'Sem valor config.', value: semConfig.length, color: '#b45309', bg: '#fef3c7' },
-                  ].map((s, i) => (
-                    <div key={i} style={{ background: s.bg, borderRadius: 8, padding: '10px 12px', textAlign: 'center' }}>
-                      <div style={{ fontSize: 22, fontWeight: 800, color: s.color }}>{s.value}</div>
-                      <div style={{ fontSize: 10, color: s.color, fontWeight: 600 }}>{s.label}</div>
+            {/* ── PASSO 1 ── */}
+            {loteStep === 1 && (
+              <div style={{ padding:'20px 24px', overflowY:'auto', flex:1, display:'flex', flexDirection:'column', gap:20 }}>
+
+                {/* Seleção de obra */}
+                <div>
+                  <Label style={{ fontWeight:700, fontSize:13 }}>🏗️ Obra</Label>
+                  <div style={{ fontSize:12, color:'var(--muted-foreground)', marginBottom:8 }}>Escolha uma obra ou todas. "Sem obra" inclui colaboradores sem alocação.</div>
+                  <Select value={loteObraSel} onValueChange={setLoteObraSel}>
+                    <SelectTrigger style={{ height:38 }}><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="todas">🌐 Todas as obras</SelectItem>
+                      <SelectItem value="__sem_obra">📋 Sem obra alocada</SelectItem>
+                      {obras.map(o => <SelectItem key={o.id} value={o.id}>🏗️ {o.nome}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Período */}
+                <div>
+                  <Label style={{ fontWeight:700, fontSize:13 }}>📅 Período de Referência</Label>
+                  <div style={{ fontSize:12, color:'var(--muted-foreground)', marginBottom:8 }}>Datas de início e fim do VT. Os dias úteis serão calculados automaticamente.</div>
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+                    <div>
+                      <Label className="text-xs">Data Início</Label>
+                      <Input type="date" value={loteInicio} onChange={e => setLoteInicio(e.target.value)} className="mt-1 h-9" />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Data Fim</Label>
+                      <Input type="date" value={loteFim} onChange={e => setLoteFim(e.target.value)} className="mt-1 h-9" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Desconto 6% */}
+                <div style={{ background: loteDesconto6 ? '#fefce8' : 'var(--muted)', border:`1px solid ${loteDesconto6?'#fde68a':'var(--border)'}`, borderRadius:10, padding:'14px 16px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                  <div>
+                    <div style={{ fontWeight:700, fontSize:13, color: loteDesconto6 ? '#92400e' : 'var(--foreground)' }}>
+                      Descontar 6% do salário bruto — somente CLT
+                    </div>
+                    <div style={{ fontSize:11, color: loteDesconto6 ? '#b45309' : 'var(--muted-foreground)', marginTop:3 }}>
+                      {loteDesconto6
+                        ? '⚠ O desconto de 6% sobre o salário bruto será aplicado apenas para colaboradores CLT'
+                        : 'Empresa arca com 100% do VT para todos — sem desconto no holerite'}
+                    </div>
+                  </div>
+                  <button onClick={() => setLoteDesconto6(v => !v)} style={{ background:'none', border:'none', cursor:'pointer', color: loteDesconto6 ? '#b45309' : 'var(--muted-foreground)', flexShrink:0 }}>
+                    {loteDesconto6 ? <ToggleRight size={34} /> : <ToggleLeft size={34} />}
+                  </button>
+                </div>
+
+                {/* Preview contagem */}
+                <div style={{ background:'var(--muted)', borderRadius:8, padding:'12px 14px', fontSize:12 }}>
+                  <div style={{ fontWeight:700, marginBottom:6, color:'var(--foreground)' }}>Resumo da seleção:</div>
+                  <div style={{ color:'var(--muted-foreground)' }}>
+                    {(() => {
+                      const cnt = loteObraSel === 'todas' ? colaboradores.length
+                        : loteObraSel === '__sem_obra' ? colaboradores.filter(c => !c.obra_id).length
+                        : colaboradores.filter(c => c.obra_id === loteObraSel).length
+                      const nomeObra = loteObraSel === 'todas' ? 'todas as obras'
+                        : loteObraSel === '__sem_obra' ? 'sem obra alocada'
+                        : obras.find(o => o.id === loteObraSel)?.nome ?? ''
+                      return `${cnt} colaborador(es) de "${nomeObra}" | Período: ${loteInicio || '—'} → ${loteFim || '—'}`
+                    })()}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ── PASSO 2 ── */}
+            {loteStep === 2 && (() => {
+              const selecionadosIds = [...loteIncluir.entries()].filter(([,v]) => v).map(([k]) => k)
+              const semConfig = loteColabs.filter(c => selecionadosIds.includes(c.id) && (!c.vt_valor_diario || c.vt_valor_diario <= 0))
+              // calcular dias do período
+              let qtdDias = diasUteisMes.length
+              if (loteInicio && loteFim) {
+                const [iy,im,id2] = loteInicio.split('-').map(Number)
+                const [fy,fm,fd]  = loteFim.split('-').map(Number)
+                const cur = new Date(iy,im-1,id2)
+                const fimD = new Date(fy,fm-1,fd)
+                let cnt2=0
+                while(cur<=fimD){if(cur.getDay()!==0)cnt2++;cur.setDate(cur.getDate()+1)}
+                if(cnt2>0) qtdDias=cnt2
+              }
+              const totalEstimado = loteColabs
+                .filter(c => selecionadosIds.includes(c.id) && c.vt_valor_diario && c.vt_valor_diario > 0)
+                .reduce((s,c) => {
+                  const isCLT = (c.tipo_contrato??'').toLowerCase()==='clt'
+                  const bruto = +(c.vt_valor_diario! * qtdDias).toFixed(2)
+                  const desc  = (loteDesconto6 && isCLT) ? +Math.min((c.salario??0)*0.06, bruto).toFixed(2) : 0
+                  return s + (bruto - desc)
+                }, 0)
+
+              // agrupar por obra
+              const obraMap = new Map<string, typeof loteColabs>()
+              loteColabs.forEach(c => {
+                const key = c.obra_nome || '(Sem obra)'
+                if (!obraMap.has(key)) obraMap.set(key, [])
+                obraMap.get(key)!.push(c)
+              })
+
+              return (
+                <div style={{ overflowY:'auto', flex:1 }}>
+                  {/* barra de ações */}
+                  <div style={{ padding:'12px 24px', background:'var(--muted)', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', gap:12, flexWrap:'wrap' }}>
+                    <button onClick={() => { const m=new Map<string,boolean>(); loteColabs.forEach(c=>m.set(c.id,true)); setLoteIncluir(m) }}
+                      style={{ fontSize:12, fontWeight:600, color:'#1d4ed8', background:'none', border:'none', cursor:'pointer' }}>
+                      ✓ Marcar todos
+                    </button>
+                    <button onClick={() => { const m=new Map<string,boolean>(); loteColabs.forEach(c=>m.set(c.id,false)); setLoteIncluir(m) }}
+                      style={{ fontSize:12, fontWeight:600, color:'#dc2626', background:'none', border:'none', cursor:'pointer' }}>
+                      ✗ Desmarcar todos
+                    </button>
+                    <div style={{ flex:1 }} />
+                    <div style={{ fontSize:13, fontWeight:700 }}>
+                      {selecionadosIds.length} selecionado(s) · Empresa: <span style={{ color:'#15803d' }}>{formatCurrency(totalEstimado)}</span>
+                    </div>
+                  </div>
+
+                  {/* Lista por obra */}
+                  {[...obraMap.entries()].map(([obraNome, colabs]) => (
+                    <div key={obraNome}>
+                      <div style={{ padding:'8px 24px', background:'#f8fafc', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', gap:8 }}>
+                        <Building2 size={13} style={{ color:'#64748b' }} />
+                        <span style={{ fontSize:12, fontWeight:700, color:'#334155' }}>{obraNome}</span>
+                        <span style={{ fontSize:11, color:'#94a3b8' }}>({colabs.length} colaboradores)</span>
+                        <button onClick={() => {
+                          const m = new Map(loteIncluir)
+                          const todos = colabs.every(c => m.get(c.id))
+                          colabs.forEach(c => m.set(c.id, !todos))
+                          setLoteIncluir(m)
+                        }} style={{ marginLeft:8, fontSize:11, color:'#1d4ed8', background:'none', border:'none', cursor:'pointer', fontWeight:600 }}>
+                          {colabs.every(c => loteIncluir.get(c.id)) ? 'Desmarcar grupo' : 'Marcar grupo'}
+                        </button>
+                      </div>
+                      {colabs.map((c, i) => {
+                        const marcado = loteIncluir.get(c.id) ?? false
+                        const isCLT = (c.tipo_contrato??'').toLowerCase()==='clt'
+                        const temVT  = c.vt_valor_diario && c.vt_valor_diario > 0
+                        const bruto  = temVT ? +(c.vt_valor_diario! * qtdDias).toFixed(2) : 0
+                        const desc6  = (loteDesconto6 && isCLT && temVT) ? +Math.min((c.salario??0)*0.06, bruto).toFixed(2) : 0
+                        const empresa= bruto - desc6
+                        return (
+                          <div key={c.id} onClick={() => { const m=new Map(loteIncluir); m.set(c.id,!marcado); setLoteIncluir(m) }}
+                            style={{ display:'flex', alignItems:'center', gap:12, padding:'9px 24px', borderBottom:'1px solid var(--border)', cursor:'pointer',
+                              background: !marcado ? '#f8fafc' : (i%2===0?'var(--card)':'transparent'),
+                              opacity: !marcado ? 0.5 : 1, transition:'all 100ms' }}>
+                            <div style={{ flexShrink:0, width:20, height:20, borderRadius:5, border:`2px solid ${marcado?'#1d4ed8':'#cbd5e1'}`, background:marcado?'#1d4ed8':'transparent', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                              {marcado && <span style={{ color:'#fff', fontSize:12, lineHeight:1 }}>✓</span>}
+                            </div>
+                            <div style={{ flex:1, minWidth:0 }}>
+                              <div style={{ fontWeight:600, fontSize:13 }}>{c.nome}</div>
+                              <div style={{ fontSize:11, color:'var(--muted-foreground)' }}>
+                                {c.funcao_nome || '—'} ·&nbsp;
+                                <span style={{ color: isCLT ? '#1d4ed8' : '#b45309', fontWeight:600 }}>{isCLT ? 'CLT' : (c.tipo_contrato||'Autôn.')}</span>
+                                {!temVT && <span style={{ color:'#ef4444', marginLeft:6 }}>⚠ Sem VT configurado</span>}
+                              </div>
+                            </div>
+                            {temVT ? (
+                              <div style={{ textAlign:'right', fontSize:12 }}>
+                                <div style={{ fontWeight:700, color:'#1d4ed8' }}>{formatCurrency(empresa)}</div>
+                                {desc6>0 && <div style={{ color:'#b45309', fontSize:10 }}>-6%: {formatCurrency(desc6)}</div>}
+                                <div style={{ color:'var(--muted-foreground)', fontSize:10 }}>{qtdDias} dias</div>
+                              </div>
+                            ) : (
+                              <div style={{ fontSize:11, color:'#ef4444' }}>—</div>
+                            )}
+                          </div>
+                        )
+                      })}
                     </div>
                   ))}
+
+                  {semConfig.length > 0 && (
+                    <div style={{ margin:'12px 24px', background:'#fef3c7', border:'1px solid #fde68a', borderRadius:8, padding:'10px 12px', fontSize:12, color:'#92400e' }}>
+                      <strong>⚠ {semConfig.length} colaborador(es) selecionado(s) sem VT configurado</strong> não serão lançados: {semConfig.map(c=>c.nome).join(', ')}
+                    </div>
+                  )}
                 </div>
+              )
+            })()}
 
-                {aptos.length > 0 ? (
-                  <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
-                    <div style={{ background: 'var(--muted)', padding: '6px 12px', fontSize: 11, fontWeight: 700, color: 'var(--muted-foreground)', textTransform: 'uppercase' }}>
-                      Colaboradores que receberão VT
-                    </div>
-                    {aptos.map(c => (
-                      <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', borderTop: '1px solid var(--border)', fontSize: 12 }}>
-                        <div>
-                          <span style={{ fontWeight: 600 }}>{c.nome}</span>
-                          <span style={{ color: 'var(--muted-foreground)', marginLeft: 8 }}>{c.funcao_nome}</span>
-                        </div>
-                        <span style={{ fontWeight: 700, color: '#15803d' }}>
-                          {formatCurrency(c.vt_valor_diario! * diasUteisMes.length)}
-                        </span>
-                      </div>
-                    ))}
-                    <div style={{ background: 'var(--muted)', padding: '8px 12px', display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 800 }}>
-                      <span>Total estimado ({aptos.length} colaborador{aptos.length !== 1 ? 'es' : ''})</span>
-                      <span style={{ color: '#15803d' }}>{formatCurrency(totalEstimado)}</span>
-                    </div>
-                  </div>
-                ) : (
-                  <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--muted-foreground)', fontSize: 13 }}>
-                    ⚠️ Nenhum colaborador apto. Configure o valor diário de VT em cada colaborador.
-                  </div>
-                )}
-
-                {semConfig.length > 0 && (
-                  <div style={{ marginTop: 12, background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 12px', fontSize: 12, color: '#92400e' }}>
-                    <strong>⚠ {semConfig.length} colaborador(es) sem valor de VT configurado</strong> não serão incluídos:
-                    {' '}{semConfig.map(c => c.nome).join(', ')}
-                  </div>
-                )}
+            {/* Footer */}
+            <div style={{ padding:'14px 24px', borderTop:'1px solid var(--border)', display:'flex', alignItems:'center', justifyContent:'space-between', gap:10 }}>
+              <div style={{ fontSize:12, color:'var(--muted-foreground)' }}>
+                {loteStep === 2 && `Período: ${loteInicio} → ${loteFim}`}
               </div>
-
-              {/* footer */}
-              <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-                <Button variant="outline" onClick={() => setModalLancarLote(false)} disabled={savingLancarLote}>Cancelar</Button>
-                <Button
-                  disabled={aptos.length === 0 || savingLancarLote}
-                  onClick={handleLancarLote}
-                  style={{ background: '#15803d', color: '#fff', gap: 6 }}
-                >
-                  {savingLancarLote
-                    ? <><Loader2 size={14} className="animate-spin" /> Lançando…</>
-                    : <><Plus size={14} /> Lançar {aptos.length} VT(s)</>}
+              <div style={{ display:'flex', gap:10 }}>
+                {loteStep === 2 && (
+                  <Button variant="outline" onClick={() => setLoteStep(1)} disabled={savingLancarLote}>
+                    ← Voltar
+                  </Button>
+                )}
+                <Button variant="outline" onClick={() => setModalLancarLote(false)} disabled={savingLancarLote}>
+                  Cancelar
                 </Button>
+                {loteStep === 1 ? (
+                  <Button onClick={loteAvancar} style={{ background:'#1d4ed8', color:'#fff' }}
+                    disabled={!loteInicio || !loteFim}>
+                    Próximo: selecionar colaboradores →
+                  </Button>
+                ) : (
+                  <Button onClick={handleLancarLote} disabled={savingLancarLote}
+                    style={{ background:'#15803d', color:'#fff', gap:6 }}>
+                    {savingLancarLote
+                      ? <><Loader2 size={14} className="animate-spin" /> Lançando…</>
+                      : <><Plus size={14} /> Lançar VT em Lote</>}
+                  </Button>
+                )}
               </div>
             </div>
           </div>
-        )
-      })()}
+        </div>
+      )}
     </div>
   )
 }
