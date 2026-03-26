@@ -955,11 +955,94 @@ function FichaCompleta({ fichaData, onPDF }: { fichaData: Record<string,any>; on
         {pontos.length === 0
           ? <div style={{ textAlign: 'center', padding: 16, color: 'var(--muted-foreground)', fontSize: 12, fontStyle: 'italic' }}>Nenhum período de ponto</div>
           : pontos.map((p: any) => {
-              const linhas = regs.filter((r: any) => r.lancamento_id === p.id || (r.colaborador_id === d.id && r.data >= `${p.mes_referencia}-01` && r.data <= `${p.mes_referencia}-31`))
-              const faltasP = linhas.filter((r: any) => r.falta).length
-              const hExtraP = linhas.reduce((s: number, r: any) => s + (r.horas_extras ?? 0), 0)
+              const mesIni = `${p.mes_referencia}-01`
+              const mesFim = `${p.mes_referencia}-31`
+
+              // registros de ponto do período
+              const linhas = regs.filter((r: any) =>
+                r.lancamento_id === p.id ||
+                (r.colaborador_id === d.id && r.data >= mesIni && r.data <= mesFim)
+              )
+
+              // atestados que cobrem dias deste período
+              const atsPeriodo = ats.filter((a: any) => {
+                if (!a.data) return false
+                const inicio = a.data
+                const dias   = a.com_afastamento ? (a.dias_afastamento ?? 1) : 1
+                const fim    = new Date(inicio)
+                fim.setDate(fim.getDate() + dias - 1)
+                const fimStr = fim.toISOString().slice(0, 10)
+                return fimStr >= mesIni && inicio <= mesFim
+              })
+
+              // suspensões deste período
+              const suspsPeriodo = advs.filter((a: any) =>
+                a.tipo === 'suspensao' &&
+                a.data_advertencia >= mesIni &&
+                a.data_advertencia <= mesFim
+              )
+
+              // mapa data → evento para enriquecimento
+              const eventoMap: Record<string, { tipo: 'atestado' | 'suspensao'; ref: any }> = {}
+              atsPeriodo.forEach((a: any) => {
+                const dias = a.com_afastamento ? (a.dias_afastamento ?? 1) : 1
+                for (let i = 0; i < dias; i++) {
+                  const d2 = new Date(a.data)
+                  d2.setDate(d2.getDate() + i)
+                  const ds = d2.toISOString().slice(0, 10)
+                  if (ds >= mesIni && ds <= mesFim) eventoMap[ds] = { tipo: 'atestado', ref: a }
+                }
+              })
+              suspsPeriodo.forEach((a: any) => {
+                const dias = a.dias_suspensao ?? 1
+                for (let i = 0; i < dias; i++) {
+                  const d2 = new Date(a.data_advertencia)
+                  d2.setDate(d2.getDate() + i)
+                  const ds = d2.toISOString().slice(0, 10)
+                  if (ds >= mesIni && ds <= mesFim) eventoMap[ds] = { tipo: 'suspensao', ref: a }
+                }
+              })
+
+              // enriquecer linhas existentes e adicionar dias de atestado/suspensão que não têm registro
+              const datasExistentes = new Set(linhas.map((r: any) => r.data))
+              const linhasExtras: any[] = []
+              Object.entries(eventoMap).forEach(([data, ev]) => {
+                if (!datasExistentes.has(data)) {
+                  linhasExtras.push({
+                    data,
+                    presente: false,
+                    falta: false,
+                    _evento: ev.tipo,
+                    _ref: ev.ref,
+                  })
+                }
+              })
+
+              // linhas finais: registros enriquecidos + dias extras, ordenados por data
+              const todasLinhas = [
+                ...linhas.map((r: any) => ({
+                  ...r,
+                  _evento: eventoMap[r.data]?.tipo ?? null,
+                  _ref:    eventoMap[r.data]?.ref  ?? null,
+                })),
+                ...linhasExtras,
+              ].sort((a, b) => a.data.localeCompare(b.data))
+
+              const faltasP  = todasLinhas.filter((r: any) => r.falta).length
+              const hExtraP  = todasLinhas.reduce((s: number, r: any) => s + (Number(r.horas_extras) || 0), 0)
+              const atestP   = atsPeriodo.length
+              const suspP    = suspsPeriodo.length
+
               return (
-                <PeriodoPonto key={p.id} periodo={p} registros={linhas} faltas={faltasP} hExtra={hExtraP} />
+                <PeriodoPonto
+                  key={p.id}
+                  periodo={p}
+                  registros={todasLinhas}
+                  faltas={faltasP}
+                  hExtra={hExtraP}
+                  atestados={atestP}
+                  suspensoes={suspP}
+                />
               )
             })}
       </Sec>
@@ -1065,11 +1148,38 @@ function FichaCompleta({ fichaData, onPDF }: { fichaData: Record<string,any>; on
 }
 
 // ── Sub-componente para cada período de ponto ─────────────────────────────────
-function PeriodoPonto({ periodo, registros, faltas, hExtra }: { periodo: any; registros: any[]; faltas: number; hExtra: number }) {
+function PeriodoPonto({ periodo, registros, faltas, hExtra, atestados = 0, suspensoes = 0 }: {
+  periodo: any; registros: any[]; faltas: number; hExtra: number
+  atestados?: number; suspensoes?: number
+}) {
   const [aberto, setAberto] = useState(false)
   const statusCor: Record<string, string> = { rascunho: '#b45309', fechado: '#1d4ed8', aprovado: '#15803d', liberado: '#7c3aed', pago: '#047857' }
   const statusBgC: Record<string, string> = { rascunho: '#fef3c7', fechado: '#eff6ff', aprovado: '#dcfce7', liberado: '#ede9fe', pago: '#d1fae5' }
   const hTrab = registros.reduce((s: number, r: any) => s + (Number(r.horas_trabalhadas) || 0), 0)
+
+  // helpers de evento por linha
+  function eventoLabel(r: any): { label: string; cor: string; bg: string } | null {
+    if (r._evento === 'atestado') {
+      const tipo = r._ref?.tipo ?? 'medico'
+      const cid  = r._ref?.cid  ? ` · CID ${r._ref.cid}` : ''
+      const med  = r._ref?.medico ? ` · Dr. ${r._ref.medico}` : ''
+      const labels: Record<string, string> = { medico: '🩺 Atestado Médico', comparecimento: '📋 Comparecimento', declaracao: '📄 Declaração' }
+      return { label: (labels[tipo] ?? '🩺 Atestado') + cid + med, cor: '#1d4ed8', bg: 'rgba(59,130,246,0.08)' }
+    }
+    if (r._evento === 'suspensao') {
+      const dias = r._ref?.dias_suspensao ?? 1
+      return { label: `🚫 Suspensão (${dias}d) · ${r._ref?.motivo ?? ''}`, cor: '#dc2626', bg: 'rgba(239,68,68,0.08)' }
+    }
+    return null
+  }
+
+  function rowBg(r: any, i: number) {
+    if (r._evento === 'atestado')  return 'rgba(59,130,246,0.06)'
+    if (r._evento === 'suspensao') return 'rgba(239,68,68,0.06)'
+    if (r.falta)                   return 'rgba(239,68,68,0.05)'
+    return i % 2 === 0 ? 'transparent' : 'rgba(0,0,0,0.015)'
+  }
+
   return (
     <div style={{ border: '1px solid var(--border)', borderRadius: 8, marginBottom: 8, overflow: 'hidden' }}>
       {/* cabeçalho do período */}
@@ -1079,11 +1189,13 @@ function PeriodoPonto({ periodo, registros, faltas, hExtra }: { periodo: any; re
           <span style={{ fontSize: 11, color: 'var(--muted-foreground)' }}>{periodo.obras?.nome ?? 'Sem obra'}</span>
           <span style={{ background: statusBgC[periodo.status] ?? '#f1f5f9', color: statusCor[periodo.status] ?? '#374151', borderRadius: 4, padding: '1px 7px', fontSize: 10, fontWeight: 700 }}>{periodo.status}</span>
         </div>
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center', fontSize: 11, color: 'var(--muted-foreground)' }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 11, color: 'var(--muted-foreground)', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           <span>📅 {registros.length} dias</span>
           <span>⏱ {hTrab.toFixed(1)}h</span>
-          {faltas > 0 && <span style={{ color: '#dc2626', fontWeight: 700 }}>✗ {faltas} faltas</span>}
-          {hExtra > 0 && <span style={{ color: '#15803d', fontWeight: 700 }}>+{hExtra.toFixed(1)}h extras</span>}
+          {faltas > 0    && <span style={{ color: '#dc2626',  fontWeight: 700 }}>✗ {faltas} faltas</span>}
+          {hExtra > 0    && <span style={{ color: '#15803d',  fontWeight: 700 }}>+{hExtra.toFixed(1)}h extras</span>}
+          {atestados > 0 && <span style={{ color: '#1d4ed8',  fontWeight: 700 }}>🩺 {atestados} atestado{atestados > 1 ? 's' : ''}</span>}
+          {suspensoes > 0 && <span style={{ color: '#b45309', fontWeight: 700 }}>🚫 {suspensoes} suspensão</span>}
           {aberto ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
         </div>
       </button>
@@ -1094,39 +1206,44 @@ function PeriodoPonto({ periodo, registros, faltas, hExtra }: { periodo: any; re
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
             <thead>
               <tr style={{ background: 'var(--muted)' }}>
-                {['Data','Status','Entrada','S.Almoço','Retorno','Saída','H.Trab.','H.Extra','Obs'].map(h => (
+                {['Data','Status / Evento','Entrada','S.Almoço','Retorno','Saída','H.Trab.','H.Extra','Obs'].map(h => (
                   <th key={h} style={{ padding: '5px 10px', textAlign: 'center', fontWeight: 700, fontSize: 10, color: 'var(--muted-foreground)', borderBottom: '1px solid var(--border)', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {registros.map((r, i) => (
-                <tr key={i} style={{ borderBottom: '1px solid var(--border)', background: r.falta ? 'rgba(239,68,68,0.05)' : i % 2 === 0 ? 'transparent' : 'rgba(0,0,0,0.015)' }}>
-                  <td style={{ padding: '4px 10px', fontWeight: 600, fontSize: 12, whiteSpace: 'nowrap' }}>{fmtDate(r.data)}</td>
-                  <td style={{ padding: '4px 10px', textAlign: 'center' }}>
-                    {r.falta
-                      ? <span style={{ fontWeight: 700, color: '#dc2626', fontSize: 10 }}>✗ FALTA</span>
-                      : <span style={{ fontWeight: 700, color: '#15803d', fontSize: 10 }}>✓ Presente</span>}
-                  </td>
-                  {/* horários em fonte monoespaçada */}
-                  {(['hora_entrada','saida_almoco','retorno_almoco','hora_saida'] as const).map(campo => (
-                    <td key={campo} style={{ padding: '4px 10px', textAlign: 'center', fontFamily: 'monospace', fontSize: 11, color: r[campo] ? 'var(--foreground)' : 'var(--muted-foreground)' }}>
-                      {r[campo] || '—'}
+              {registros.map((r, i) => {
+                const ev = eventoLabel(r)
+                return (
+                  <tr key={i} style={{ borderBottom: '1px solid var(--border)', background: rowBg(r, i) }}>
+                    <td style={{ padding: '4px 10px', fontWeight: 600, fontSize: 12, whiteSpace: 'nowrap' }}>{fmtDate(r.data)}</td>
+                    <td style={{ padding: '4px 10px', textAlign: 'left', minWidth: 160 }}>
+                      {ev
+                        ? <span style={{ fontWeight: 700, color: ev.cor, fontSize: 10, background: ev.bg, borderRadius: 4, padding: '2px 6px', display: 'inline-block' }}>{ev.label}</span>
+                        : r.falta
+                          ? <span style={{ fontWeight: 700, color: '#dc2626', fontSize: 10 }}>✗ FALTA</span>
+                          : r.presente !== false
+                            ? <span style={{ fontWeight: 700, color: '#15803d', fontSize: 10 }}>✓ Presente</span>
+                            : <span style={{ color: 'var(--muted-foreground)', fontSize: 10 }}>—</span>}
                     </td>
-                  ))}
-                  <td style={{ padding: '4px 10px', textAlign: 'center', fontWeight: 600 }}>
-                    {r.horas_trabalhadas ? r.horas_trabalhadas + 'h' : '—'}
-                  </td>
-                  <td style={{ padding: '4px 10px', textAlign: 'center', fontWeight: 700, color: Number(r.horas_extras) > 0 ? '#15803d' : 'var(--muted-foreground)' }}>
-                    {Number(r.horas_extras) > 0 ? '+' + r.horas_extras + 'h' : '—'}
-                  </td>
-                  <td style={{ padding: '4px 10px', fontSize: 10, color: 'var(--muted-foreground)', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {(r.observacoes ?? r.justificativa ?? '').substring(0, 40)}
-                  </td>
-                </tr>
-              ))}
+                    {(['hora_entrada','saida_almoco','retorno_almoco','hora_saida'] as const).map(campo => (
+                      <td key={campo} style={{ padding: '4px 10px', textAlign: 'center', fontFamily: 'monospace', fontSize: 11, color: r[campo] ? 'var(--foreground)' : 'var(--muted-foreground)' }}>
+                        {r[campo] || (ev ? <span style={{ color: ev.cor, fontSize: 10 }}>—</span> : '—')}
+                      </td>
+                    ))}
+                    <td style={{ padding: '4px 10px', textAlign: 'center', fontWeight: 600 }}>
+                      {r.horas_trabalhadas ? r.horas_trabalhadas + 'h' : '—'}
+                    </td>
+                    <td style={{ padding: '4px 10px', textAlign: 'center', fontWeight: 700, color: Number(r.horas_extras) > 0 ? '#15803d' : 'var(--muted-foreground)' }}>
+                      {Number(r.horas_extras) > 0 ? '+' + r.horas_extras + 'h' : '—'}
+                    </td>
+                    <td style={{ padding: '4px 10px', fontSize: 10, color: 'var(--muted-foreground)', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {(r.observacoes ?? r.justificativa ?? r._ref?.observacoes ?? '').substring(0, 40)}
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
-            {/* linha de totais */}
             <tfoot>
               <tr style={{ background: 'var(--muted)', fontWeight: 700 }}>
                 <td colSpan={6} style={{ padding: '5px 10px', fontSize: 11 }}>TOTAIS</td>
