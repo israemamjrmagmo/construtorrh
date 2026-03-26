@@ -755,6 +755,14 @@ export default function ValeTransportePage() {
           <p style={{ fontSize: 13, color: 'var(--muted-foreground)', marginTop: 2 }}>Controle de vale transporte por colaborador</p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Button variant="outline" className="gap-2" onClick={openLancarLote}
+            title="Cria VT do mês inteiro para todos colaboradores sem VT na lista atual">
+            <Plus size={14} /> Lançar em Lote
+          </Button>
+          <Button variant="outline" className="gap-2" onClick={() => { setObraLote('todas'); setSelecionados(new Set()); setModalLote(true) }}>
+            <Building2 size={15} /> Fechar em Lote
+          </Button>
+          <div style={{ width: 1, height: 24, background: 'var(--border)', margin: '0 4px' }} />
           <button onClick={() => navMes(-1)} style={{ width: 32, height: 32, border: '1px solid var(--border)', borderRadius: 6, background: 'var(--card)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <ChevronLeft size={16} />
           </button>
@@ -887,15 +895,6 @@ export default function ValeTransportePage() {
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-                    <Button variant="outline" size="sm"
-                      onClick={openLancarLote}
-                      className="gap-2"
-                      title="Cria VT do mês inteiro para todos colaboradores sem VT na lista atual">
-                      <Plus size={14} /> Lançar em Lote
-                    </Button>
-                    <Button variant="outline" onClick={() => { setObraLote(colabSel?.obra_id ?? 'todas'); setSelecionados(new Set()); setModalLote(true) }} className="gap-2">
-                      <Building2 size={15} /> Fechar em Lote
-                    </Button>
                     <Button onClick={openCreate} disabled={!pode} title={motivo} className="gap-2">
                       <Plus size={15} /> Novo Lançamento
                     </Button>

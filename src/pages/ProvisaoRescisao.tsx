@@ -347,7 +347,11 @@ export default function ProvisaoRescisao() {
             <Calculator size={24} color="#93c5fd" />
           </div>
           <div>
-            <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>Provisões &amp; Rescisão</h1>
+            <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>Provisões &amp; Rescisão
+              <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 99, background: '#dbeafe', color: '#1d4ed8', fontWeight: 700, marginLeft: 8, verticalAlign: 'middle' }}>
+                CLT apenas
+              </span>
+            </h1>
             <p style={{ fontSize: 13, color: 'var(--muted-foreground)', margin: '2px 0 0' }}>
               Base: Horas CLT + DSR · Exclui produção e prêmios · FGTS 8% · Férias 11,11% · 13º 8,33%
             </p>
@@ -464,6 +468,12 @@ export default function ProvisaoRescisao() {
             </div>
 
             {/* Duas colunas: por colaborador + por mês */}
+            <div style={{ display: 'flex', alignItems: 'center', marginBottom: 10 }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted-foreground)', textTransform: 'uppercase', letterSpacing: 1 }}>Detalhamento</span>
+              <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 99, background: '#dbeafe', color: '#1d4ed8', fontWeight: 700, marginLeft: 8 }}>
+                CLT apenas
+              </span>
+            </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
 
               {/* Por colaborador */}

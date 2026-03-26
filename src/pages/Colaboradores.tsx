@@ -3043,35 +3043,6 @@ function FuncaoSection({
               })}
             </div>
           )}
-          {/* Formulário novo período */}
-          <div style={{padding:'12px',borderRadius:8,border:'1px dashed var(--border)',background:'var(--muted)'}}>
-            <div style={{fontSize:11,fontWeight:700,color:'var(--muted-foreground)',marginBottom:8}}>➕ Novo período de contrato</div>
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 2fr auto',gap:8,alignItems:'end'}}>
-              <div>
-                <div style={{fontSize:10,color:'var(--muted-foreground)',marginBottom:4}}>Tipo</div>
-                <select value={novoTipoContrato} onChange={e=>setNovoTipoContrato(e.target.value as any)}
-                  style={{width:'100%',padding:'6px 8px',borderRadius:6,border:'1px solid var(--border)',background:'var(--background)',fontSize:12}}>
-                  <option value="clt">CLT</option>
-                  <option value="autonomo">Autônomo</option>
-                  <option value="pj">PJ</option>
-                </select>
-              </div>
-              <div>
-                <div style={{fontSize:10,color:'var(--muted-foreground)',marginBottom:4}}>Data início</div>
-                <input type="date" value={novoDataInicio} onChange={e=>setNovoDataInicio(e.target.value)}
-                  style={{width:'100%',padding:'6px 8px',borderRadius:6,border:'1px solid var(--border)',background:'var(--background)',fontSize:12}} />
-              </div>
-              <div>
-                <div style={{fontSize:10,color:'var(--muted-foreground)',marginBottom:4}}>Observação (opcional)</div>
-                <input value={novoObs} onChange={e=>setNovoObs(e.target.value)} placeholder="ex: promoção, mudança de vínculo..."
-                  style={{width:'100%',padding:'6px 8px',borderRadius:6,border:'1px solid var(--border)',background:'var(--background)',fontSize:12}} />
-              </div>
-              <button disabled={!novoDataInicio||salvandoPeriodo} onClick={handleSalvarPeriodo}
-                style={{padding:'6px 14px',borderRadius:6,border:'none',background:novoDataInicio?'#1d4ed8':'#94a3b8',color:'white',fontSize:12,cursor:novoDataInicio?'pointer':'not-allowed',fontWeight:600}}>
-                {salvandoPeriodo?'…':'Salvar'}
-              </button>
-            </div>
-          </div>
         </Sec>
       )}
 

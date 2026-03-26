@@ -119,9 +119,9 @@ export default function EncargosPage() {
         setLinhas([]); setCalculado(true); return
       }
 
-      // 2. Somente CLT
+      // 2. Somente CLT — autônomos/PJ sem tipo_contrato definido são excluídos
       const lancsCLT = (lancsRaw as any[]).filter(
-        l => (l.colaboradores?.tipo_contrato ?? 'clt') === 'clt'
+        l => l.colaboradores?.tipo_contrato === 'clt'
       )
       if (lancsCLT.length === 0) {
         setLinhas([]); setCalculado(true); return
@@ -423,6 +423,12 @@ export default function EncargosPage() {
           </div>
 
           {/* ── Tabela ────────────────────────────────────────────────────────── */}
+          <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--foreground)' }}>Detalhamento por Colaborador</span>
+            <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 99, background: '#dbeafe', color: '#1d4ed8', fontWeight: 700, marginLeft: 8 }}>
+              CLT apenas
+            </span>
+          </div>
           {linhasFiltradas.length === 0 ? (
             <EmptyState
               icon={<Briefcase size={32} />}
