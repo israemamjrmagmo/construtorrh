@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { getPortalSession } from '@/hooks/usePortalAuth'
 import PortalLayout from './PortalLayout'
-import { ChevronLeft, ChevronRight, Check, X, Clock, Minus, Plus, Save, Loader2, FileText, UserPlus, BarChart2 } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Check, X, Clock, Minus, Plus, Save, Loader2, FileText, UserPlus, BarChart2, Trash2 } from 'lucide-react'
 
 // ── Tipos ────────────────────────────────────────────────────────────────────
 type StatusPonto = 'presente' | 'falta' | 'meio_periodo' | 'falta_justificada' | 'producao'
@@ -57,6 +57,14 @@ export default function PortalPonto() {
   const [avulsoSaving,   setAvulsoSaving]   = useState(false)
   const [avulsoSucesso,  setAvulsoSucesso]  = useState(false)
   const [avulsoErro,     setAvulsoErro]     = useState('')
+
+  const [confirmExcluir, setConfirmExcluir] = useState<{colabId:string; nome:string; id:string} | null>(null)
+  const [excluindo, setExcluindo]           = useState(false)
+
+  // tela de conferência antes de salvar
+  interface ConfPonto { colabId:string; nome:string; chapa?:string; funcao?:string; status:StatusPonto; he:number; hf:number; obs:string }
+  const [pendConf, setPendConf]   = useState<ConfPonto | null>(null)
+  const [confSaving, setConfSaving] = useState(false)
 
   // ── Conflito de obra ───────────────────────────────────────────────────────
   // Guarda: colabId → obra_id já lançada no dia (de OUTRA obra)
@@ -127,6 +135,41 @@ export default function PortalPonto() {
   useEffect(() => { if (colaboradores.length) checkConflitos(colaboradores.map(c=>c.id), dataSel, obraId) }, [colaboradores, dataSel, obraId])
   useEffect(() => { if (subAba === 'avulso') fetchAvulsos() }, [subAba])
 
+  // ── Excluir ponto ─────────────────────────────────────────────────────────
+  async function excluirPonto() {
+    if (!confirmExcluir) return
+    setExcluindo(true)
+    const { error } = await supabase.from('portal_ponto_diario').delete().eq('id', confirmExcluir.id)
+    if (error) { alert('Erro ao excluir: ' + error.message) }
+    else { await fetchPontos(); setConfirmExcluir(null) }
+    setExcluindo(false)
+  }
+
+  // tela de conferência: usuário clica no status → abre conferência → confirma → salva
+  function abrirConferencia(c: ColabRow, status: StatusPonto) {
+    const atual = pontos[c.id]
+    setPendConf({
+      colabId: c.id, nome: c.nome, chapa: c.chapa, funcao: c.funcao,
+      status,
+      he: atual?.horas_extra  ?? 0,
+      hf: atual?.horas_falta  ?? 0,
+      obs: atual?.observacoes ?? '',
+    })
+  }
+
+  async function confirmarConferencia() {
+    if (!pendConf) return
+    setConfSaving(true)
+    await salvarPonto(pendConf.colabId, {
+      status:      pendConf.status,
+      horas_extra: pendConf.he,
+      horas_falta: pendConf.hf,
+      observacoes: pendConf.obs,
+    })
+    setConfSaving(false)
+    setPendConf(null)
+  }
+
   // ── Salvar ponto normal ────────────────────────────────────────────────────
   async function salvarPonto(colabId: string, dados: Partial<PontoRow>) {
     // Verifica conflito de obra
@@ -179,62 +222,152 @@ export default function PortalPonto() {
 
   // ── Relatório ──────────────────────────────────────────────────────────────
   async function gerarRelatorio() {
-    if (!relColabId) return
+    // garante que avulsoColabs está carregado (usado para "Todos")
+    if (!avulsoColabs.length) await fetchAvulsos()
     setRelLoading(true)
-    const { data } = await supabase.from('portal_ponto_diario')
-      .select('data,status,horas_extra,horas_falta,observacoes,obra_id')
-      .eq('colaborador_id', relColabId)
+    let q = supabase.from('portal_ponto_diario')
+      .select('data,status,horas_extra,horas_falta,observacoes,obra_id,colaborador_id')
       .gte('data', relDtIni).lte('data', relDtFim)
-      .order('data')
+      .order('colaborador_id').order('data')
+    if (relColabId) q = q.eq('colaborador_id', relColabId)
+    const { data } = await q
     setRelRows(data ?? [])
     setRelLoading(false)
   }
 
   function imprimirRelatorio() {
-    const colab = [...colaboradores, ...avulsoColabs].find(c=>c.id===relColabId)
+    const todosColabs = [...colaboradores, ...avulsoColabs]
     const statusLabel: Record<string,string> = { presente:'Presente', falta:'Falta', meio_periodo:'Meio Período', falta_justificada:'Falta Justif.', producao:'Produção' }
     const statusCor:   Record<string,string> = { presente:'#15803d', falta:'#dc2626', meio_periodo:'#b45309', falta_justificada:'#6b7280', producao:'#7c3aed' }
-    const totais = { presente:0, falta:0, meio_periodo:0, falta_justificada:0, producao:0, horas_extra:0, horas_falta:0 }
+    const statusBg:    Record<string,string> = { presente:'#f0fdf4', falta:'#fee2e2', meio_periodo:'#fffbeb', falta_justificada:'#f9fafb', producao:'#f5f3ff' }
+
+    // agrupar lançamentos por colaborador_id
+    const mapRows: Record<string, typeof relRows> = {}
     relRows.forEach(r => {
-      if (r.status in totais) (totais as any)[r.status]++
-      totais.horas_extra  += r.horas_extra  ?? 0
-      totais.horas_falta  += r.horas_falta  ?? 0
+      const cid = (r as any).colaborador_id ?? relColabId
+      if (!mapRows[cid]) mapRows[cid] = []
+      mapRows[cid].push(r)
     })
-    const linhas = relRows.map(r => {
-      const dt  = new Date(r.data+'T12:00:00').toLocaleDateString('pt-BR', { weekday:'short', day:'2-digit', month:'2-digit' })
-      const cor = statusCor[r.status] ?? '#374151'
-      const ob  = obrasData.find(o=>o.id===r.obra_id)?.nome ?? '—'
-      return `<tr>
-        <td style="padding:5px 8px;border-bottom:1px solid #e5e7eb;font-size:12px">${dt}</td>
-        <td style="padding:5px 8px;border-bottom:1px solid #e5e7eb;font-size:12px;color:${cor};font-weight:700">${statusLabel[r.status]??r.status}</td>
-        <td style="padding:5px 8px;border-bottom:1px solid #e5e7eb;font-size:12px;color:#1d4ed8">${r.horas_extra?'+'+r.horas_extra+'h':''}</td>
-        <td style="padding:5px 8px;border-bottom:1px solid #e5e7eb;font-size:12px;color:#dc2626">${r.horas_falta?'-'+r.horas_falta+'h':''}</td>
-        <td style="padding:5px 8px;border-bottom:1px solid #e5e7eb;font-size:11px;color:#6b7280">${ob}</td>
-        <td style="padding:5px 8px;border-bottom:1px solid #e5e7eb;font-size:11px;color:#6b7280;font-style:italic">${r.observacoes??''}</td>
-      </tr>`
+
+    // montar lista de colaboradores envolvidos, enriquecidos com dados cadastrais
+    const colabsEnvolvidos = Object.keys(mapRows)
+      .map(cid => {
+        const info = todosColabs.find(c => c.id === cid)
+        return { id: cid, nome: info?.nome ?? 'Desconhecido', chapa: info?.chapa ?? '—', funcao: info?.funcao ?? 'Sem função', rows: mapRows[cid] }
+      })
+      .sort((a,b) => {
+        const fa = a.funcao.toLowerCase(), fb = b.funcao.toLowerCase()
+        return fa !== fb ? fa.localeCompare(fb) : a.nome.localeCompare(b.nome)
+      })
+
+    // totais gerais
+    const gt = { presente:0, falta:0, producao:0, he:0, hf:0 }
+    relRows.forEach(r => {
+      if (r.status==='presente'||r.status==='meio_periodo') gt.presente++
+      if (r.status==='falta'||r.status==='falta_justificada') gt.falta++
+      if (r.status==='producao') gt.producao++
+      gt.he += r.horas_extra ?? 0
+      gt.hf += r.horas_falta ?? 0
+    })
+
+    // bloco separador de função
+    let lastFuncPDF = ''
+    const blocosColabs = colabsEnvolvidos.map(c => {
+      const funcSep = c.funcao !== lastFuncPDF
+        ? `<div style="margin:18px 0 8px;padding:6px 12px;background:#1e3a5f;color:#93c5fd;font-size:11px;font-weight:800;border-radius:6px;letter-spacing:0.06em;text-transform:uppercase">👷 ${c.funcao}</div>`
+        : ''
+      lastFuncPDF = c.funcao
+
+      const t = { presente:0, falta:0, producao:0, he:0, hf:0 }
+      c.rows.forEach(r => {
+        if (r.status==='presente'||r.status==='meio_periodo') t.presente++
+        if (r.status==='falta'||r.status==='falta_justificada') t.falta++
+        if (r.status==='producao') t.producao++
+        t.he += r.horas_extra ?? 0; t.hf += r.horas_falta ?? 0
+      })
+
+      const linhasDia = c.rows.map(r => {
+        const dt  = new Date(r.data+'T12:00:00').toLocaleDateString('pt-BR', { weekday:'short', day:'2-digit', month:'2-digit' })
+        const cor = statusCor[r.status] ?? '#374151'
+        const bg  = statusBg[r.status] ?? '#fff'
+        const ob  = obrasData.find(o=>o.id===r.obra_id)?.nome ?? '—'
+        return `<tr style="background:${bg}">
+          <td style="padding:5px 8px;border-bottom:1px solid #e5e7eb;font-size:11px">${dt}</td>
+          <td style="padding:5px 8px;border-bottom:1px solid #e5e7eb;font-size:11px;color:${cor};font-weight:700">${statusLabel[r.status]??r.status}</td>
+          <td style="padding:5px 8px;border-bottom:1px solid #e5e7eb;font-size:11px;color:#1d4ed8">${r.horas_extra?'+'+r.horas_extra+'h':''}</td>
+          <td style="padding:5px 8px;border-bottom:1px solid #e5e7eb;font-size:11px;color:#dc2626">${r.horas_falta?'-'+r.horas_falta+'h':''}</td>
+          <td style="padding:5px 8px;border-bottom:1px solid #e5e7eb;font-size:11px;color:#6b7280">${ob}</td>
+          <td style="padding:5px 8px;border-bottom:1px solid #e5e7eb;font-size:10px;color:#6b7280;font-style:italic">${r.observacoes??'—'}</td>
+        </tr>`
+      }).join('')
+
+      return `${funcSep}
+      <div style="margin-bottom:22px;break-inside:avoid">
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px 8px 0 0;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+          <div>
+            <div style="font-weight:800;font-size:14px;color:#1e293b">${c.nome}</div>
+            <div style="display:flex;gap:8px;margin-top:4px;flex-wrap:wrap">
+              <span style="background:#dbeafe;color:#1d4ed8;border-radius:4px;padding:1px 7px;font-size:10px;font-weight:700">Chapa: ${c.chapa}</span>
+              <span style="background:#e0e7ff;color:#4338ca;border-radius:4px;padding:1px 7px;font-size:10px">⚙️ ${c.funcao}</span>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <span style="background:#dcfce7;color:#15803d;border-radius:4px;padding:3px 8px;font-size:10px;font-weight:700">✓ ${t.presente} pres.</span>
+            <span style="background:#fee2e2;color:#dc2626;border-radius:4px;padding:3px 8px;font-size:10px;font-weight:700">✗ ${t.falta} faltas</span>
+            ${t.producao?`<span style="background:#f3e8ff;color:#7c3aed;border-radius:4px;padding:3px 8px;font-size:10px;font-weight:700">⚡ ${t.producao} prod.</span>`:''}
+            ${t.he?`<span style="background:#dbeafe;color:#1d4ed8;border-radius:4px;padding:3px 8px;font-size:10px;font-weight:700">+${t.he}h</span>`:''}
+          </div>
+        </div>
+        <table style="width:100%;border-collapse:collapse">
+          <thead><tr style="background:#1e3a5f">
+            <th style="padding:6px 8px;color:#fff;font-size:10px;text-align:left;font-weight:700">Data</th>
+            <th style="padding:6px 8px;color:#fff;font-size:10px;text-align:left;font-weight:700">Status</th>
+            <th style="padding:6px 8px;color:#fff;font-size:10px;text-align:left;font-weight:700">H. Extra</th>
+            <th style="padding:6px 8px;color:#fff;font-size:10px;text-align:left;font-weight:700">H. Falta</th>
+            <th style="padding:6px 8px;color:#fff;font-size:10px;text-align:left;font-weight:700">Obra</th>
+            <th style="padding:6px 8px;color:#fff;font-size:10px;text-align:left;font-weight:700">Observação</th>
+          </tr></thead>
+          <tbody>${linhasDia}</tbody>
+        </table>
+      </div>`
     }).join('')
+
+    const periodoFmt = `${new Date(relDtIni+'T12:00:00').toLocaleDateString('pt-BR')} a ${new Date(relDtFim+'T12:00:00').toLocaleDateString('pt-BR')}`
+    const tituloRel = relColabId ? (todosColabs.find(c=>c.id===relColabId)?.nome ?? '—') : 'Todos os Colaboradores'
+
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Relatório de Ponto</title>
-    <style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;padding:28px;color:#111}
-    h1{font-size:18px;color:#1e3a5f;margin-bottom:4px}.sub{font-size:12px;color:#6b7280;margin-bottom:18px}
-    table{width:100%;border-collapse:collapse}.th{background:#1e3a5f;color:#fff;padding:7px 8px;font-size:11px;text-align:left}
-    .totais{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:18px 0}
-    .tot{background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:10px;text-align:center}
-    .tot .n{font-size:22px;font-weight:800}.tot .l{font-size:10px;color:#6b7280;text-transform:uppercase;margin-top:2px}
-    @media print{body{padding:14px}}</style></head><body>
-    <h1>📋 Relatório de Ponto — ${colab?.nome ?? '—'}</h1>
-    <div class="sub">Período: ${new Date(relDtIni+'T12:00:00').toLocaleDateString('pt-BR')} a ${new Date(relDtFim+'T12:00:00').toLocaleDateString('pt-BR')} &nbsp;|&nbsp; Gerado em ${new Date().toLocaleString('pt-BR')}</div>
-    <div class="totais">
-      <div class="tot"><div class="n" style="color:#15803d">${totais.presente}</div><div class="l">Presenças</div></div>
-      <div class="tot"><div class="n" style="color:#dc2626">${totais.falta}</div><div class="l">Faltas</div></div>
-      <div class="tot"><div class="n" style="color:#7c3aed">${totais.producao}</div><div class="l">Produção</div></div>
-      <div class="tot"><div class="n" style="color:#1d4ed8">+${totais.horas_extra}h</div><div class="l">H. Extra</div></div>
+    <style>
+      *{box-sizing:border-box;margin:0;padding:0}
+      body{font-family:Arial,sans-serif;padding:24px;color:#111}
+      .cabecalho{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;padding-bottom:10px;border-bottom:2px solid #1e3a5f}
+      h1{font-size:17px;color:#1e3a5f;margin-bottom:3px}
+      .sub{font-size:11px;color:#6b7280}
+      .periodo-val{font-size:14px;font-weight:800;color:#1e3a5f;text-align:right}
+      .totais-gerais{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:20px}
+      .tot{background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:10px;text-align:center}
+      .tot .n{font-size:20px;font-weight:800}.tot .l{font-size:9px;color:#6b7280;text-transform:uppercase;margin-top:2px}
+      @media print{body{padding:14px}.colaborador{break-inside:avoid}}
+    </style></head><body>
+    <div class="cabecalho">
+      <div>
+        <h1>📋 Relatório de Presença — ${tituloRel}</h1>
+        <div class="sub">Portal da Obra · ConstrutorRH · Gerado em ${new Date().toLocaleString('pt-BR')}</div>
+      </div>
+      <div>
+        <div style="font-size:10px;color:#6b7280;text-align:right">Período</div>
+        <div class="periodo-val">${periodoFmt}</div>
+      </div>
     </div>
-    <table><thead><tr>
-      <th class="th">Data</th><th class="th">Status</th><th class="th">H. Extra</th>
-      <th class="th">H. Falta</th><th class="th">Obra</th><th class="th">Observação</th>
-    </tr></thead><tbody>${linhas}</tbody></table>
+    <div class="totais-gerais">
+      <div class="tot"><div class="n" style="color:#15803d">${gt.presente}</div><div class="l">Presenças</div></div>
+      <div class="tot"><div class="n" style="color:#dc2626">${gt.falta}</div><div class="l">Faltas</div></div>
+      <div class="tot"><div class="n" style="color:#7c3aed">${gt.producao}</div><div class="l">Produção</div></div>
+      <div class="tot"><div class="n" style="color:#1d4ed8">+${gt.he}h</div><div class="l">H. Extra</div></div>
+      <div class="tot"><div class="n" style="color:#dc2626">-${gt.hf}h</div><div class="l">H. Falta</div></div>
+    </div>
+    ${blocosColabs}
     <script>window.onload=()=>{window.print()}<\/script></body></html>`
-    const win = window.open('','_blank','width=900,height=650')
+    const win = window.open('','_blank','width=1000,height=700')
     if (win) { win.document.write(html); win.document.close() }
   }
 
@@ -381,6 +514,14 @@ export default function PortalPonto() {
                         style={{ background:'#f3f4f6', border:'none', borderRadius:6, padding:'4px 8px', cursor:'pointer', fontSize:11, color:'#374151' }}>
                         Editar
                       </button>
+                      {p?.id && (
+                        <button
+                          onClick={() => setConfirmExcluir({ colabId:c.id, nome:c.nome, id:p.id! })}
+                          style={{ background:'#fee2e2', border:'none', borderRadius:6, padding:'4px 7px', cursor:'pointer', display:'flex', alignItems:'center' }}
+                          title="Excluir lançamento">
+                          <Trash2 size={13} color="#dc2626"/>
+                        </button>
+                      )}
                     </div>
                   ) : !obraConflito ? (
                     <span style={{ fontSize:11, color:'#f59e0b', fontWeight:600, background:'#fef3c7', borderRadius:6, padding:'3px 8px' }}>Sem lançamento</span>
@@ -391,7 +532,8 @@ export default function PortalPonto() {
                   <div style={{ padding:'0 14px 12px', display:'flex', flexDirection:'column', gap:10 }}>
                     <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:5 }}>
                       {(Object.entries(STATUS_CONFIG) as [StatusPonto, typeof STATUS_CONFIG[StatusPonto]][]).map(([status, sc]) => (
-                        <button key={status} onClick={() => salvarPonto(c.id, { status, horas_extra:0, horas_falta:0 })}
+                        <button key={status}
+                          onClick={() => abrirConferencia(c, status)}
                           disabled={isSaving} style={{
                             background: p?.status===status ? sc.bg : '#f9fafb',
                             border:`2px solid ${p?.status===status ? sc.cor : '#e5e7eb'}`,
@@ -518,12 +660,26 @@ export default function PortalPonto() {
       {/* ── ABA RELATÓRIO ── */}
       {subAba === 'relatorio' && (
         <div style={{ padding:'16px 16px 32px', display:'flex', flexDirection:'column', gap:14 }}>
-          {/* Colaborador */}
+          {/* Colaborador — TODOS os colaboradores de todas as obras */}
           <div>
             <label style={{ fontSize:12, fontWeight:700, color:'#374151', display:'block', marginBottom:6, textTransform:'uppercase' }}>Colaborador</label>
             <select value={relColabId} onChange={e => setRelColabId(e.target.value)} style={SEL}>
-              <option value="">Selecione…</option>
-              {colaboradores.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+              <option value="">Todos os colaboradores</option>
+              {(() => {
+                const sorted = [...avulsoColabs].sort((a,b) => {
+                  const fa = (a.funcao ?? 'Sem função').toLowerCase()
+                  const fb = (b.funcao ?? 'Sem função').toLowerCase()
+                  return fa !== fb ? fa.localeCompare(fb) : a.nome.localeCompare(b.nome)
+                })
+                let lastF = ''
+                return sorted.map(c => {
+                  const f = c.funcao ?? 'Sem função'
+                  const elems: React.ReactNode[] = []
+                  if (f !== lastF) { lastF = f; elems.push(<option key={`hdr-${f}`} disabled value="">── {f.toUpperCase()} ──</option>) }
+                  elems.push(<option key={c.id} value={c.id}>{c.nome}{c.chapa ? ` (${c.chapa})` : ''}</option>)
+                  return elems
+                })
+              })()}
             </select>
           </div>
 
@@ -539,32 +695,53 @@ export default function PortalPonto() {
             </div>
           </div>
 
-          <button onClick={gerarRelatorio} disabled={!relColabId || relLoading} style={{
-            height:46, background: (!relColabId||relLoading) ? '#94a3b8' : '#1e3a5f', color:'#fff',
+          <button onClick={gerarRelatorio} disabled={relLoading} style={{
+            height:46, background: relLoading ? '#94a3b8' : '#1e3a5f', color:'#fff',
             border:'none', borderRadius:12, fontSize:14, fontWeight:700,
-            cursor: (!relColabId||relLoading) ? 'not-allowed' : 'pointer',
+            cursor: relLoading ? 'not-allowed' : 'pointer',
             display:'flex', alignItems:'center', justifyContent:'center', gap:8,
           }}>
             {relLoading ? <><Loader2 size={16} className="animate-spin"/>Buscando…</> : <>🔍 Buscar</>}
           </button>
 
-          {relRows.length > 0 && (<>
-            {/* Totais rápidos */}
-            {(() => {
-              const t = { presente:0, falta:0, producao:0, he:0, hf:0 }
-              relRows.forEach(r => {
-                if (r.status==='presente'||r.status==='meio_periodo') t.presente++
-                if (r.status==='falta'||r.status==='falta_justificada') t.falta++
-                if (r.status==='producao') t.producao++
-                t.he += r.horas_extra ?? 0; t.hf += r.horas_falta ?? 0
+          {relRows.length > 0 && (() => {
+            // totais gerais
+            const t = { presente:0, falta:0, producao:0, he:0, hf:0 }
+            relRows.forEach(r => {
+              if (r.status==='presente'||r.status==='meio_periodo') t.presente++
+              if (r.status==='falta'||r.status==='falta_justificada') t.falta++
+              if (r.status==='producao') t.producao++
+              t.he += r.horas_extra ?? 0; t.hf += r.horas_falta ?? 0
+            })
+
+            // agrupar por colaborador_id
+            const todos = [...colaboradores, ...avulsoColabs]
+            const mapR: Record<string, typeof relRows> = {}
+            relRows.forEach(r => {
+              const cid = (r as any).colaborador_id ?? relColabId
+              if (!mapR[cid]) mapR[cid] = []
+              mapR[cid].push(r)
+            })
+            const colabsRes = Object.keys(mapR)
+              .map(cid => {
+                const info = todos.find(c => c.id === cid)
+                return { id:cid, nome:info?.nome ?? 'Desconhecido', chapa:info?.chapa ?? '—', funcao:info?.funcao ?? 'Sem função', rows:mapR[cid] }
               })
-              return (
+              .sort((a,b) => {
+                const fa = a.funcao.toLowerCase(), fb = b.funcao.toLowerCase()
+                return fa !== fb ? fa.localeCompare(fb) : a.nome.localeCompare(b.nome)
+              })
+
+            let lastFuncTela = ''
+            return (
+              <>
+                {/* Cards de totais gerais */}
                 <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8 }}>
                   {[
-                    { l:'Presenças', v:t.presente,  cor:'#15803d', bg:'#dcfce7' },
-                    { l:'Produção',  v:t.producao,  cor:'#7c3aed', bg:'#f3e8ff' },
-                    { l:'Faltas',    v:t.falta,     cor:'#dc2626', bg:'#fee2e2' },
-                    { l:'H. Extra',  v:'+'+t.he+'h',cor:'#1d4ed8', bg:'#dbeafe' },
+                    { l:'Presenças', v:t.presente,   cor:'#15803d', bg:'#dcfce7' },
+                    { l:'Produção',  v:t.producao,   cor:'#7c3aed', bg:'#f3e8ff' },
+                    { l:'Faltas',    v:t.falta,       cor:'#dc2626', bg:'#fee2e2' },
+                    { l:'H. Extra',  v:'+'+t.he+'h', cor:'#1d4ed8', bg:'#dbeafe' },
                   ].map(s => (
                     <div key={s.l} style={{ background:s.bg, borderRadius:10, padding:'8px 4px', textAlign:'center' }}>
                       <div style={{ fontWeight:800, fontSize:16, color:s.cor }}>{s.v}</div>
@@ -572,47 +749,191 @@ export default function PortalPonto() {
                     </div>
                   ))}
                 </div>
-              )
-            })()}
 
-            {/* Linhas */}
-            <div style={{ background:'#fff', borderRadius:12, overflow:'hidden', border:'1px solid #e5e7eb' }}>
-              {relRows.map((r, i) => {
-                const sc  = STATUS_CONFIG[r.status as StatusPonto] ?? { cor:'#374151', bg:'#f3f4f6', label:r.status }
-                const ob  = obrasData.find(o=>o.id===r.obra_id)?.nome ?? '—'
-                const dt  = new Date(r.data+'T12:00:00').toLocaleDateString('pt-BR', { weekday:'short', day:'2-digit', month:'2-digit' })
-                return (
-                  <div key={i} style={{ padding:'10px 14px', borderTop:i>0?'1px solid #f3f4f6':'none', display:'flex', gap:10, alignItems:'center' }}>
-                    <div style={{ width:4, height:32, borderRadius:4, background:sc.cor, flexShrink:0 }}/>
-                    <div style={{ flex:1 }}>
-                      <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-                        <span style={{ fontWeight:700, fontSize:12, color:'#111', textTransform:'capitalize' }}>{dt}</span>
-                        <span style={{ background:sc.bg, color:sc.cor, borderRadius:4, padding:'1px 7px', fontSize:11, fontWeight:700 }}>{sc.label}</span>
-                        {!!r.horas_extra && <span style={{ fontSize:11, color:'#1d4ed8', fontWeight:600 }}>+{r.horas_extra}h</span>}
-                        {!!r.horas_falta && <span style={{ fontSize:11, color:'#dc2626', fontWeight:600 }}>-{r.horas_falta}h</span>}
+                {/* Blocos por colaborador, separados por função */}
+                {colabsRes.map(c => {
+                  const isFuncNova = c.funcao !== lastFuncTela
+                  if (isFuncNova) lastFuncTela = c.funcao
+                  return (
+                    <React.Fragment key={c.id}>
+                      {isFuncNova && (
+                        <div style={{ padding:'5px 10px', background:'#1e3a5f', borderRadius:8, fontSize:10, fontWeight:800, color:'#93c5fd', textTransform:'uppercase', letterSpacing:'0.05em', marginTop:4 }}>
+                          👷 {c.funcao}
+                        </div>
+                      )}
+                      <div style={{ background:'#fff', borderRadius:10, border:'1px solid #e5e7eb', overflow:'hidden' }}>
+                        {/* cabeçalho do colaborador */}
+                        <div style={{ background:'#f8fafc', padding:'8px 12px', borderBottom:'1px solid #e5e7eb', display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:8 }}>
+                          <div>
+                            <div style={{ fontWeight:700, fontSize:13, color:'#1e293b' }}>{c.nome}</div>
+                            <div style={{ display:'flex', gap:6, marginTop:3, flexWrap:'wrap' }}>
+                              {c.chapa!=='—' && <span style={{ background:'#dbeafe', color:'#1d4ed8', borderRadius:4, padding:'1px 7px', fontSize:9, fontWeight:700 }}>Chapa: {c.chapa}</span>}
+                              <span style={{ background:'#e0e7ff', color:'#4338ca', borderRadius:4, padding:'1px 7px', fontSize:9 }}>⚙️ {c.funcao}</span>
+                            </div>
+                          </div>
+                          <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+                            {(() => {
+                              const tc = { p:0, f:0 }
+                              c.rows.forEach(r => {
+                                if (r.status==='presente'||r.status==='meio_periodo') tc.p++
+                                if (r.status==='falta'||r.status==='falta_justificada') tc.f++
+                              })
+                              return <>
+                                <span style={{ background:'#dcfce7', color:'#15803d', borderRadius:4, padding:'2px 8px', fontSize:9, fontWeight:700 }}>✓ {tc.p}</span>
+                                <span style={{ background:'#fee2e2', color:'#dc2626', borderRadius:4, padding:'2px 8px', fontSize:9, fontWeight:700 }}>✗ {tc.f}</span>
+                              </>
+                            })()}
+                          </div>
+                        </div>
+                        {/* linhas de dias */}
+                        {c.rows.map((r, i) => {
+                          const sc = STATUS_CONFIG[r.status as StatusPonto] ?? { cor:'#374151', bg:'#f3f4f6', label:r.status, icon:'' }
+                          const ob = obrasData.find(o=>o.id===r.obra_id)?.nome ?? '—'
+                          const dt = new Date(r.data+'T12:00:00').toLocaleDateString('pt-BR', { weekday:'short', day:'2-digit', month:'2-digit' })
+                          return (
+                            <div key={i} style={{ padding:'8px 12px', borderTop:i>0?'1px solid #f3f4f6':'none', display:'flex', gap:8, alignItems:'center' }}>
+                              <div style={{ width:3, height:28, borderRadius:3, background:sc.cor, flexShrink:0 }}/>
+                              <div style={{ flex:1 }}>
+                                <div style={{ display:'flex', gap:6, alignItems:'center', flexWrap:'wrap' }}>
+                                  <span style={{ fontWeight:700, fontSize:11, color:'#111', textTransform:'capitalize' }}>{dt}</span>
+                                  <span style={{ background:sc.bg, color:sc.cor, borderRadius:4, padding:'1px 6px', fontSize:10, fontWeight:700 }}>{sc.label}</span>
+                                  {!!r.horas_extra && <span style={{ fontSize:10, color:'#1d4ed8', fontWeight:600 }}>+{r.horas_extra}h</span>}
+                                  {!!r.horas_falta && <span style={{ fontSize:10, color:'#dc2626', fontWeight:600 }}>-{r.horas_falta}h</span>}
+                                </div>
+                                <div style={{ fontSize:9, color:'#9ca3af' }}>📍 {ob}{r.observacoes ? ` · ${r.observacoes}` : ''}</div>
+                              </div>
+                            </div>
+                          )
+                        })}
                       </div>
-                      {r.observacoes && <div style={{ fontSize:10, color:'#6b7280', marginTop:2 }}>{r.observacoes}</div>}
-                      <div style={{ fontSize:10, color:'#9ca3af' }}>📍 {ob}</div>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
+                    </React.Fragment>
+                  )
+                })}
 
-            <button onClick={imprimirRelatorio} style={{
-              height:46, background:'#1e3a5f', color:'#fff', border:'none', borderRadius:12,
-              fontSize:14, fontWeight:700, cursor:'pointer',
-              display:'flex', alignItems:'center', justifyContent:'center', gap:8,
-            }}>
-              <FileText size={16}/> Imprimir / PDF
-            </button>
-          </>)}
+                <button onClick={imprimirRelatorio} style={{
+                  height:46, background:'#1e3a5f', color:'#fff', border:'none', borderRadius:12,
+                  fontSize:14, fontWeight:700, cursor:'pointer',
+                  display:'flex', alignItems:'center', justifyContent:'center', gap:8,
+                }}>
+                  <FileText size={16}/> Imprimir / PDF
+                </button>
+              </>
+            )
+          })()}
 
-          {relRows.length === 0 && relColabId && !relLoading && (
+          {relRows.length === 0 && !relLoading && (
             <div style={{ background:'#f9fafb', borderRadius:10, padding:24, textAlign:'center', color:'#9ca3af' }}>
               Nenhum lançamento encontrado neste período
             </div>
           )}
+        </div>
+      )}
+
+      {/* ══ MODAL: Confirmação de Exclusão ══ */}
+      {confirmExcluir && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}>
+          <div style={{ background:'#fff', borderRadius:16, padding:28, width:'100%', maxWidth:340, boxShadow:'0 8px 40px rgba(0,0,0,0.2)' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:14 }}>
+              <div style={{ width:40, height:40, borderRadius:10, background:'#fee2e2', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                <Trash2 size={20} color="#dc2626"/>
+              </div>
+              <div>
+                <div style={{ fontWeight:800, fontSize:15, color:'#1e293b' }}>Excluir lançamento</div>
+                <div style={{ fontSize:11, color:'#6b7280' }}>Esta ação não pode ser desfeita</div>
+              </div>
+            </div>
+            <div style={{ background:'#fef2f2', border:'1px solid #fecaca', borderRadius:10, padding:'12px 14px', marginBottom:18, fontSize:13 }}>
+              <span style={{ color:'#dc2626', fontWeight:700 }}>⚠ </span>
+              Excluir o ponto de <strong>{confirmExcluir.nome}</strong> neste dia?
+            </div>
+            <div style={{ display:'flex', gap:10 }}>
+              <button onClick={() => setConfirmExcluir(null)} disabled={excluindo}
+                style={{ flex:1, height:44, border:'2px solid #e5e7eb', background:'#fff', borderRadius:10, fontWeight:700, fontSize:14, cursor:'pointer', color:'#374151' }}>
+                Cancelar
+              </button>
+              <button onClick={excluirPonto} disabled={excluindo}
+                style={{ flex:1, height:44, border:'none', background: excluindo ? '#fca5a5' : '#dc2626', borderRadius:10, fontWeight:700, fontSize:14, cursor:'pointer', color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
+                {excluindo ? <><Loader2 size={15} className="animate-spin"/>Excluindo…</> : <><Trash2 size={15}/>Excluir</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══ MODAL: Tela de Conferência ══ */}
+      {pendConf && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', zIndex:1000, display:'flex', alignItems:'flex-end', justifyContent:'center' }}>
+          <div style={{ background:'#fff', borderRadius:'20px 20px 0 0', padding:'24px 20px 32px', width:'100%', maxWidth:480, boxShadow:'0 -8px 40px rgba(0,0,0,0.2)' }}>
+            {/* Handle */}
+            <div style={{ width:40, height:4, background:'#e5e7eb', borderRadius:2, margin:'0 auto 20px' }}/>
+
+            <div style={{ fontSize:14, fontWeight:800, color:'#1e293b', marginBottom:4 }}>✅ Confirmar lançamento</div>
+            <div style={{ fontSize:11, color:'#6b7280', marginBottom:16 }}>Revise os dados antes de salvar</div>
+
+            {/* Dados do colaborador */}
+            <div style={{ background:'#1e3a5f', borderRadius:10, padding:'12px 14px', marginBottom:14, color:'#fff' }}>
+              <div style={{ fontWeight:800, fontSize:14 }}>{pendConf.nome}</div>
+              <div style={{ display:'flex', gap:8, marginTop:5, flexWrap:'wrap' }}>
+                {pendConf.chapa && <span style={{ background:'rgba(255,255,255,0.15)', borderRadius:4, padding:'2px 8px', fontSize:10, fontWeight:700 }}>Chapa: {pendConf.chapa}</span>}
+                {pendConf.funcao && <span style={{ background:'rgba(255,255,255,0.15)', borderRadius:4, padding:'2px 8px', fontSize:10 }}>⚙️ {pendConf.funcao}</span>}
+              </div>
+            </div>
+
+            {/* Status selecionado */}
+            {(() => {
+              const sc = STATUS_CONFIG[pendConf.status]
+              return (
+                <div style={{ background:sc.bg, border:`2px solid ${sc.cor}`, borderRadius:10, padding:'10px 14px', marginBottom:14, display:'flex', alignItems:'center', gap:10 }}>
+                  <span style={{ fontSize:22 }}>{sc.icon}</span>
+                  <div>
+                    <div style={{ fontWeight:800, fontSize:14, color:sc.cor }}>{sc.label}</div>
+                    <div style={{ fontSize:10, color:sc.cor, opacity:0.7 }}>Status selecionado</div>
+                  </div>
+                </div>
+              )
+            })()}
+
+            {/* H. Extra e H. Falta (se aplicável) */}
+            {(pendConf.status==='presente'||pendConf.status==='meio_periodo'||pendConf.status==='producao') && (
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:14 }}>
+                {[
+                  { label:'+ Horas Extra', field:'he' as const, cor:'#1d4ed8', bg:'#dbeafe', val:pendConf.he },
+                  { label:'- Horas Falta', field:'hf' as const, cor:'#dc2626', bg:'#fee2e2', val:pendConf.hf },
+                ].map(({ label, field, cor, bg, val }) => (
+                  <div key={field} style={{ background:bg, borderRadius:10, padding:'10px 12px' }}>
+                    <div style={{ fontSize:10, fontWeight:700, color:cor, marginBottom:6 }}>{label}</div>
+                    <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                      <button onClick={() => setPendConf(p => p ? { ...p, [field]: Math.max(0, +(p[field]-0.5).toFixed(1)) } : p)}
+                        style={{ width:28, height:28, border:`1px solid ${cor}`, background:'#fff', borderRadius:6, cursor:'pointer', fontWeight:800, color:cor, fontSize:16 }}>−</button>
+                      <span style={{ fontWeight:800, fontSize:16, color:cor, minWidth:28, textAlign:'center' }}>{val}</span>
+                      <button onClick={() => setPendConf(p => p ? { ...p, [field]: +(p[field]+0.5).toFixed(1) } : p)}
+                        style={{ width:28, height:28, border:`1px solid ${cor}`, background:'#fff', borderRadius:6, cursor:'pointer', fontWeight:800, color:cor, fontSize:16 }}>+</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Observação */}
+            <div style={{ marginBottom:18 }}>
+              <label style={{ fontSize:11, fontWeight:700, color:'#374151', display:'block', marginBottom:5 }}>Observação (opcional)</label>
+              <input value={pendConf.obs} onChange={e => setPendConf(p => p ? { ...p, obs:e.target.value } : p)}
+                placeholder="Ex.: saiu mais cedo, chuva forte…"
+                style={{ width:'100%', height:40, border:'2px solid #e5e7eb', borderRadius:8, padding:'0 12px', fontSize:13, boxSizing:'border-box' }}/>
+            </div>
+
+            {/* Botões */}
+            <div style={{ display:'flex', gap:10 }}>
+              <button onClick={() => setPendConf(null)} disabled={confSaving}
+                style={{ flex:1, height:48, border:'2px solid #e5e7eb', background:'#fff', borderRadius:12, fontWeight:700, fontSize:14, cursor:'pointer', color:'#374151' }}>
+                Voltar
+              </button>
+              <button onClick={confirmarConferencia} disabled={confSaving}
+                style={{ flex:2, height:48, border:'none', background: confSaving ? '#94a3b8' : '#15803d', borderRadius:12, fontWeight:700, fontSize:14, cursor:'pointer', color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
+                {confSaving ? <><Loader2 size={16} className="animate-spin"/>Salvando…</> : <>✅ Confirmar e Salvar</>}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </PortalLayout>
