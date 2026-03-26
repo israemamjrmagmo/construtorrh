@@ -111,6 +111,8 @@ export default function FechamentoPonto() {
   const [adPorLanc, setAdPorLanc] = useState<Record<string, {id:string;valor:number;desconto_tipo:string;desconto_parcelas:number|null;desconto_parcela_atual:number|null;desconto_obs:string|null}[]>>({})
   // Confirmação inline -AD: lancamento_id aguardando confirm
   const [confirmADLancId, setConfirmADLancId] = useState<string | null>(null)
+  // Ver detalhes do AD: lancamento_id com painel expandido
+  const [verADLancId, setVerADLancId] = useState<string | null>(null)
 
   const mesRef = `${ano}-${String(mes).padStart(2, '0')}`
   const [filtroObraFech,   setFiltroObraFech]   = useState('todos')
@@ -927,7 +929,8 @@ export default function FechamentoPonto() {
 
 
                         return (
-                          <TableRow key={lanc.id}>
+                          <React.Fragment key={lanc.id}>
+                          <TableRow>
                             <TableCell>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                                 <Building2 size={12} style={{ color: 'var(--muted-foreground)' }} />
@@ -1038,148 +1041,26 @@ export default function FechamentoPonto() {
                             {/* ════ Coluna -AD ════ */}
                             <TableCell className="text-right">
                               {(() => {
-                                const adsLanc    = adPorLanc[lanc.id] ?? []
-                                const valorAD    = adsLanc.reduce((s, a) => {
+                                const adsLanc = adPorLanc[lanc.id] ?? []
+                                const valorAD = adsLanc.reduce((s, a) => {
                                   const p = a.desconto_parcelas ?? 1
                                   return s + (p > 1 ? a.valor / p : a.valor)
                                 }, 0)
-                                const aplicado   = (lanc.snap_desconto_adiant ?? lanc.desconto_adiant ?? 0) > 0
-                                const emFech     = lanc.status === 'em_fechamento'
-                                const pendente   = confirmADLancId === lanc.id
-
-                                // ── Já foi aplicado neste fechamento ──
+                                const aplicado = (lanc.snap_desconto_adiant ?? lanc.desconto_adiant ?? 0) > 0
                                 if (aplicado) {
                                   return (
-                                    <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:2 }}>
-                                      <span style={{ fontSize:12, color:'#b45309', fontWeight:800 }}>
-                                        −{formatCurrency(lanc.snap_desconto_adiant ?? lanc.desconto_adiant)}
-                                      </span>
-                                      <span style={{ fontSize:9, background:'#fef3c7', color:'#92400e', borderRadius:3, padding:'1px 5px', fontWeight:700 }}>
-                                        ✅ aplicado
-                                      </span>
-                                      {/* Desfazer — só se ainda em fechamento */}
-                                      {emFech && (
-                                        <button
-                                          onClick={async () => {
-                                            if (!confirm('Desfazer o desconto -AD deste fechamento?')) return
-                                            setSaving(true)
-                                            // Reverter parcelas e status dos ADs
-                                            for (const a of adsLanc) {
-                                              const feitas = Math.max(0, (a.desconto_parcela_atual ?? 0) - 1)
-                                              await supabase.from('adiantamentos').update({
-                                                status: 'aprovado',
-                                                desconto_parcela_atual: feitas,
-                                                descontado_em: null,
-                                              }).eq('id', a.id)
-                                            }
-                                            // Zerar snap_desconto_adiant e recalcular líquido
-                                            const novoLiq = (lanc.snap_liquido ?? lanc.liquido) + (lanc.snap_desconto_adiant ?? lanc.desconto_adiant)
-                                            await supabase.from('ponto_lancamentos').update({
-                                              snap_desconto_adiant: 0,
-                                              snap_liquido: novoLiq,
-                                            }).eq('id', lanc.id)
-                                            setSaving(false)
-                                            toast.success('↩ Desconto -AD removido')
-                                            fetchLancamentos(mesRef)
-                                          }}
-                                          style={{ fontSize:9, height:18, padding:'0 5px', borderRadius:4,
-                                            border:'1px solid #fde68a', background:'#fffbeb', color:'#92400e',
-                                            cursor:'pointer' }}>
-                                          ↩ desfazer
-                                        </button>
-                                      )}
-                                    </div>
+                                    <span style={{ fontSize:12, color:'#b45309', fontWeight:800 }}>
+                                      −{formatCurrency(lanc.snap_desconto_adiant ?? lanc.desconto_adiant)}
+                                      <div style={{ fontSize:9, color:'#92400e' }}>✅ aplicado</div>
+                                    </span>
                                   )
                                 }
-
-                                // ── Sem AD disponível ──
-                                if (adsLanc.length === 0) {
-                                  return <span style={{ color:'var(--muted-foreground)', fontSize:12 }}>—</span>
-                                }
-
-                                // ── AD disponível → mostrar pergunta ──
+                                if (adsLanc.length === 0) return <span style={{ color:'var(--muted-foreground)', fontSize:12 }}>—</span>
                                 return (
-                                  <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:3 }}>
-                                    {/* Valor disponível */}
-                                    <span style={{ fontSize:11, color:'#b45309', fontWeight:700 }}>
-                                      −{formatCurrency(valorAD)}
-                                    </span>
-                                    {/* Detalhe de cada AD */}
-                                    {adsLanc.map(a => {
-                                      const p = a.desconto_parcelas ?? 1
-                                      const f = a.desconto_parcela_atual ?? 0
-                                      return (
-                                        <div key={a.id} style={{ fontSize:9, color:'#92400e', textAlign:'right' }}>
-                                          {p > 1 ? `Parcela ${f+1}/${p}` : 'Único'}
-                                          {a.desconto_obs ? ` · ${a.desconto_obs.substring(0,18)}` : ''}
-                                        </div>
-                                      )
-                                    })}
-
-                                    {emFech && !pendente && (
-                                      /* Botão inicial: "Descontar -AD?" */
-                                      <button
-                                        onClick={() => setConfirmADLancId(lanc.id)}
-                                        style={{ marginTop:2, fontSize:10, fontWeight:700, height:24, padding:'0 8px',
-                                          borderRadius:5, border:'1.5px solid #b45309',
-                                          background:'#fffbeb', color:'#b45309',
-                                          cursor:'pointer', display:'flex', alignItems:'center', gap:3, whiteSpace:'nowrap' }}>
-                                        💳 Descontar -AD?
-                                      </button>
-                                    )}
-
-                                    {emFech && pendente && (
-                                      /* Pergunta: SIM ou Pular */
-                                      <div style={{ marginTop:2, display:'flex', flexDirection:'column', alignItems:'flex-end', gap:3 }}>
-                                        <span style={{ fontSize:9, color:'#374151', fontWeight:600 }}>Debitar neste mês?</span>
-                                        <div style={{ display:'flex', gap:4 }}>
-                                          {/* SIM → aplica o desconto */}
-                                          <button
-                                            disabled={saving}
-                                            onClick={async () => {
-                                              setSaving(true)
-                                              for (const a of adsLanc) {
-                                                const parcelas = a.desconto_parcelas ?? 1
-                                                const feitas   = (a.desconto_parcela_atual ?? 0) + 1
-                                                const quitado  = feitas >= parcelas
-                                                await supabase.from('adiantamentos').update({
-                                                  status:                quitado ? 'pago' : 'aprovado',
-                                                  desconto_parcela_atual: feitas,
-                                                  descontado_em:         quitado ? mesRef : null,
-                                                }).eq('id', a.id)
-                                              }
-                                              const novoLiquido = lanc.valor_total - lanc.desconto_vt - lanc.inss - lanc.ir - valorAD
-                                              await supabase.from('ponto_lancamentos').update({
-                                                snap_desconto_adiant: valorAD,
-                                                snap_liquido:         novoLiquido,
-                                              }).eq('id', lanc.id)
-                                              setSaving(false)
-                                              setConfirmADLancId(null)
-                                              toast.success('✅ -AD descontado neste fechamento!')
-                                              fetchLancamentos(mesRef)
-                                            }}
-                                            style={{ fontSize:10, fontWeight:800, height:24, padding:'0 9px',
-                                              borderRadius:5, border:'1.5px solid #15803d',
-                                              background:'#dcfce7', color:'#15803d',
-                                              cursor:'pointer' }}>
-                                            ✅ Sim, debitar
-                                          </button>
-                                          {/* NÃO → pula este mês, AD permanece aprovado */}
-                                          <button
-                                            onClick={() => {
-                                              setConfirmADLancId(null)
-                                              toast('⏭ Adiantamento mantido — será oferecido no próximo fechamento.', { icon: 'ℹ️' })
-                                            }}
-                                            style={{ fontSize:10, height:24, padding:'0 7px',
-                                              borderRadius:5, border:'1.5px solid #6b7280',
-                                              background:'var(--muted)', color:'#6b7280',
-                                              cursor:'pointer', whiteSpace:'nowrap' }}>
-                                            ⏭ Pular mês
-                                          </button>
-                                        </div>
-                                      </div>
-                                    )}
-                                  </div>
+                                  <span style={{ fontSize:11, color:'#b45309', fontWeight:800 }}>
+                                    −{formatCurrency(valorAD)}
+                                    <div style={{ fontSize:9, color:'#b45309', opacity:.7 }}>⚠️ pendente</div>
+                                  </span>
                                 )
                               })()}
                             </TableCell>
@@ -1235,6 +1116,166 @@ export default function FechamentoPonto() {
                               </div>
                             </TableCell>
                           </TableRow>
+
+                          {/* ════════════════════════════════════════════════
+                               BANNER -AD: aparece abaixo da linha quando há
+                               adiantamento pendente de desconto
+                          ════════════════════════════════════════════════ */}
+                          {(() => {
+                            const adsLanc = adPorLanc[lanc.id] ?? []
+                            const jaAplicado = (lanc.snap_desconto_adiant ?? lanc.desconto_adiant ?? 0) > 0
+                            if (adsLanc.length === 0 || jaAplicado) return null
+                            const valorAD = adsLanc.reduce((s, a) => {
+                              const p = a.desconto_parcelas ?? 1
+                              return s + (p > 1 ? a.valor / p : a.valor)
+                            }, 0)
+                            const emFech  = lanc.status === 'em_fechamento'
+                            const verDet  = verADLancId === lanc.id
+
+                            return (
+                              <TableRow style={{ background: 'transparent' }}>
+                                <TableCell colSpan={13} style={{ padding: '0 8px 10px 8px', border: 0 }}>
+                                  <div style={{
+                                    borderRadius: 10,
+                                    border: '2px solid #f59e0b',
+                                    background: 'linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)',
+                                    padding: '12px 16px',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: 10,
+                                    boxShadow: '0 2px 8px rgba(245,158,11,.15)',
+                                  }}>
+                                    {/* Linha principal do banner */}
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                        <span style={{ fontSize: 22 }}>💳</span>
+                                        <div>
+                                          <div style={{ fontWeight: 800, fontSize: 13, color: '#92400e' }}>
+                                            {colab.nome} possui adiantamento a descontar
+                                          </div>
+                                          <div style={{ fontSize: 12, color: '#b45309', marginTop: 2 }}>
+                                            Valor desta parcela: <strong>{formatCurrency(valorAD)}</strong>
+                                            {' · '}Deseja descontar neste fechamento?
+                                          </div>
+                                        </div>
+                                      </div>
+                                      {/* Botões de ação */}
+                                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                                        {/* Ver detalhes */}
+                                        <button
+                                          onClick={() => setVerADLancId(verDet ? null : lanc.id)}
+                                          style={{ height: 34, padding: '0 14px', borderRadius: 7,
+                                            border: '1.5px solid #d97706', background: '#fff',
+                                            color: '#b45309', fontWeight: 700, fontSize: 12,
+                                            cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                          👁 {verDet ? 'Ocultar' : 'Ver detalhes'}
+                                        </button>
+                                        {emFech && (
+                                          <>
+                                            {/* Descontar */}
+                                            <button
+                                              disabled={saving}
+                                              onClick={async () => {
+                                                setSaving(true)
+                                                for (const a of adsLanc) {
+                                                  const parcelas = a.desconto_parcelas ?? 1
+                                                  const feitas   = (a.desconto_parcela_atual ?? 0) + 1
+                                                  const quitado  = feitas >= parcelas
+                                                  await supabase.from('adiantamentos').update({
+                                                    status:                 quitado ? 'pago' : 'aprovado',
+                                                    desconto_parcela_atual: feitas,
+                                                    descontado_em:          quitado ? mesRef : null,
+                                                  }).eq('id', a.id)
+                                                }
+                                                const novoLiquido = lanc.valor_total - lanc.desconto_vt - lanc.inss - lanc.ir - valorAD
+                                                await supabase.from('ponto_lancamentos').update({
+                                                  snap_desconto_adiant: valorAD,
+                                                  snap_liquido:         novoLiquido,
+                                                }).eq('id', lanc.id)
+                                                setSaving(false)
+                                                setVerADLancId(null)
+                                                toast.success(`✅ Adiantamento de ${formatCurrency(valorAD)} descontado de ${colab.nome}!`)
+                                                fetchLancamentos(mesRef)
+                                              }}
+                                              style={{ height: 34, padding: '0 18px', borderRadius: 7,
+                                                border: '1.5px solid #15803d', background: '#dcfce7',
+                                                color: '#15803d', fontWeight: 800, fontSize: 13,
+                                                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                              ✅ Descontar agora
+                                            </button>
+                                            {/* Não descontar */}
+                                            <button
+                                              onClick={() => {
+                                                setVerADLancId(null)
+                                                toast('⏭ Adiantamento mantido — aparecerá no próximo fechamento.', { icon: '📅' })
+                                              }}
+                                              style={{ height: 34, padding: '0 14px', borderRadius: 7,
+                                                border: '1.5px solid #9ca3af', background: '#f9fafb',
+                                                color: '#6b7280', fontWeight: 700, fontSize: 12,
+                                                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                              ⏭ Não descontar
+                                            </button>
+                                          </>
+                                        )}
+                                      </div>
+                                    </div>
+
+                                    {/* Painel de detalhes — expandido ao clicar em "Ver" */}
+                                    {verDet && (
+                                      <div style={{
+                                        marginTop: 4,
+                                        borderTop: '1px dashed #f59e0b',
+                                        paddingTop: 10,
+                                        display: 'grid',
+                                        gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+                                        gap: 8,
+                                      }}>
+                                        {adsLanc.map((a, idx) => {
+                                          const p = a.desconto_parcelas ?? 1
+                                          const f = a.desconto_parcela_atual ?? 0
+                                          const vlParc = p > 1 ? a.valor / p : a.valor
+                                          return (
+                                            <div key={a.id} style={{
+                                              background: '#fff',
+                                              borderRadius: 8,
+                                              border: '1px solid #fde68a',
+                                              padding: '10px 14px',
+                                            }}>
+                                              <div style={{ fontWeight: 700, fontSize: 12, color: '#92400e', marginBottom: 6 }}>
+                                                💳 Adiantamento {idx + 1}
+                                              </div>
+                                              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                                <div style={{ fontSize: 11, display: 'flex', justifyContent: 'space-between' }}>
+                                                  <span style={{ color: '#6b7280' }}>Valor total:</span>
+                                                  <strong style={{ color: '#b45309' }}>{formatCurrency(a.valor)}</strong>
+                                                </div>
+                                                <div style={{ fontSize: 11, display: 'flex', justifyContent: 'space-between' }}>
+                                                  <span style={{ color: '#6b7280' }}>Desconto tipo:</span>
+                                                  <strong>{p > 1 ? `Parcelado ${p}x` : 'Único'}</strong>
+                                                </div>
+                                                {p > 1 && (
+                                                  <div style={{ fontSize: 11, display: 'flex', justifyContent: 'space-between' }}>
+                                                    <span style={{ color: '#6b7280' }}>Parcela:</span>
+                                                    <strong style={{ color: '#15803d' }}>{f + 1}/{p} → {formatCurrency(vlParc)}</strong>
+                                                  </div>
+                                                )}
+                                                {a.desconto_obs && (
+                                                  <div style={{ fontSize: 11, marginTop: 4, padding: '6px 8px', background: '#fef3c7', borderRadius: 5, color: '#92400e', fontStyle: 'italic' }}>
+                                                    💬 {a.desconto_obs}
+                                                  </div>
+                                                )}
+                                              </div>
+                                            </div>
+                                          )
+                                        })}
+                                      </div>
+                                    )}
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            )
+                          })()}
+                          </React.Fragment>
                         )
                       })}
                     </TableBody>
