@@ -129,6 +129,9 @@ export default function Pagamentos() {
   const [modalEstornar, setModalEstornar] = useState<any | null>(null)
   const [motivoEstorno, setMotivoEstorno] = useState('')
 
+  // ── linhas expandidas (composição do pagamento) ────────────────────────────
+  const [expandidos, setExpandidos] = useState<Set<string>>(new Set())
+
   // ─── fetch ─────────────────────────────────────────────────────────────────
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -158,7 +161,7 @@ export default function Pagamentos() {
     setLoadingLancs(true)
     const { data } = await supabase
       .from('ponto_lancamentos')
-      .select('id, colaborador_id, obra_id, mes_referencia, data_inicio, data_fim, status, motivo_recusa, data_pagamento, obs_pagamento, snap_liquido, snap_valor_total, snap_inss, snap_ir, snap_desconto_vt, snap_desconto_adiant, colaboradores(nome, chapa, tipo_contrato, funcao_id, funcoes(nome)), obras(nome)')
+      .select('id, colaborador_id, obra_id, mes_referencia, data_inicio, data_fim, status, motivo_recusa, data_pagamento, obs_pagamento, snap_liquido, snap_valor_total, snap_horas, snap_dsr, snap_producao, snap_premio, snap_inss, snap_ir, snap_desconto_vt, snap_desconto_adiant, colaboradores(nome, chapa, tipo_contrato, funcao_id, funcoes(nome)), obras(nome)')
       .in('status', ['liberado', 'pago'])
       .order('mes_referencia', { ascending: false })
     setLancsPendentes(data ?? [])
@@ -719,33 +722,81 @@ export default function Pagamentos() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {folhaPaga.map((l: any) => (
-                          <TableRow key={l.id}>
-                            <TableCell>
-                              <div className="font-semibold text-sm">{l.colaboradores?.nome ?? '—'}</div>
-                              <div className="text-xs text-muted-foreground">{l.colaboradores?.chapa} · {l.colaboradores?.tipo_contrato?.toUpperCase()}</div>
-                            </TableCell>
-                            <TableCell className="text-sm">{l.obras?.nome ?? '—'}</TableCell>
-                            <TableCell className="text-center text-xs text-muted-foreground">
-                              {l.data_inicio?.slice(8)}/{l.data_inicio?.slice(5,7)} → {l.data_fim?.slice(8)}/{l.data_fim?.slice(5,7)}
-                            </TableCell>
-                            <TableCell className="text-center">
-                              <span className="text-sm font-semibold" style={{ color:'#15803d' }}>
-                                {l.data_pagamento ? formatDate(l.data_pagamento) : '—'}
-                              </span>
-                            </TableCell>
-                            <TableCell className="text-xs text-muted-foreground max-w-[160px] truncate">{l.obs_pagamento ?? '—'}</TableCell>
-                            <TableCell className="text-right font-bold text-sm" style={{ color:'#15803d' }}>
-                              {l.snap_liquido ? formatCurrency(l.snap_liquido) : '—'}
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <Button size="sm" variant="outline" className="h-7 text-xs text-destructive border-destructive/40 hover:bg-destructive/5"
-                                onClick={() => { setModalEstornar(l); setMotivoEstorno('') }}>
-                                ↩ Estornar
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        ))}
+                        {folhaPaga.map((l: any) => {
+                          const exp = expandidos.has(l.id)
+                          const temSnap = l.snap_valor_total != null
+                          const pills = temSnap ? [
+                            { emoji:'🟢', label:'Horas',   val: l.snap_horas,         cor:'#15803d', bg:'#dcfce7', desc:false },
+                            { emoji:'🟦', label:'DSR',     val: l.snap_dsr,           cor:'#1d4ed8', bg:'#dbeafe', desc:false },
+                            { emoji:'🟣', label:'Produção',val: l.snap_producao,      cor:'#7c3aed', bg:'#ede9fe', desc:false },
+                            { emoji:'🏆', label:'Prêmio',  val: l.snap_premio,        cor:'#b45309', bg:'#fef3c7', desc:false },
+                            { emoji:'🚌', label:'-VT',     val: l.snap_desconto_vt,   cor:'#dc2626', bg:'#fee2e2', desc:true  },
+                            { emoji:'💵', label:'-AD',     val: l.snap_desconto_adiant,cor:'#dc2626',bg:'#fee2e2', desc:true  },
+                            { emoji:'🏛️', label:'-INSS',   val: l.snap_inss,          cor:'#dc2626', bg:'#fee2e2', desc:true  },
+                            { emoji:'📊', label:'-IR',     val: l.snap_ir,            cor:'#dc2626', bg:'#fee2e2', desc:true  },
+                          ].filter(p => (p.val ?? 0) > 0) : []
+                          return (
+                            <React.Fragment key={l.id}>
+                              <TableRow>
+                                <TableCell>
+                                  <div style={{display:'flex', alignItems:'center', gap:6}}>
+                                    <button
+                                      onClick={() => setExpandidos(prev => { const s = new Set(prev); exp ? s.delete(l.id) : s.add(l.id); return s })}
+                                      style={{border:'none', background:'transparent', cursor:'pointer', fontSize:10, padding:2, lineHeight:1, color:'var(--muted-foreground)'}}
+                                      title={exp ? 'Recolher detalhes' : 'Ver composição do pagamento'}>
+                                      {exp ? '▼' : '▶'}
+                                    </button>
+                                    <div>
+                                      <div className="font-semibold text-sm">{l.colaboradores?.nome ?? '—'}</div>
+                                      <div className="text-xs text-muted-foreground">{l.colaboradores?.chapa} · {l.colaboradores?.tipo_contrato?.toUpperCase()}</div>
+                                    </div>
+                                  </div>
+                                </TableCell>
+                                <TableCell className="text-sm">{l.obras?.nome ?? '—'}</TableCell>
+                                <TableCell className="text-center text-xs text-muted-foreground">
+                                  {l.data_inicio?.slice(8)}/{l.data_inicio?.slice(5,7)} → {l.data_fim?.slice(8)}/{l.data_fim?.slice(5,7)}
+                                </TableCell>
+                                <TableCell className="text-center">
+                                  <span className="text-sm font-semibold" style={{ color:'#15803d' }}>
+                                    {l.data_pagamento ? formatDate(l.data_pagamento) : '—'}
+                                  </span>
+                                </TableCell>
+                                <TableCell className="text-xs text-muted-foreground max-w-[160px] truncate">{l.obs_pagamento ?? '—'}</TableCell>
+                                <TableCell className="text-right font-bold text-sm" style={{ color:'#15803d' }}>
+                                  {l.snap_liquido ? formatCurrency(l.snap_liquido) : '—'}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  <Button size="sm" variant="outline" className="h-7 text-xs text-destructive border-destructive/40 hover:bg-destructive/5"
+                                    onClick={() => { setModalEstornar(l); setMotivoEstorno('') }}>
+                                    ↩ Estornar
+                                  </Button>
+                                </TableCell>
+                              </TableRow>
+                              {exp && (
+                                <TableRow style={{ background:'#f8fafc' }}>
+                                  <TableCell colSpan={7} style={{ padding:'8px 16px 12px 48px', borderTop:'none' }}>
+                                    {!temSnap ? (
+                                      <span style={{ fontSize:11, color:'var(--muted-foreground)', fontStyle:'italic' }}>
+                                        Detalhes não disponíveis — lançamento anterior ao sistema de snaps.
+                                      </span>
+                                    ) : (
+                                      <div style={{ display:'flex', flexWrap:'wrap', gap:6, alignItems:'center' }}>
+                                        {pills.map((p, i) => (
+                                          <span key={i} style={{ display:'inline-flex', alignItems:'center', gap:4, background:p.bg, color:p.cor, borderRadius:99, padding:'3px 10px', fontSize:11, fontWeight:700, border:`1px solid ${p.cor}22` }}>
+                                            {p.emoji} {p.label}: {formatCurrency(p.val)}
+                                          </span>
+                                        ))}
+                                        <span style={{ display:'inline-flex', alignItems:'center', gap:4, background:'#dcfce7', color:'#14532d', borderRadius:99, padding:'3px 10px', fontSize:11, fontWeight:800, border:'1px solid #16a34a44' }}>
+                                          = Bruto: {formatCurrency(l.snap_valor_total)}
+                                        </span>
+                                      </div>
+                                    )}
+                                  </TableCell>
+                                </TableRow>
+                              )}
+                            </React.Fragment>
+                          )
+                        })}
                       </TableBody>
                       <TableFooter>
                         <TableRow>

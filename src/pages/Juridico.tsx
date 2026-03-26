@@ -67,7 +67,7 @@ export default function Juridico() {
     try {
       const [
         colabRes, ocRes, atestRes, acidRes, advRes, docRes, docAvRes,
-        epiRes, pontRes, regPontRes, adRes, premRes, vtRes, provRes, pagRes, histChRes, histContRes,
+        epiRes, pontRes, regPontRes, adRes, premRes, vtRes, provRes, _pagRes, histChRes, histContRes,
       ] = await Promise.all([
         supabase.from('colaboradores').select('*, funcoes(id,nome,sigla), obras(id,nome,codigo)').eq('id', c.id).single(),
         supabase.from('ocorrencias').select('*').eq('colaborador_id', c.id).order('data', { ascending: false }),
@@ -77,13 +77,13 @@ export default function Juridico() {
         supabase.from('documentos').select('*').eq('colaborador_id', c.id).order('created_at', { ascending: false }),
         supabase.from('documentos_avulsos').select('*').eq('colaborador_id', c.id).order('created_at', { ascending: false }),
         supabase.from('colaborador_epi').select('*, epi_catalogo(nome,categoria,numero_ca)').eq('colaborador_id', c.id),
-        supabase.from('ponto_lancamentos').select('*, obras(nome)').eq('colaborador_id', c.id).order('mes_referencia', { ascending: false }),
+        supabase.from('ponto_lancamentos').select('*, obras(nome)').eq('colaborador_id', c.id).in('status', ['pago', 'liberado']).order('mes_referencia', { ascending: false }),
         supabase.from('registro_ponto').select('*').eq('colaborador_id', c.id).order('data', { ascending: false }).limit(120),
-        supabase.from('adiantamentos').select('*').eq('colaborador_id', c.id).order('created_at', { ascending: false }),
+        supabase.from('adiantamentos').select('*').eq('colaborador_id', c.id).order('competencia', { ascending: false }),
         supabase.from('premios').select('*').eq('colaborador_id', c.id).order('created_at', { ascending: false }),
         supabase.from('vale_transporte').select('*').eq('colaborador_id', c.id).order('competencia', { ascending: false }),
         supabase.from('provisoes_fgts').select('*').eq('colaborador_id', c.id).order('competencia', { ascending: false }),
-        supabase.from('pagamentos').select('*').eq('colaborador_id', c.id).order('created_at', { ascending: false }),
+        supabase.from('pagamentos').select('id').eq('colaborador_id', c.id).limit(1), // mantido para compatibilidade
         supabase.from('historico_chapa').select('*, funcoes(nome)').eq('colaborador_id', c.id).order('data_inicio', { ascending: false }),
         supabase.from('colaborador_historico_contrato').select('*, funcoes(nome), obras(nome)').eq('colaborador_id', c.id).order('data_inicio', { ascending: false }),
       ])
@@ -102,7 +102,7 @@ export default function Juridico() {
         premios:      premRes.data ?? [],
         vt:           vtRes.data ?? [],
         provisoes:    provRes.data ?? [],
-        pagamentos:   pagRes.data ?? [],
+        pagamentos:   pontRes.data ?? [],  // ponto_lancamentos com status pago/liberado
         historico_chapa: histChRes.data ?? [],
         historico_contrato: histContRes.data ?? [],
       })
@@ -164,7 +164,7 @@ export default function Juridico() {
     const totalAdiant = adiantos.reduce((s:number, a:any) => s + (a.valor ?? 0), 0)
     const totalPremio = prs.reduce((s:number, p:any) => s + (p.valor ?? 0), 0)
     const totalVT     = vts.reduce((s:number, v:any) => s + (v.valor_empresa ?? v.valor ?? 0), 0)
-    const totalPago   = pags.filter((p:any) => p.status === 'pago').reduce((s:number, p:any) => s + (p.valor_liquido ?? 0), 0)
+    const totalPago   = pags.reduce((s:number, p:any) => s + (p.snap_liquido ?? 0), 0)
     const totalFaltas = regs.filter((r:any) => r.falta).length
     const totalHExtra = regs.reduce((s:number, r:any) => s + (r.horas_extras ?? 0), 0)
 
@@ -381,10 +381,24 @@ export default function Juridico() {
 
     <!-- PAGAMENTOS -->
     <div class="secao">
-      <div class="sec-titulo">💳 Pagamentos (${pags.length} · Total pago: ${fmtCur(totalPago)})</div>
+      <div class="sec-titulo">💳 Pagamentos / Folha (${pags.length} · Total líquido: ${fmtCur(totalPago)})</div>
       <div class="sec-body">
-        ${tbl(['Competência','Tipo','Valor Bruto','Líquido','Status','Data'],
-          pags.map((p:any) => [fmtMes(p.competencia), p.tipo??'—', fmtCur(p.valor_bruto), fmtCur(p.valor_liquido), pill(p.status), fmtDate(p.data_pagamento)]))}
+        ${tbl(['Período','Obra','Bruto','Horas','DSR','Produção','Prêmio','-VT','-AD','-INSS','-IR','Líquido','Data Pgto'],
+          pags.map((p:any) => [
+            fmtMes(p.mes_referencia),
+            p.obras?.nome??'—',
+            fmtCur(p.snap_valor_total),
+            p.snap_horas!=null?p.snap_horas.toFixed(1)+'h':'—',
+            fmtCur(p.snap_dsr),
+            fmtCur(p.snap_producao),
+            fmtCur(p.snap_premio),
+            fmtCur(p.snap_vt),
+            fmtCur(p.snap_ad),
+            fmtCur(p.snap_inss),
+            fmtCur(p.snap_ir),
+            fmtCur(p.snap_liquido),
+            fmtDate(p.data_pagamento)
+          ]))}
       </div>
     </div>
 
@@ -392,8 +406,16 @@ export default function Juridico() {
     <div class="secao">
       <div class="sec-titulo">💵 Adiantamentos (${adiantos.length} · Total: ${fmtCur(totalAdiant)})</div>
       <div class="sec-body">
-        ${tbl(['Competência','Tipo','Valor','Status','Observações'],
-          adiantos.map((a:any) => [fmtMes(a.competencia), a.tipo??'—', fmtCur(a.valor), pill(a.status), (a.observacoes??'').substring(0,40)]))}
+        ${tbl(['Competência','Tipo','Valor','Status','Desconto Tipo','Parcelas','Obs'],
+          adiantos.map((a:any) => [
+            fmtMes(a.competencia),
+            a.tipo??'—',
+            fmtCur(a.valor),
+            pill(a.status),
+            a.desconto_tipo??'—',
+            a.desconto_parcelas!=null?`${a.desconto_parcela_atual??1}/${a.desconto_parcelas}`:'—',
+            (a.observacoes??'').substring(0,40)
+          ]))}
       </div>
     </div>
 
@@ -749,7 +771,7 @@ function FichaCompleta({ fichaData, onPDF }: { fichaData: Record<string,any>; on
   const totalAdiant = adiantos.reduce((s: number, a: any) => s + (a.valor ?? 0), 0)
   const totalPremio = prs.reduce((s: number, p: any) => s + (p.valor ?? 0), 0)
   const totalVT     = vts.reduce((s: number, v: any) => s + (v.valor_empresa ?? v.valor ?? 0), 0)
-  const totalPago   = pags.filter((p: any) => p.status === 'pago').reduce((s: number, p: any) => s + (p.valor_liquido ?? 0), 0)
+  const totalPago   = pags.reduce((s: number, p: any) => s + (p.snap_liquido ?? 0), 0)
 
   const statusColor: Record<string, string> = { ativo: '#15803d', inativo: '#dc2626', ferias: '#1d4ed8', afastado: '#b45309' }
   const statusBg:    Record<string, string> = { ativo: '#dcfce7', inativo: '#fee2e2', ferias: '#eff6ff', afastado: '#fef3c7' }
@@ -917,14 +939,36 @@ function FichaCompleta({ fichaData, onPDF }: { fichaData: Record<string,any>; on
             })}
       </Sec>
 
-      <Sec id="pagamentos" icon={<CreditCard size={15} />} title="Pagamentos" count={`${pags.length} · ${fmtCur(totalPago)} pago`}>
-        <Tabela headers={['Competência','Tipo','Valor Bruto','Líquido','Status','Data Pagto']}
-          rows={pags.map((p: any) => [fmtMes(p.competencia), p.tipo??'—', fmtCur(p.valor_bruto), fmtCur(p.valor_liquido), p.status??'—', fmtDate(p.data_pagamento)])} />
+      <Sec id="pagamentos" icon={<CreditCard size={15} />} title="Pagamentos / Folha" count={`${pags.length} · ${fmtCur(totalPago)} líquido`}>
+        <Tabela headers={['Período','Obra','Bruto','Horas','DSR','Produção','Prêmio','-VT','-AD','-INSS','-IR','Líquido','Data Pgto']}
+          rows={pags.map((p: any) => [
+            fmtMes(p.mes_referencia),
+            (p.obras as any)?.nome ?? '—',
+            fmtCur(p.snap_valor_total),
+            p.snap_horas != null ? p.snap_horas.toFixed(1) + 'h' : '—',
+            fmtCur(p.snap_dsr),
+            fmtCur(p.snap_producao),
+            fmtCur(p.snap_premio),
+            fmtCur(p.snap_vt),
+            fmtCur(p.snap_ad),
+            fmtCur(p.snap_inss),
+            fmtCur(p.snap_ir),
+            fmtCur(p.snap_liquido),
+            fmtDate(p.data_pagamento),
+          ])} />
       </Sec>
 
       <Sec id="adiantamentos" icon={<DollarSign size={15} />} title="Adiantamentos" count={`${adiantos.length} · ${fmtCur(totalAdiant)}`}>
-        <Tabela headers={['Competência','Tipo','Valor','Status','Observações']}
-          rows={adiantos.map((a: any) => [fmtMes(a.competencia), a.tipo??'—', fmtCur(a.valor), a.status??'—', (a.observacoes??'').substring(0,40)])} />
+        <Tabela headers={['Competência','Tipo','Valor','Status','Desconto Tipo','Parcelas','Obs']}
+          rows={adiantos.map((a: any) => [
+            fmtMes(a.competencia),
+            a.tipo ?? '—',
+            fmtCur(a.valor),
+            a.status ?? '—',
+            a.desconto_tipo ?? '—',
+            a.desconto_parcelas != null ? `${a.desconto_parcela_atual ?? 1}/${a.desconto_parcelas}` : '—',
+            (a.observacoes ?? '').substring(0, 40),
+          ])} />
       </Sec>
 
       <Sec id="premios" icon={<span>🏆</span>} title="Prêmios e Bonificações" count={`${prs.length} · ${fmtCur(totalPremio)}`}>

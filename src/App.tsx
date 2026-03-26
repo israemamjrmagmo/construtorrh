@@ -21,6 +21,7 @@ const Pagamentos     = React.lazy(() => import('@/pages/Pagamentos'))
 const Premios        = React.lazy(() => import('@/pages/Premios'))
 const ValeTransportePage = React.lazy(() => import('@/pages/ValeTransportePage'))
 const Provisoes      = React.lazy(() => import('@/pages/Provisoes'))
+const ProvisaoRescisao = React.lazy(() => import('@/pages/ProvisaoRescisao'))
 const Relatorios     = React.lazy(() => import('@/pages/Relatorios'))
 const Configuracoes  = React.lazy(() => import('@/pages/Configuracoes'))
 const Playbooks         = React.lazy(() => import('@/pages/Playbooks'))
@@ -277,7 +278,7 @@ export default function App() {
                 element={
                   <PrivateRoute>
                     <Layout>
-                      <Provisoes />
+                      <ProvisaoRescisao />
                     </Layout>
                   </PrivateRoute>
                 }

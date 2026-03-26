@@ -39,6 +39,7 @@ type AdiantRow = {
   desconto_parcela_atual: number | null        // qual parcela já descontada
   desconto_a_partir: string | null             // 'YYYY-MM' — a partir de quando descontar
   desconto_obs: string | null                  // obs sobre o desconto
+  requisicao_url: string | null
   colaboradores?: { nome: string; chapa: string }
 }
 
@@ -126,6 +127,7 @@ export default function Adiantamentos() {
   const [editando,  setEditando]  = useState<AdiantRow | null>(null)
   const [form,      setForm]      = useState<FormData>(EMPTY)
   const [saving,    setSaving]    = useState(false)
+  const [arquivoRequisicao, setArquivoRequisicao] = useState<File | null>(null)
 
   // confirmações
   const [deleteId,    setDeleteId]    = useState<string | null>(null)
@@ -137,7 +139,7 @@ export default function Adiantamentos() {
     setLoading(true)
     const [{ data: aData }, { data: cData }, { data: oData }] = await Promise.all([
       supabase.from('adiantamentos')
-        .select('*, colaboradores(nome,chapa)')
+        .select('*, requisicao_url, colaboradores(nome,chapa)')
         .eq('competencia', competencia)
         .order('created_at', { ascending: false }),
       supabase.from('colaboradores').select('id,nome,chapa').eq('status','ativo').order('nome'),
@@ -202,6 +204,7 @@ export default function Adiantamentos() {
   function openCreate() {
     setEditando(null)
     setForm({ ...EMPTY, competencia })
+    setArquivoRequisicao(null)
     setModalOpen(true)
   }
   function openEdit(r: AdiantRow) {
@@ -233,6 +236,7 @@ export default function Adiantamentos() {
   async function handleSave() {
     if (!form.colaborador_id) return toast.error('Colaborador obrigatório')
     if (!form.valor || +form.valor <= 0) return toast.error('Valor deve ser maior que zero')
+    if (!editando && !arquivoRequisicao) return toast.error('Anexe a requisição assinada')
     setSaving(true)
     const payload: any = {
       colaborador_id:        form.colaborador_id,
@@ -248,12 +252,23 @@ export default function Adiantamentos() {
       desconto_obs:          form.desconto_obs || null,
     }
     if (form.obra_id) payload.obra_id = form.obra_id
+
+    // Upload da requisição assinada (somente criação)
+    if (!editando && arquivoRequisicao) {
+      const filePath = `adiantamentos/${form.colaborador_id}/${Date.now()}_${arquivoRequisicao.name}`
+      const { error: upErr } = await supabase.storage.from('documentos').upload(filePath, arquivoRequisicao)
+      if (upErr) { setSaving(false); toast.error('Erro no upload: ' + upErr.message); return }
+      const { data: urlData } = supabase.storage.from('documentos').getPublicUrl(filePath)
+      payload.requisicao_url = urlData.publicUrl
+    }
+
     const { error } = editando
       ? await supabase.from('adiantamentos').update(payload).eq('id', editando.id)
       : await supabase.from('adiantamentos').insert(payload)
     setSaving(false)
     if (error) { toast.error('Erro: ' + error.message); return }
     toast.success(editando ? 'Atualizado!' : 'Registrado! Aguardando aprovação.')
+    setArquivoRequisicao(null)
     setModalOpen(false)
     fetchData()
   }
@@ -543,6 +558,13 @@ export default function Adiantamentos() {
                           </button>
                         )}
                         {/* Ícone de cadeado quando pago */}
+                        {r?.requisicao_url && (
+                          <a href={r.requisicao_url} target="_blank" rel="noopener noreferrer"
+                            title="Ver requisição assinada"
+                            style={{ width:28, height:28, borderRadius:6, border:'1px solid #bfdbfe', background:'#eff6ff', color:'#1d4ed8', display:'flex', alignItems:'center', justifyContent:'center', textDecoration:'none' }}>
+                            📎
+                          </a>
+                        )}
                         {isPago && (
                           <span title="Pago — exclua o pagamento para editar"
                             style={{ width: 28, height: 28, borderRadius: 6, background: '#eff6ff', border: '1px solid #bfdbfe', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'help' }}>
@@ -638,6 +660,21 @@ export default function Adiantamentos() {
                   <Textarea value={form.observacoes} onChange={e => setF('observacoes', e.target.value)}
                     placeholder="Motivo, detalhes…" rows={2} />
                 </div>
+                {/* Upload da requisição assinada (somente criação) */}
+                {!editando && (
+                  <div style={{ gridColumn: '1/-1' }}>
+                    <Label className="mb-1 block">📎 Requisição Assinada <span style={{color:'#dc2626'}}>*</span></Label>
+                    <input
+                      type="file"
+                      accept=".pdf,.jpg,.jpeg,.png"
+                      onChange={e => setArquivoRequisicao(e.target.files?.[0] ?? null)}
+                      style={{ width:'100%', padding:'8px', border:'1.5px solid var(--border)', borderRadius:6, fontSize:12 }}
+                    />
+                    <div style={{ fontSize:11, color:'var(--muted-foreground)', marginTop:4 }}>
+                      PDF ou imagem da requisição assinada pelo colaborador (obrigatório)
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* ── Bloco: Desconto no Fechamento ── */}

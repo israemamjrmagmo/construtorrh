@@ -455,8 +455,6 @@ export default function EncargosPage() {
                     {[
                       { label: 'Colaborador',    tip: ''  },
                       { label: 'Chapa',          tip: ''  },
-                      { label: 'Função',         tip: ''  },
-                      { label: 'Obra',           tip: ''  },
                       { label: 'Horas ³',        tip: 'Normais + extras' },
                       { label: 'DSR ³',          tip: 'Descanso Semanal' },
                       { label: 'Produção ³',     tip: 'Produtividade' },
@@ -486,10 +484,11 @@ export default function EncargosPage() {
                 <TableBody>
                   {linhasFiltradas.map((l, idx) => (
                     <TableRow key={`${l.colaborador_id}-${idx}`} style={{ background: idx % 2 === 0 ? 'var(--card)' : 'var(--muted)' }}>
-                      <TableCell className="font-semibold" style={{ whiteSpace: 'nowrap', padding: '7px 10px' }}>{l.nome}</TableCell>
+                      <TableCell style={{ whiteSpace: 'nowrap', padding: '7px 10px' }}>
+                        <div style={{ fontWeight: 700, fontSize: 12 }}>{l.nome}</div>
+                        <div style={{ fontSize: 11, color: 'var(--muted-foreground)' }}>{l.funcao_nome} · {l.obra_nome}</div>
+                      </TableCell>
                       <TableCell style={{ color: 'var(--muted-foreground)', padding: '7px 10px' }}>{l.chapa ?? '—'}</TableCell>
-                      <TableCell style={{ color: 'var(--muted-foreground)', padding: '7px 10px', whiteSpace: 'nowrap' }}>{l.funcao_nome}</TableCell>
-                      <TableCell style={{ color: 'var(--muted-foreground)', padding: '7px 10px', whiteSpace: 'nowrap' }}>{l.obra_nome}</TableCell>
                       {/* Composição */}
                       <TableCell style={{ padding: '7px 10px' }}>{formatCurrency(l.valorHoras)}</TableCell>
                       <TableCell style={{ padding: '7px 10px', color: '#0369a1' }}>{formatCurrency(l.valorDSR)}</TableCell>
@@ -515,7 +514,7 @@ export default function EncargosPage() {
 
                 <TableFooter>
                   <TableRow style={{ fontSize: 11 }}>
-                    <TableCell colSpan={4} style={{ background: '#1e3a5f', color: '#fff', fontWeight: 700, padding: '8px 10px' }}>
+                    <TableCell colSpan={2} style={{ background: '#1e3a5f', color: '#fff', fontWeight: 700, padding: '8px 10px' }}>
                       TOTAIS ({totais.qtd} lançamentos)
                     </TableCell>
                     <TableCell style={{ background: '#1e3a5f', color: '#fff', padding: '8px 10px' }}>{formatCurrency(totais.valorHoras)}</TableCell>

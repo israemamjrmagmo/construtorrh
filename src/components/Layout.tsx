@@ -49,7 +49,7 @@ const NAV_GROUPS = [
       { to: '/fechamento-ponto', label: 'Fechamento',       icon: Lock,        fechBadge: true },
       { to: '/pagamentos',       label: 'Pagamentos',       icon: DollarSign },
       { to: '/encargos',         label: 'Encargos',         icon: Briefcase },
-      { to: '/provisoes',        label: 'Provisões FGTS',   icon: Calculator },
+      { to: '/provisoes',        label: 'Provisões Rescisão', icon: Calculator },
     ],
   },
   {
