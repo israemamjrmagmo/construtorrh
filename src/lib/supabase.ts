@@ -89,6 +89,9 @@ export interface Colaborador {
   vt_dados: Record<string, unknown> | null
   status: 'ativo' | 'inativo' | 'afastado' | 'ferias'
   observacoes: string | null
+  vinculo_anterior_id: string | null   // id do cadastro anterior (recontratação)
+  motivo_encerramento: string | null   // motivo de encerramento deste vínculo
+  data_encerramento: string | null     // data de encerramento deste vínculo
   // joins
   funcoes?: Funcao
   obras?: Obra

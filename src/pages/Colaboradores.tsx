@@ -950,6 +950,16 @@ export default function Colaboradores() {
   // alerta lista negra
   const [alertaListaNegra, setAlertaListaNegra] = useState<{ nome: string; motivo: string } | null>(null)
 
+  // Modal recontratação
+  const [modalRecontratar, setModalRecontratar]   = useState(false)
+  const [recontStep, setRecontStep]               = useState<1|2>(1)
+  const [recontDataEnc, setRecontDataEnc]         = useState('')
+  const [recontMotivo, setRecontMotivo]           = useState<string>('mudanca_vinculo')
+  const [recontNovoTipo, setRecontNovoTipo]       = useState<'clt'|'autonomo'|'pj'>('clt')
+  const [recontDataAdm, setRecontDataAdm]         = useState('')
+  const [recontSaving, setRecontSaving]           = useState(false)
+  const [recontColabId, setRecontColabId]         = useState<string|null>(null)
+
   // ── fetch ─────────────────────────────────────────────────────────────────
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -1435,6 +1445,104 @@ export default function Colaboradores() {
     fetchData()
   }
 
+  // ── recontratação ─────────────────────────────────────────────────────────
+  async function handleRecontratar() {
+    if (!editId || !recontDataEnc || !recontDataAdm) {
+      toast.error('Preencha as datas obrigatórias')
+      return
+    }
+    if (recontDataAdm <= recontDataEnc) {
+      toast.error('Data de início do novo vínculo deve ser após o encerramento')
+      return
+    }
+
+    setRecontSaving(true)
+
+    // 1. Encerrar colaborador atual
+    const { error: errEnc } = await supabase
+      .from('colaboradores')
+      .update({
+        status: 'inativo',
+        data_demissao: recontDataEnc,
+        data_encerramento: recontDataEnc,
+        motivo_encerramento: recontMotivo,
+      } as any)
+      .eq('id', editId)
+
+    if (errEnc) {
+      toast.error('Erro ao encerrar vínculo: ' + errEnc.message)
+      setRecontSaving(false)
+      return
+    }
+
+    // 2. Buscar dados completos do colaborador atual
+    const colabAtual = rows.find(r => r.id === editId)
+    if (!colabAtual) {
+      toast.error('Colaborador não encontrado')
+      setRecontSaving(false)
+      return
+    }
+
+    // 3. Gerar nova chapa baseada no novo tipo/data de admissão
+    const fn = funcoes.find(f => f.id === (colabAtual.funcao_id ?? form.funcao_id))
+    let novaChapa = ''
+    if (fn?.sigla) {
+      novaChapa = await gerarChapa(fn.sigla, recontDataAdm)
+    }
+
+    // 4. Criar novo colaborador (cópia dos dados pessoais + novo vínculo)
+    const novoPayload: any = {
+      nome:              colabAtual.nome,
+      cpf:               colabAtual.cpf,
+      rg:                colabAtual.rg,
+      pis_nit:           colabAtual.pis_nit,
+      data_nascimento:   colabAtual.data_nascimento,
+      genero:            colabAtual.genero,
+      estado_civil:      colabAtual.estado_civil,
+      telefone:          colabAtual.telefone,
+      email:             colabAtual.email,
+      endereco:          colabAtual.endereco,
+      cidade:            colabAtual.cidade,
+      estado:            colabAtual.estado,
+      cep:               colabAtual.cep,
+      banco:             colabAtual.banco,
+      agencia:           colabAtual.agencia,
+      conta:             colabAtual.conta,
+      tipo_conta:        colabAtual.tipo_conta,
+      pix_chave:         colabAtual.pix_chave,
+      pix_tipo:          (colabAtual as any).pix_tipo,
+      funcao_id:         colabAtual.funcao_id,
+      obra_id:           colabAtual.obra_id,
+      vale_transporte:   colabAtual.vale_transporte,
+      vt_dados:          colabAtual.vt_dados,
+      // Novo vínculo
+      chapa:             novaChapa,
+      tipo_contrato:     recontNovoTipo,
+      data_admissao:     recontDataAdm,
+      status:            'ativo',
+      vinculo_anterior_id: editId,
+      observacoes:       colabAtual.observacoes,
+    }
+
+    const { data: inserido, error: errIns } = await supabase
+      .from('colaboradores')
+      .insert(novoPayload)
+      .select('id')
+      .single()
+
+    if (errIns || !inserido) {
+      toast.error('Erro ao criar novo vínculo: ' + (errIns?.message ?? 'desconhecido'))
+      setRecontSaving(false)
+      return
+    }
+
+    setRecontSaving(false)
+    setModalRecontratar(false)
+    setModalOpen(false)
+    toast.success(`✅ Recontratação concluída! Nova chapa: ${novaChapa} (${recontNovoTipo.toUpperCase()})`)
+    fetchData()
+  }
+
   // ── deletar ───────────────────────────────────────────────────────────────
   const handleDelete = async () => {
     if (!deleteId) return
@@ -1570,7 +1678,22 @@ export default function Colaboradores() {
                           {c.chapa ?? '—'}
                         </span>
                       </TableCell>
-                      <TableCell style={{ fontWeight: 500 }}>{c.nome}</TableCell>
+                      <TableCell style={{ fontWeight: 500 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          {c.nome}
+                          {(c as any).vinculo_anterior_id && (
+                            <span title="Recontratado — possui vínculo anterior" style={{ fontSize: 9, padding: '2px 6px', borderRadius: 99, background: '#ede9fe', color: '#7c3aed', fontWeight: 800, whiteSpace: 'nowrap' }}>
+                              ↩ RECONTRATADO
+                            </span>
+                          )}
+                          {/* Verifica se existe outro cadastro com mesmo CPF (tem vínculo posterior) */}
+                          {c.cpf && rows.some(r => r.id !== c.id && r.cpf === c.cpf && (r as any).vinculo_anterior_id === c.id) && (
+                            <span title="Existe um novo vínculo ativo para este colaborador" style={{ fontSize: 9, padding: '2px 6px', borderRadius: 99, background: '#fef3c7', color: '#d97706', fontWeight: 800, whiteSpace: 'nowrap' }}>
+                              🔄 NOVO VÍNCULO
+                            </span>
+                          )}
+                        </div>
+                      </TableCell>
                       <TableCell style={{ fontSize: 13 }}>{(c.funcoes as any)?.nome ?? '—'}</TableCell>
                       <TableCell style={{ fontSize: 12, textTransform: 'capitalize' }}>{c.tipo_contrato?.replace(/_/g, ' ') ?? '—'}</TableCell>
                       <TableCell style={{ fontSize: 13 }}>{(c.obras as any)?.nome ?? '—'}</TableCell>
@@ -1853,6 +1976,76 @@ export default function Colaboradores() {
                     </Field>
                   </Grid>
                 </Sec>
+
+                {/* ── Histórico de Vínculos (somente modo edição) ──────── */}
+                {editId && (() => {
+                  const colabAtual = rows.find(r => r.id === editId)
+                  const cpfAtual   = colabAtual?.cpf
+                  // Todos os cadastros do mesmo CPF (excluindo o atual)
+                  const outros = cpfAtual
+                    ? rows.filter(r => r.cpf === cpfAtual && r.id !== editId)
+                        .sort((a, b) => (a.data_admissao ?? '').localeCompare(b.data_admissao ?? ''))
+                    : []
+
+                  if (outros.length === 0) return null
+
+                  return (
+                    <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16 }}>
+                      <div style={{ fontWeight: 800, fontSize: 13, color: '#7c3aed', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        🔗 Histórico de Vínculos ({outros.length + 1} registros no CPF {cpfAtual})
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {[...outros, colabAtual!].sort((a,b) => (a?.data_admissao ?? '').localeCompare(b?.data_admissao ?? '')).map((v, i, arr) => {
+                          const isAtual  = v.id === editId
+                          const isUltimo = i === arr.length - 1
+                          const cor = v.tipo_contrato === 'clt' ? '#1d4ed8' : '#d97706'
+                          const bg  = v.tipo_contrato === 'clt' ? '#dbeafe' : '#fef3c7'
+                          return (
+                            <div key={v.id} style={{
+                              display: 'flex', alignItems: 'center', gap: 10,
+                              padding: '8px 12px', borderRadius: 8,
+                              background: isAtual ? bg : 'var(--muted)',
+                              border: `1px solid ${isAtual ? cor : 'var(--border)'}`,
+                              opacity: v.status === 'inativo' ? 0.7 : 1,
+                            }}>
+                              <div style={{
+                                width: 24, height: 24, borderRadius: '50%',
+                                background: isAtual ? cor : '#9ca3af',
+                                color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                fontWeight: 800, fontSize: 11, flexShrink: 0,
+                              }}>{i + 1}</div>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontWeight: 700, fontSize: 12, color: isAtual ? cor : 'var(--foreground)', display: 'flex', gap: 6, alignItems: 'center' }}>
+                                  <span style={{ fontFamily: 'monospace' }}>{v.chapa ?? '—'}</span>
+                                  <span style={{ textTransform: 'uppercase', fontSize: 10 }}>{v.tipo_contrato}</span>
+                                  {isAtual && <span style={{ fontSize: 9, background: cor, color: '#fff', padding: '1px 5px', borderRadius: 99 }}>ATUAL</span>}
+                                  {!isAtual && isUltimo && <span style={{ fontSize: 9, background: '#10b981', color: '#fff', padding: '1px 5px', borderRadius: 99 }}>MAIS RECENTE</span>}
+                                </div>
+                                <div style={{ fontSize: 10, color: 'var(--muted-foreground)', marginTop: 2 }}>
+                                  {v.data_admissao ? new Date(v.data_admissao + 'T12:00:00').toLocaleDateString('pt-BR') : '—'}
+                                  {' → '}
+                                  {v.status === 'inativo' && (v as any).data_encerramento
+                                    ? new Date((v as any).data_encerramento + 'T12:00:00').toLocaleDateString('pt-BR')
+                                    : v.status === 'ativo' ? 'Presente' : v.status?.toUpperCase()}
+                                  {(v as any).motivo_encerramento && <span style={{ marginLeft: 8, fontStyle: 'italic' }}>({(v as any).motivo_encerramento.replace(/_/g, ' ')})</span>}
+                                </div>
+                              </div>
+                              {!isAtual && (
+                                <button
+                                  type="button"
+                                  onClick={() => openEdit(v as ColaboradorRow)}
+                                  style={{ fontSize: 10, padding: '3px 8px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--card)', cursor: 'pointer', color: 'var(--primary)', fontWeight: 600 }}
+                                >
+                                  Ver ficha
+                                </button>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )
+                })()}
               </div>
             )}
 
@@ -2035,12 +2228,161 @@ export default function Colaboradores() {
           {/* rodapé */}
           <DialogFooter style={{ padding: '14px 24px', borderTop: '1px solid var(--border)', background: 'var(--muted)', flexShrink: 0 }}>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', width: '100%' }}>
+              {editId && form.status === 'ativo' && (
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    const hoje = new Date().toISOString().split('T')[0]
+                    setRecontDataEnc(hoje)
+                    setRecontDataAdm(hoje)
+                    setRecontMotivo('mudanca_vinculo')
+                    setRecontNovoTipo(form.tipo_contrato === 'clt' ? 'autonomo' : 'clt')
+                    setRecontStep(1)
+                    setRecontColabId(editId)
+                    setModalRecontratar(true)
+                  }}
+                  style={{ color: '#d97706', borderColor: '#fde68a', background: '#fffbeb', marginRight: 'auto' }}
+                  disabled={saving}
+                >
+                  🔄 Encerrar e Recontatar
+                </Button>
+              )}
               <Button variant="outline" onClick={() => setModalOpen(false)} disabled={saving}>Cancelar</Button>
               <Button onClick={handleSave} disabled={saving || gerando}>
                 {saving ? 'Salvando…' : editId ? 'Salvar alterações' : 'Criar colaborador'}
               </Button>
             </div>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ═══════════ MODAL RECONTRATAÇÃO ═══════════════════════════════ */}
+      <Dialog open={modalRecontratar} onOpenChange={o => { if (!recontSaving) setModalRecontratar(o) }}>
+        <DialogContent style={{ maxWidth: 520 }}>
+          <DialogHeader>
+            <DialogTitle style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              🔄 Encerrar Vínculo e Recontatar
+            </DialogTitle>
+          </DialogHeader>
+
+          <div style={{ padding: '4px 0 16px' }}>
+            {/* Indicador de passos */}
+            <div style={{ display: 'flex', gap: 0, marginBottom: 20 }}>
+              {[
+                { n: 1, label: 'Encerramento' },
+                { n: 2, label: 'Novo Vínculo' },
+              ].map((p, i) => (
+                <div key={p.n} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
+                  {i > 0 && <div style={{ position: 'absolute', top: 14, left: '-50%', width: '100%', height: 2, background: recontStep > 1 ? '#1d4ed8' : '#e5e7eb', zIndex: 0 }} />}
+                  <div style={{
+                    width: 28, height: 28, borderRadius: '50%', zIndex: 1,
+                    background: recontStep >= p.n ? '#1d4ed8' : '#e5e7eb',
+                    color: recontStep >= p.n ? '#fff' : '#9ca3af',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontWeight: 800, fontSize: 13,
+                  }}>{p.n}</div>
+                  <div style={{ fontSize: 10, fontWeight: 600, color: recontStep >= p.n ? '#1d4ed8' : '#9ca3af', marginTop: 4 }}>{p.label}</div>
+                </div>
+              ))}
+            </div>
+
+            {recontStep === 1 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div style={{ background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#92400e' }}>
+                  ⚠️ O cadastro atual será <strong>inativado</strong> na data de encerramento. Um novo cadastro será criado com nova chapa.
+                </div>
+
+                <div>
+                  <Label className="text-xs">Data de encerramento do vínculo atual *</Label>
+                  <Input type="date" value={recontDataEnc}
+                    onChange={e => setRecontDataEnc(e.target.value)}
+                    className="mt-1" />
+                </div>
+
+                <div>
+                  <Label className="text-xs">Motivo do encerramento *</Label>
+                  <select value={recontMotivo} onChange={e => setRecontMotivo(e.target.value)}
+                    style={{ width: '100%', height: 36, border: '1px solid var(--border)', borderRadius: 6, padding: '0 10px', fontSize: 13, background: 'var(--background)', marginTop: 4 }}>
+                    <option value="mudanca_vinculo">Mudança de vínculo (CLT ↔ Autônomo)</option>
+                    <option value="rescisao_amigavel">Rescisão amigável</option>
+                    <option value="demissao">Demissão</option>
+                    <option value="aposentadoria">Aposentadoria</option>
+                    <option value="outros">Outros</option>
+                  </select>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
+                  <Button variant="outline" onClick={() => setModalRecontratar(false)}>Cancelar</Button>
+                  <Button onClick={() => {
+                    if (!recontDataEnc) { toast.error('Informe a data de encerramento'); return }
+                    setRecontStep(2)
+                  }}>Próximo →</Button>
+                </div>
+              </div>
+            )}
+
+            {recontStep === 2 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div style={{ background: '#dbeafe', border: '1px solid #93c5fd', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#1e40af' }}>
+                  ✅ Encerramento em <strong>{recontDataEnc ? new Date(recontDataEnc + 'T12:00:00').toLocaleDateString('pt-BR') : '—'}</strong> confirmado. Configure o novo vínculo:
+                </div>
+
+                <div>
+                  <Label className="text-xs">Novo tipo de contrato *</Label>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginTop: 6 }}>
+                    {(['clt', 'autonomo', 'pj'] as const).map(t => (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => setRecontNovoTipo(t)}
+                        style={{
+                          padding: '10px 8px', borderRadius: 8, border: `2px solid ${recontNovoTipo === t ? '#1d4ed8' : '#e5e7eb'}`,
+                          background: recontNovoTipo === t ? '#dbeafe' : 'var(--card)',
+                          color: recontNovoTipo === t ? '#1d4ed8' : 'var(--foreground)',
+                          fontWeight: 700, fontSize: 12, cursor: 'pointer',
+                          textTransform: 'uppercase',
+                        }}
+                      >
+                        {t === 'clt' ? '🟦 CLT' : t === 'autonomo' ? '🟧 Autônomo' : '🟧 PJ'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <Label className="text-xs">Data de início do novo vínculo *</Label>
+                  <Input type="date" value={recontDataAdm}
+                    onChange={e => setRecontDataAdm(e.target.value)}
+                    className="mt-1"
+                    min={recontDataEnc}
+                  />
+                  <div style={{ fontSize: 10, color: 'var(--muted-foreground)', marginTop: 3 }}>
+                    A nova chapa será gerada automaticamente com base nesta data.
+                  </div>
+                </div>
+
+                <div style={{ background: 'var(--muted)', borderRadius: 8, padding: '10px 14px', fontSize: 12 }}>
+                  <div style={{ fontWeight: 700, marginBottom: 4 }}>📋 O que será copiado automaticamente:</div>
+                  <div style={{ color: 'var(--muted-foreground)', lineHeight: 1.8 }}>
+                    ✅ Dados pessoais (nome, CPF, RG, endereço, contato)<br/>
+                    ✅ Dados bancários e PIX<br/>
+                    ✅ Função e obra atuais<br/>
+                    ✅ Configuração de Vale Transporte<br/>
+                    ⚠️ <strong>Salário/valor hora</strong>: atualize após a recontratação<br/>
+                    ❌ Ponto, VT lançados e adiantamentos ficam no vínculo anterior
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
+                  <Button variant="outline" onClick={() => setRecontStep(1)} disabled={recontSaving}>← Voltar</Button>
+                  <Button onClick={handleRecontratar} disabled={recontSaving}
+                    style={{ background: '#1d4ed8', color: '#fff' }}>
+                    {recontSaving ? '⏳ Processando…' : '✅ Confirmar Recontratação'}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
 
@@ -2918,17 +3260,37 @@ function FuncaoSection({
               <div style={{ padding: '8px 12px', borderRadius: 6, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', fontSize: 12, color: '#dc2626' }}>
                 ⚠️ Nenhum tipo de contrato ativo nesta função. Edite a função primeiro.
               </div>
+            ) : editId ? (
+              // MODO EDIÇÃO: tipo_contrato é somente leitura
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  padding: '10px 14px', borderRadius: 8,
+                  background: form.tipo_contrato === 'clt' ? '#dbeafe' : '#fef3c7',
+                  border: `2px solid ${form.tipo_contrato === 'clt' ? '#93c5fd' : '#fde68a'}`,
+                }}>
+                  <span style={{ fontSize: 18 }}>{form.tipo_contrato === 'clt' ? '🟦' : '🟧'}</span>
+                  <div>
+                    <div style={{ fontWeight: 800, fontSize: 14, color: form.tipo_contrato === 'clt' ? '#1d4ed8' : '#d97706' }}>
+                      {form.tipo_contrato?.toUpperCase()}
+                    </div>
+                    <div style={{ fontSize: 10, color: 'var(--muted-foreground)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                      🔒 Somente leitura — para mudar, use "Encerrar e Recontatar"
+                    </div>
+                  </div>
+                </div>
+              </div>
             ) : (
+              // MODO CRIAÇÃO: Select normal
               <Select
                 value={
                   tiposContratoAtivos.find(t => t.value === form.tipo_contrato)
                     ? (form.tipo_contrato || undefined)
                     : tiposContratoAtivos[0].value
                 }
-                onValueChange={temPontoLancado ? undefined : v => onSet('tipo_contrato', v)}
-                disabled={!!temPontoLancado}
+                onValueChange={v => onSet('tipo_contrato', v)}
               >
-                <SelectTrigger style={temPontoLancado ? { opacity: 0.6, cursor: 'not-allowed' } : undefined}><SelectValue /></SelectTrigger>
+                <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {tiposContratoAtivos.map(t => (
                     <SelectItem key={t.value} value={t.value}>
