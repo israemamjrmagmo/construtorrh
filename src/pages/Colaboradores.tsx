@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react'
+import React, { useEffect, useState, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import type { Colaborador, Funcao, Obra } from '@/lib/supabase'
 import { formatCPF, formatDate, formatCurrency, cn } from '@/lib/utils'
@@ -24,7 +24,9 @@ import {
 import {
   Users, Plus, Search, Pencil, Trash2, HardHat, History,
   Briefcase, Tag, Clock, AlertTriangle, CheckCircle2,
+  ShieldAlert, Loader2, XCircle,
 } from 'lucide-react'
+import { useAuth } from '@/hooks/useAuth'
 import { toast } from 'sonner'
 import { traduzirErro } from '@/lib/erros'
 
@@ -896,6 +898,7 @@ function SolicitacoesPortalTab({ obras, funcoes }: { obras: Obra[]; funcoes: Fun
 
 // ─── COMPONENTE PRINCIPAL ─────────────────────────────────────────────────────
 export default function Colaboradores() {
+  const { user } = useAuth()
   const [pageTab, setPageTab] = useState<'colaboradores' | 'funcoes'>('colaboradores')
 
   const [rows, setRows]     = useState<ColaboradorRow[]>([])
@@ -960,6 +963,19 @@ export default function Colaboradores() {
   const [recontDataAdm, setRecontDataAdm]         = useState('')
   const [recontSaving, setRecontSaving]           = useState(false)
   const [recontColabId, setRecontColabId]         = useState<string|null>(null)
+
+  // ── modal de inativação ───────────────────────────────────────────────────
+  type PendenciaItem = { tipo: string; label: string; qtd: number; ok: boolean }
+  const [modalInativar, setModalInativar]           = useState(false)
+  const [inativarColabId, setInativarColabId]       = useState<string|null>(null)
+  const [inativarNome, setInativarNome]             = useState('')
+  const [inativarData, setInativarData]             = useState(new Date().toISOString().split('T')[0])
+  const [inativarMotivo, setInativarMotivo]         = useState('')
+  const [inativarPendencias, setInativarPendencias] = useState<PendenciaItem[]>([])
+  const [inativarLoadingPend, setInativarLoadingPend] = useState(false)
+  const [inativarConfirmou, setInativarConfirmou]   = useState(false)
+  const [inativarSaving, setInativarSaving]         = useState(false)
+  const inativarFormStatusPrev = useRef<string>('ativo') // guarda status anterior ao abrir
 
   // ── fetch ─────────────────────────────────────────────────────────────────
   const fetchData = useCallback(async () => {
@@ -1298,6 +1314,96 @@ export default function Colaboradores() {
   }
 
   // ── salvar ────────────────────────────────────────────────────────────────
+  // ── Abrir modal de inativação: busca pendências ───────────────────────────
+  async function abrirModalInativar(colabId: string, colabNome: string, statusAtual: string) {
+    setInativarColabId(colabId)
+    setInativarNome(colabNome)
+    setInativarData(new Date().toISOString().split('T')[0])
+    setInativarMotivo('')
+    setInativarConfirmou(false)
+    inativarFormStatusPrev.current = statusAtual
+    setInativarPendencias([])
+    setModalInativar(true)
+    setInativarLoadingPend(true)
+
+    // Buscar pendências em paralelo
+    const hoje = new Date().toISOString().split('T')[0]
+    const compAtual = hoje.slice(0, 7) // YYYY-MM
+
+    const [
+      { data: pontos },
+      { data: vts },
+      { data: adiantamentos },
+      { data: premios },
+    ] = await Promise.all([
+      supabase.from('ponto_lancamentos')
+        .select('id', { count: 'exact' })
+        .eq('colaborador_id', colabId)
+        .in('status', ['pendente', 'aberto']),
+      supabase.from('vale_transporte')
+        .select('id', { count: 'exact' })
+        .eq('colaborador_id', colabId)
+        .in('status', ['pendente', 'aguardando_pagamento']),
+      supabase.from('adiantamentos')
+        .select('id', { count: 'exact' })
+        .eq('colaborador_id', colabId)
+        .in('status', ['pendente', 'aprovado']),
+      supabase.from('premios')
+        .select('id', { count: 'exact' })
+        .eq('colaborador_id', colabId)
+        .in('status', ['pendente', 'aprovado']),
+    ])
+
+    const pends: PendenciaItem[] = [
+      { tipo: 'ponto',       label: 'Ponto em aberto / pendente',          qtd: pontos?.length ?? 0,       ok: (pontos?.length ?? 0) === 0 },
+      { tipo: 'vt',          label: 'Vale-Transporte pendente / a pagar',  qtd: vts?.length ?? 0,          ok: (vts?.length ?? 0) === 0 },
+      { tipo: 'adiantamento',label: 'Adiantamentos pendentes / aprovados', qtd: adiantamentos?.length ?? 0, ok: (adiantamentos?.length ?? 0) === 0 },
+      { tipo: 'premio',      label: 'Prêmios pendentes / aprovados',       qtd: premios?.length ?? 0,       ok: (premios?.length ?? 0) === 0 },
+    ]
+    setInativarPendencias(pends)
+    setInativarLoadingPend(false)
+  }
+
+  // ── Confirmar inativação ──────────────────────────────────────────────────
+  async function confirmarInativacao() {
+    if (!inativarColabId) return
+    if (!inativarData) { toast.error('Informe a data de inativação'); return }
+    if (!inativarConfirmou) { toast.error('Você precisa confirmar que verificou as pendências'); return }
+
+    setInativarSaving(true)
+
+    const userEmail = user?.email ?? 'sistema'
+    const agora     = new Date().toISOString()
+
+    const { error } = await supabase.from('colaboradores').update({
+      status:                  'inativo',
+      data_status:             inativarData,
+      data_encerramento:       inativarData,
+      motivo_encerramento:     inativarMotivo || 'Inativado manualmente',
+      inativado_por:           userEmail,
+      inativado_em:            agora,
+      confirmou_sem_pendencias: true,
+    } as any).eq('id', inativarColabId)
+
+    setInativarSaving(false)
+
+    if (error) {
+      toast.error('Erro ao inativar: ' + error.message)
+      return
+    }
+
+    toast.success(`✅ ${inativarNome} inativado(a) com sucesso!`)
+    setModalInativar(false)
+
+    // Se o modal de edição estava aberto com esse colaborador, atualizar o form
+    if (editId === inativarColabId) {
+      set('status', 'inativo')
+      set('data_status', inativarData)
+    }
+
+    fetchData()
+  }
+
   const handleSave = async () => {
     if (!form.nome.trim()) { toast.error('Nome é obrigatório'); setSection('pessoal'); return }
     if (!form.funcao_id)   { toast.error('Selecione a função'); setSection('funcao'); return }
@@ -1706,6 +1812,13 @@ export default function Colaboradores() {
                         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
                           <Button variant="ghost" size="icon" style={{ width: 30, height: 30 }} title="Histórico de chapas" onClick={() => openHist(c.id)}><History size={13} /></Button>
                           <Button variant="ghost" size="icon" style={{ width: 30, height: 30 }} onClick={() => openEdit(c)}><Pencil size={13} /></Button>
+                          {c.status !== 'inativo' && (
+                            <Button variant="ghost" size="icon" title="Inativar colaborador"
+                              style={{ width: 30, height: 30, color: '#dc2626' }}
+                              onClick={() => abrirModalInativar(c.id, c.nome, c.status ?? 'ativo')}>
+                              <XCircle size={13} />
+                            </Button>
+                          )}
                           {colabsComPonto.has(c.id) ? (
                             <Button variant="ghost" size="icon" title="Não é possível excluir: colaborador possui ponto(s) lançado(s)"
                               style={{ width: 30, height: 30, color: '#d1d5db', cursor: 'not-allowed' }} disabled>
@@ -1952,7 +2065,16 @@ export default function Colaboradores() {
                 <Sec title="Status">
                   <Grid cols={2}>
                     <Field label="Status">
-                      <Select value={form.status} onValueChange={v => { set('status', v); if(v==='ativo') set('data_status','') }}>
+                      <Select value={form.status} onValueChange={v => {
+                        if (v === 'inativo' && editId) {
+                          // Abre modal de confirmação em vez de aplicar direto
+                          const colab = rows.find(r => r.id === editId)
+                          abrirModalInativar(editId, colab?.nome ?? form.nome, form.status)
+                        } else {
+                          set('status', v)
+                          if (v === 'ativo') set('data_status', '')
+                        }
+                      }}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="ativo">✅ Ativo</SelectItem>
@@ -2558,6 +2680,140 @@ export default function Colaboradores() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* ── Modal de Inativação ─────────────────────────────────────────── */}
+      <Dialog open={modalInativar} onOpenChange={o => { if (!inativarSaving) setModalInativar(o) }}>
+        <DialogContent style={{ maxWidth: 520 }}>
+          <DialogHeader>
+            <DialogTitle style={{ display:'flex', alignItems:'center', gap:8, color:'#dc2626' }}>
+              <ShieldAlert size={20} />
+              Inativar colaborador
+            </DialogTitle>
+          </DialogHeader>
+
+          <div style={{ display:'flex', flexDirection:'column', gap:16, marginTop:4 }}>
+
+            {/* Identificação */}
+            <div style={{ background:'#fef2f2', border:'1px solid #fecaca', borderRadius:8, padding:'12px 14px' }}>
+              <div style={{ fontWeight:700, color:'#dc2626', fontSize:15 }}>{inativarNome}</div>
+              <div style={{ fontSize:12, color:'#b91c1c', marginTop:2 }}>
+                Após a inativação, este colaborador <strong>não aparecerá</strong> em nenhum módulo de lançamento.
+              </div>
+            </div>
+
+            {/* Verificação de pendências */}
+            <div>
+              <div style={{ fontWeight:600, fontSize:13, marginBottom:8, display:'flex', alignItems:'center', gap:6 }}>
+                {inativarLoadingPend
+                  ? <><Loader2 size={14} className="animate-spin" /> Verificando pendências…</>
+                  : <><ShieldAlert size={14} /> Verificação de pendências</>
+                }
+              </div>
+              {inativarLoadingPend ? (
+                <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                  {[1,2,3,4].map(i => <div key={i} style={{ height:36, background:'var(--muted)', borderRadius:6, animation:'pulse 1.5s infinite' }} />)}
+                </div>
+              ) : (
+                <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                  {inativarPendencias.map(p => (
+                    <div key={p.tipo} style={{
+                      display:'flex', alignItems:'center', justifyContent:'space-between',
+                      padding:'9px 12px', borderRadius:6,
+                      background: p.ok ? '#f0fdf4' : '#fef2f2',
+                      border: `1px solid ${p.ok ? '#bbf7d0' : '#fecaca'}`,
+                    }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                        {p.ok
+                          ? <CheckCircle2 size={15} style={{ color:'#16a34a', flexShrink:0 }} />
+                          : <AlertTriangle size={15} style={{ color:'#dc2626', flexShrink:0 }} />
+                        }
+                        <span style={{ fontSize:13, color: p.ok ? '#15803d':'#dc2626', fontWeight: p.ok ? 400:600 }}>
+                          {p.label}
+                        </span>
+                      </div>
+                      {!p.ok && (
+                        <span style={{ background:'#dc2626', color:'#fff', borderRadius:10, padding:'1px 7px', fontSize:11, fontWeight:700 }}>
+                          {p.qtd} pendente{p.qtd > 1 ? 's':''}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {!inativarLoadingPend && inativarPendencias.some(p => !p.ok) && (
+                <div style={{ marginTop:8, background:'#fff7ed', border:'1px solid #fed7aa', borderRadius:6, padding:'8px 12px', fontSize:12, color:'#92400e' }}>
+                  ⚠ Há pendências em aberto. Recomendamos resolver antes de inativar. Mas você pode prosseguir confirmando abaixo.
+                </div>
+              )}
+            </div>
+
+            {/* Campos obrigatórios */}
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+              <div>
+                <Label className="text-xs">Data de inativação *</Label>
+                <Input type="date" value={inativarData} onChange={e => setInativarData(e.target.value)}
+                  style={{ marginTop:4 }} />
+              </div>
+              <div>
+                <Label className="text-xs">Inativado por</Label>
+                <div style={{ marginTop:4, height:36, display:'flex', alignItems:'center', padding:'0 10px',
+                  background:'var(--muted)', border:'1px solid var(--border)', borderRadius:6,
+                  fontSize:12, color:'var(--muted-foreground)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                  {user?.email ?? 'sistema'}
+                </div>
+              </div>
+            </div>
+            <div>
+              <Label className="text-xs">Motivo da inativação</Label>
+              <Textarea value={inativarMotivo} onChange={e => setInativarMotivo(e.target.value)}
+                placeholder="Ex.: Demissão por justa causa, término de contrato, etc."
+                className="mt-1" rows={2} />
+            </div>
+
+            {/* Confirmação de responsabilidade */}
+            <div
+              onClick={() => setInativarConfirmou(v => !v)}
+              style={{
+                display:'flex', alignItems:'flex-start', gap:10, cursor:'pointer',
+                padding:'12px 14px', borderRadius:8,
+                background: inativarConfirmou ? '#f0fdf4' : '#fffbeb',
+                border: `2px solid ${inativarConfirmou ? '#16a34a' : '#f59e0b'}`,
+                userSelect:'none',
+              }}
+            >
+              <div style={{
+                width:18, height:18, borderRadius:3, border:`2px solid ${inativarConfirmou ? '#16a34a':'#d97706'}`,
+                background: inativarConfirmou ? '#16a34a':'transparent',
+                display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, marginTop:1,
+              }}>
+                {inativarConfirmou && <CheckCircle2 size={12} style={{ color:'#fff' }} />}
+              </div>
+              <div>
+                <div style={{ fontSize:13, fontWeight:700, color: inativarConfirmou ? '#15803d':'#92400e' }}>
+                  Confirmo que verifiquei todas as pendências
+                </div>
+                <div style={{ fontSize:11, color: inativarConfirmou ? '#16a34a':'#b45309', marginTop:2 }}>
+                  Declaro, como responsável, que não há lançamentos pendentes de ponto, VT, adiantamentos ou prêmios
+                  que precisem ser resolvidos antes desta inativação. Esta confirmação ficará registrada junto ao meu usuário.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter style={{ marginTop:16 }}>
+            <Button variant="outline" onClick={() => setModalInativar(false)} disabled={inativarSaving}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={confirmarInativacao}
+              disabled={inativarSaving || inativarLoadingPend || !inativarConfirmou || !inativarData}
+              style={{ background:'#dc2626', color:'#fff', opacity: (!inativarConfirmou || !inativarData) ? 0.5 : 1 }}
+            >
+              {inativarSaving ? <><Loader2 size={14} className="animate-spin" style={{ marginRight:6 }} />Inativando…</> : '🔴 Confirmar inativação'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
