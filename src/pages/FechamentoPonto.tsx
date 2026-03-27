@@ -1069,7 +1069,10 @@ export default function FechamentoPonto() {
                         <TableHead className="text-center" style={{ fontSize: 11 }}>Dias</TableHead>
                         <TableHead style={{ fontSize: 11, color: '#7c3aed', fontWeight: 700, minWidth: 260 }}>💵 Composição do Salário</TableHead>
                         <TableHead className="text-center" style={{ fontSize: 11, color: '#dc2626' }}>Faltas</TableHead>
-                        <TableHead className="text-right" style={{ fontSize: 11, color: '#16a34a' }}>VT</TableHead>
+                        <TableHead className="text-right" style={{ fontSize: 11, color: '#16a34a', whiteSpace: 'nowrap' }}>+VT</TableHead>
+                        <TableHead className="text-right" style={{ fontSize: 11, color: '#dc2626', whiteSpace: 'nowrap' }}>−VT Falta</TableHead>
+                        <TableHead className="text-right" style={{ fontSize: 11, color: '#0369a1', whiteSpace: 'nowrap' }}>+Sáb/Dom</TableHead>
+                        <TableHead className="text-right" style={{ fontSize: 11, color: '#b45309', whiteSpace: 'nowrap' }}>−VT 6%</TableHead>
                         <TableHead className="text-right" style={{ fontSize: 11, color: '#dc2626' }}>− INSS</TableHead>
                         <TableHead className="text-right" style={{ fontSize: 11, color: '#dc2626' }}>− IR</TableHead>
                         <TableHead className="text-right" style={{ fontSize: 11, color: '#b45309', fontWeight: 700 }}>💳 -AD</TableHead>
@@ -1166,58 +1169,82 @@ export default function FechamentoPonto() {
                             <TableCell className="text-center" style={{ color: lanc.faltas > 0 ? '#dc2626' : 'var(--muted-foreground)', fontSize: 12 }}>
                               {lanc.faltas > 0 ? lanc.faltas : '—'}
                             </TableCell>
-                            <TableCell className="text-right" style={{ color: '#dc2626', fontSize: 12 }}>
-                              {lanc.valor_vt_bruto > 0 || lanc.vt_desconto_faltas > 0 ? (() => {
-                                // ── monta tooltip detalhado ──────────────────────────
+                            {/* ══ +VT base ══ */}
+                            <TableCell className="text-right" style={{ fontSize: 12 }}>
+                              {lanc.valor_vt_dia > 0 ? (() => {
                                 const diasBase = lanc.obra_considera_sabado
-                                  ? lanc.dias_trabalhados                                      // sáb é normal
-                                  : Math.max(0, lanc.dias_trabalhados - lanc.vt_sabs_dom_trab) // só Mon-Fri
-                                const tooltipLines: string[] = [
-                                  `VT/dia: R$ ${lanc.valor_vt_dia.toFixed(2)}`,
-                                  `Base (${diasBase} dia${diasBase !== 1 ? 's' : ''}): R$ ${(diasBase * lanc.valor_vt_dia).toFixed(2)}`,
-                                ]
-                                if (lanc.faltas > 0)
-                                  tooltipLines.push(`−VT faltas (${lanc.faltas}×): −R$ ${lanc.vt_desconto_faltas.toFixed(2)}`)
-                                if (lanc.vt_adicional_sabdom > 0)
-                                  tooltipLines.push(`+VT sáb/dom (${lanc.vt_sabs_dom_trab}×): +R$ ${lanc.vt_adicional_sabdom.toFixed(2)}`)
-                                if (lanc.desconto_vt_6pct > 0)
-                                  tooltipLines.push(`Desc. 6% colab.: −R$ ${lanc.desconto_vt_6pct.toFixed(2)}`)
-                                tooltipLines.push(`= VT líquido: R$ ${lanc.valor_vt_bruto.toFixed(2)}`)
-
+                                  ? lanc.dias_trabalhados
+                                  : Math.max(0, lanc.dias_trabalhados - lanc.vt_sabs_dom_trab)
+                                const vtBase = diasBase * lanc.valor_vt_dia
                                 return (
-                                  <span title={tooltipLines.join('\n')} style={{ cursor: 'help' }}>
-                                    {/* valor bruto total */}
-                                    <span style={{ color: '#16a34a', fontWeight: 700 }}>
-                                      +{formatCurrency(lanc.valor_vt_bruto)}
-                                    </span>
-
-                                    {/* desconto por faltas */}
-                                    {lanc.faltas > 0 && (
-                                      <div style={{ fontSize: 9, color: '#dc2626', lineHeight: 1.3 }}>
-                                        −{formatCurrency(lanc.vt_desconto_faltas)}&nbsp;
-                                        <span style={{ color: '#94a3b8' }}>{lanc.faltas} falta{lanc.faltas !== 1 ? 's' : ''}</span>
-                                      </div>
-                                    )}
-
-                                    {/* adicional sáb/dom */}
-                                    {lanc.vt_adicional_sabdom > 0 && (
-                                      <div style={{ fontSize: 9, color: '#0369a1', lineHeight: 1.3 }}>
-                                        +{formatCurrency(lanc.vt_adicional_sabdom)}&nbsp;
-                                        <span style={{ color: '#94a3b8' }}>{lanc.vt_sabs_dom_trab} sáb/dom</span>
-                                      </div>
-                                    )}
-
-                                    {/* desconto 6% colaborador */}
-                                    {(lanc.desconto_vt_6pct ?? 0) > 0 && (
-                                      <div style={{ fontSize: 9, color: '#b45309', lineHeight: 1.3 }}>
-                                        −{formatCurrency(lanc.desconto_vt_6pct)}&nbsp;
-                                        <span style={{ color: '#94a3b8' }}>desc. 6%</span>
-                                      </div>
-                                    )}
+                                  <span
+                                    style={{ color: '#16a34a', fontWeight: 600, cursor: 'help' }}
+                                    title={`VT/dia: R$ ${lanc.valor_vt_dia.toFixed(2)}\n${diasBase} dia${diasBase !== 1 ? 's' : ''} × R$ ${lanc.valor_vt_dia.toFixed(2)} = R$ ${vtBase.toFixed(2)}`}
+                                  >
+                                    +{formatCurrency(vtBase)}
+                                    <div style={{ fontSize: 9, color: '#86efac', fontWeight: 400 }}>
+                                      {diasBase}d × {formatCurrency(lanc.valor_vt_dia)}
+                                    </div>
                                   </span>
                                 )
                               })()
                               : <span style={{ color: 'var(--muted-foreground)' }}>—</span>}
+                            </TableCell>
+
+                            {/* ══ −VT Falta ══ */}
+                            <TableCell className="text-right" style={{ fontSize: 12 }}>
+                              {lanc.vt_desconto_faltas > 0
+                                ? (
+                                  <span
+                                    style={{ color: '#dc2626', fontWeight: 600, cursor: 'help' }}
+                                    title={`${lanc.faltas} falta${lanc.faltas !== 1 ? 's' : ''} × R$ ${lanc.valor_vt_dia.toFixed(2)}/dia = −R$ ${lanc.vt_desconto_faltas.toFixed(2)}`}
+                                  >
+                                    −{formatCurrency(lanc.vt_desconto_faltas)}
+                                    <div style={{ fontSize: 9, color: '#fca5a5', fontWeight: 400 }}>
+                                      {lanc.faltas} falta{lanc.faltas !== 1 ? 's' : ''}
+                                    </div>
+                                  </span>
+                                )
+                                : <span style={{ color: 'var(--muted-foreground)' }}>—</span>}
+                            </TableCell>
+
+                            {/* ══ +Sáb/Dom ══ só aparece quando obra NÃO considera sáb útil e houve presença */}
+                            <TableCell className="text-right" style={{ fontSize: 12 }}>
+                              {lanc.vt_adicional_sabdom > 0
+                                ? (
+                                  <span
+                                    style={{ color: '#0369a1', fontWeight: 600, cursor: 'help' }}
+                                    title={`Obra não considera sáb útil\n${lanc.vt_sabs_dom_trab} sáb/dom trabalhado${lanc.vt_sabs_dom_trab !== 1 ? 's' : ''} × R$ ${lanc.valor_vt_dia.toFixed(2)}/dia = +R$ ${lanc.vt_adicional_sabdom.toFixed(2)}`}
+                                  >
+                                    +{formatCurrency(lanc.vt_adicional_sabdom)}
+                                    <div style={{ fontSize: 9, color: '#93c5fd', fontWeight: 400 }}>
+                                      {lanc.vt_sabs_dom_trab} sáb/dom
+                                    </div>
+                                  </span>
+                                )
+                                : (
+                                  <span style={{ color: 'var(--muted-foreground)', fontSize: 11 }}
+                                    title={lanc.obra_considera_sabado ? 'Sáb é dia útil nesta obra' : 'Nenhum sáb/dom trabalhado'}>
+                                    —
+                                  </span>
+                                )}
+                            </TableCell>
+
+                            {/* ══ −VT 6% (CLT) ══ */}
+                            <TableCell className="text-right" style={{ fontSize: 12 }}>
+                              {(lanc.desconto_vt_6pct ?? 0) > 0
+                                ? (
+                                  <span
+                                    style={{ color: '#b45309', fontWeight: 600, cursor: 'help' }}
+                                    title={`Desconto 6% do salário bruto (CLT)\nBase: R$ ${(lanc.valor_horas + lanc.valor_dsr).toFixed(2)}\n6% = R$ ${lanc.desconto_vt_6pct.toFixed(2)}`}
+                                  >
+                                    −{formatCurrency(lanc.desconto_vt_6pct)}
+                                    <div style={{ fontSize: 9, color: '#fbbf24', fontWeight: 400 }}>
+                                      6% CLT
+                                    </div>
+                                  </span>
+                                )
+                                : <span style={{ color: 'var(--muted-foreground)' }}>—</span>}
                             </TableCell>
                             <TableCell className="text-right" style={{ color: '#dc2626', fontSize: 12 }}>
                               {lanc.inss > 0
