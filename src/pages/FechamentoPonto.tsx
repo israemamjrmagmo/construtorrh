@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react'
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus'
 import { toast } from 'sonner'
 import {
@@ -144,7 +144,13 @@ export default function FechamentoPonto() {
   const [filtroFuncaoFech, setFiltroFuncaoFech] = useState('todos')
   const [obras,   setObras]   = useState<{ id: string; nome: string }[]>([])
   const [funcoes, setFuncoes] = useState<{ id: string; nome: string }[]>([])
-  // Mapa obra_id → considera_sabado_util (disponível para uso futuro)
+  // ── Cache de funcao_valores e funcoes (não muda com o mês) ─────────────────
+  const cacheVH = useRef<{
+    valorHora: Record<string, number>   // "funcao_id_tipo" → valor
+    funcaoFallback: Record<string, number>
+    loaded: boolean
+  }>({ valorHora: {}, funcaoFallback: {}, loaded: false })
+
   const [, setObrasSabUtil] = useState<Record<string, boolean>>({})
 
   // Fetch obras e funções para filtros
@@ -166,6 +172,9 @@ export default function FechamentoPonto() {
   // ── Fetch lançamentos aprovados ──────────────────────────────────────────
   const fetchLancamentos = useCallback(async (mr: string) => {
     setLoading(true)
+
+    // ── ROUND-TRIP 1: lançamentos (base) ───────────────────────────────────
+    // Fazemos isso separado pois precisamos dos IDs para as queries dependentes
     const { data: lancsRaw } = await supabase
       .from('ponto_lancamentos')
       .select(`
@@ -184,55 +193,107 @@ export default function FechamentoPonto() {
 
     if (!lancsRaw) { setLoading(false); return }
 
-    const ids = lancsRaw.map((l: any) => l.id)
-    const colabIds = [...new Set(lancsRaw.map((l: any) => l.colaborador_id).filter(Boolean))]
-    const [{ data: pontosRaw }, { data: prodRaw }, { data: feriadosRaw }, { data: adiantRaw }, { data: vtDescRaw }] = await Promise.all([
-      ids.length ? supabase.from('registro_ponto').select('lancamento_id,horas_trabalhadas,horas_extras,data,falta').in('lancamento_id', ids) : Promise.resolve({ data: [] }),
-      ids.length ? supabase.from('ponto_producao').select('lancamento_id,valor_total,dias').in('lancamento_id', ids) : Promise.resolve({ data: [] }),
-      supabase.from('feriados').select('data').gte('data', mr+'-01').lte('data', mr+'-31'),
+    const ids      = lancsRaw.map((l: any) => l.id)
+    const colabIds = [...new Set(lancsRaw.map((l: any) => l.colaborador_id).filter(Boolean))] as string[]
+    const funcaoIds = [...new Set(lancsRaw.map((l: any) => l.colaboradores?.funcao_id).filter(Boolean))] as string[]
+
+    // ── ROUND-TRIP 2: todas as queries dependentes em paralelo ─────────────
+    // funcao_valores e funcoes usam cache (não mudam com o mês)
+    const needVH = funcaoIds.length > 0 && !cacheVH.current.loaded
+
+    const [
+      { data: pontosRaw },
+      { data: prodRaw },
+      { data: feriadosRaw },
+      { data: adiantRaw },
+      { data: vtDescRaw },
+      valorHoraResult,
+      funcoesResult,
+    ] = await Promise.all([
+      // Registro de ponto (maior tabela — índice idx_reg_ponto_lancamento é crítico)
+      ids.length
+        ? supabase.from('registro_ponto')
+            .select('lancamento_id,horas_trabalhadas,horas_extras,data,falta')
+            .in('lancamento_id', ids)
+        : Promise.resolve({ data: [] as any[] }),
+
+      // Produção
+      ids.length
+        ? supabase.from('ponto_producao')
+            .select('lancamento_id,valor_total,dias')
+            .in('lancamento_id', ids)
+        : Promise.resolve({ data: [] as any[] }),
+
+      // Feriados do mês
+      supabase.from('feriados')
+        .select('data')
+        .gte('data', mr + '-01')
+        .lte('data', mr + '-31'),
+
+      // Adiantamentos a descontar
       colabIds.length
-        ? supabase.from('adiantamentos').select('colaborador_id,valor').eq('competencia', mr).eq('status','pago').is('descontado_em', null).in('colaborador_id', colabIds)
-        : Promise.resolve({ data: [] }),
-      // Colaboradores com flag descontar_6pct = true no mês (o valor será calculado no loop)
+        ? supabase.from('adiantamentos')
+            .select('colaborador_id,valor')
+            .eq('competencia', mr)
+            .eq('status', 'pago')
+            .is('descontado_em', null)
+            .in('colaborador_id', colabIds)
+        : Promise.resolve({ data: [] as any[] }),
+
+      // VT com desconto 6%
       colabIds.length
-        ? supabase.from('vale_transporte').select('colaborador_id').eq('competencia', mr).eq('descontar_6pct', true).in('colaborador_id', colabIds)
-        : Promise.resolve({ data: [] }),
+        ? supabase.from('vale_transporte')
+            .select('colaborador_id')
+            .eq('competencia', mr)
+            .eq('descontar_6pct', true)
+            .in('colaborador_id', colabIds)
+        : Promise.resolve({ data: [] as any[] }),
+
+      // funcao_valores — usa cache se já carregado
+      needVH
+        ? supabase.from('funcao_valores')
+            .select('funcao_id,tipo_contrato,valor_hora')
+            .in('funcao_id', funcaoIds)
+        : Promise.resolve({ data: null as any }),
+
+      // funcoes fallback — usa cache se já carregado
+      needVH
+        ? supabase.from('funcoes')
+            .select('id,valor_hora_clt,valor_hora_autonomo')
+            .in('id', funcaoIds)
+        : Promise.resolve({ data: null as any }),
     ])
 
-    // Somar adiantamentos pagos e ainda não descontados por colaborador
+    // ── Atualizar cache funcao_valores / funcoes ───────────────────────────
+    if (needVH) {
+      ;(valorHoraResult?.data ?? []).forEach((v: any) => {
+        cacheVH.current.valorHora[`${v.funcao_id}_${v.tipo_contrato}`] = v.valor_hora
+      })
+      ;(funcoesResult?.data ?? []).forEach((f: any) => {
+        if (f.valor_hora_clt)      cacheVH.current.funcaoFallback[`${f.id}_clt`]      = f.valor_hora_clt
+        if (f.valor_hora_autonomo) cacheVH.current.funcaoFallback[`${f.id}_autonomo`]  = f.valor_hora_autonomo
+        if (f.valor_hora_clt)      cacheVH.current.funcaoFallback[`${f.id}_pj`]        = f.valor_hora_autonomo ?? f.valor_hora_clt
+      })
+      cacheVH.current.loaded = true
+    }
+    const mapaValorH         = cacheVH.current.valorHora
+    const mapaFuncaoFallback = cacheVH.current.funcaoFallback
+
+    // ── Montar mapas a partir dos dados brutos ─────────────────────────────
+
+    // Adiantamentos
     const mapaAdiant: Record<string, number> = {}
     ;(adiantRaw ?? []).forEach((a: any) => {
       mapaAdiant[a.colaborador_id] = (mapaAdiant[a.colaborador_id] ?? 0) + a.valor
     })
 
     // Set de colaboradores que têm desconto VT 6% ativo no mês
-    // O valor (6% salário bruto) será calculado dentro do loop de cada lançamento
     const setDescontoVT6: Set<string> = new Set(
       (vtDescRaw ?? []).map((v: any) => v.colaborador_id)
     )
 
-    const funcaoIds = [...new Set(lancsRaw.map((l: any) => l.colaboradores?.funcao_id).filter(Boolean))]
-    // Buscar valor/hora: funcao_valores (por tipo_contrato) + fallback em funcoes
-    const [{ data: valorHoraRaw }, { data: funcoesRaw }] = await Promise.all([
-      funcaoIds.length
-        ? supabase.from('funcao_valores').select('funcao_id,tipo_contrato,valor_hora').in('funcao_id', funcaoIds)
-        : Promise.resolve({ data: [] as {funcao_id:string;tipo_contrato:string;valor_hora:number}[] }),
-      funcaoIds.length
-        ? supabase.from('funcoes').select('id,valor_hora_clt,valor_hora_autonomo').in('id', funcaoIds)
-        : Promise.resolve({ data: [] as {id:string;valor_hora_clt:number|null;valor_hora_autonomo:number|null}[] }),
-    ])
-
     // Mapa funcao_valores: chave "funcao_id_tipo_contrato"
-    const mapaValorH: Record<string, number> = {}
-    ;(valorHoraRaw ?? []).forEach((v: any) => { mapaValorH[`${v.funcao_id}_${v.tipo_contrato}`] = v.valor_hora })
-
-    // Mapa fallback funcoes: chave "funcao_id_clt" / "funcao_id_autonomo"
-    const mapaFuncaoFallback: Record<string, number> = {}
-    ;(funcoesRaw ?? []).forEach((f: any) => {
-      if (f.valor_hora_clt)      mapaFuncaoFallback[`${f.id}_clt`]      = f.valor_hora_clt
-      if (f.valor_hora_autonomo) mapaFuncaoFallback[`${f.id}_autonomo`]  = f.valor_hora_autonomo
-      if (f.valor_hora_clt)      mapaFuncaoFallback[`${f.id}_pj`]        = f.valor_hora_autonomo ?? f.valor_hora_clt
-    })
+    // (já preenchido via cache acima — mapaValorH / mapaFuncaoFallback)
 
     // Helper: busca vh com fallback
     function getVH(funcaoId: string | null, tipoContrato: string): number {
