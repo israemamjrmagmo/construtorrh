@@ -1485,7 +1485,9 @@ export default function Colaboradores() {
     }
 
     // 3. Gerar nova chapa baseada no novo tipo/data de admissão
-    const fn = funcoes.find(f => f.id === (colabAtual.funcao_id ?? form.funcao_id))
+    // Usa a nova função selecionada (ou mantém a atual se __manter)
+    const novaFuncaoId = recontNovoFuncaoId !== '__manter' ? recontNovoFuncaoId : colabAtual.funcao_id
+    const fn = funcoes.find(f => f.id === novaFuncaoId)
     let novaChapa = ''
     if (fn?.sigla) {
       novaChapa = await gerarChapa(fn.sigla, recontDataAdm)

@@ -350,12 +350,14 @@ export default function ValeTransportePage() {
   // vtDiarioFixo: se informado (modo edição), usa essa taxa em vez de buscar do cadastro atual
   // numFaltas: dias de falta a descontar do VT
   // numSabadosExtras: sábados trabalhados a adicionar (quando obra NÃO considera sáb no cálculo padrão)
+  // descontar6: se true E colaborador for CLT → aplica desconto de 6% sobre salário bruto (limitado ao valor VT)
   function recalcularPeriodo(
     dataIni: string, dataFim: string, contarSab: boolean,
     comp: string, colab: ColaboradorVT | null,
     vtDiarioFixo?: number | null,
     numFaltas = 0,
-    numSabadosExtras = 0
+    numSabadosExtras = 0,
+    descontar6 = false
   ) {
     const diasUtil = contarDiasUteis(dataIni, dataFim, contarSab)
     let vtDiario = 0
@@ -369,11 +371,19 @@ export default function ValeTransportePage() {
     // dias efetivos = dias úteis do período - faltas + sábados extras trabalhados
     const diasEfetivos = Math.max(0, diasUtil - numFaltas + numSabadosExtras)
     const valorBruto = vtDiario > 0 ? +(vtDiario * diasEfetivos).toFixed(2) : 0
+
+    // Desconto de 6%: somente CLT, nunca para autônomo/PJ
+    const isCLT = (colab?.tipo_contrato ?? 'clt').toLowerCase() === 'clt'
+    const salario = colab?.salario ?? 0
+    const desc6 = (descontar6 && isCLT && salario > 0)
+      ? +Math.min(salario * 0.06, valorBruto).toFixed(2)
+      : 0
+
     return {
       dias_trabalhados: String(diasEfetivos),
       valor: valorBruto > 0 ? valorBruto.toFixed(2) : '',
-      desconto_colaborador: '0',
-      valor_empresa: valorBruto > 0 ? valorBruto.toFixed(2) : '0',
+      desconto_colaborador: desc6 > 0 ? desc6.toFixed(2) : '0',
+      valor_empresa: valorBruto > 0 ? Math.max(0, valorBruto - desc6).toFixed(2) : '0',
     }
   }
 
@@ -408,11 +418,20 @@ export default function ValeTransportePage() {
 
     const vtDados    = colabSel.vt_dados as any
     const tipoAuto   = modalidadeParaTipo(vtDados?.modalidade)
-    // Se a obra do colaborador considera sábado útil, ativa o toggle por padrão
     const obraColab  = obras.find(o => o.id === colabSel.obra_id)
-    const contarSab  = obraColab?.considera_sabado_util === true
-    const descontar  = true
-    const calc       = recalcularPeriodo(primeiroDia(competencia), ultimoDia(competencia), contarSab, competencia, colabSel)
+
+    // Regra de sábado:
+    // - considera_sabado_util = true  → sábado JÁ está no VT mensal (contar para calcular proporção)
+    // - considera_sabado_util = false → sábado É dia trabalhado e DEVE ter VT (contar também)
+    // Em ambos os casos, contarSab = true para o cálculo de dias. A diferença é que quando
+    // considera_sabado_util = false, o sábado é "extra" que conta no período.
+    const contarSab  = true   // sempre contar sábado nos dias úteis do VT
+
+    // Desconto 6%: somente CLT
+    const isCLT = (colabSel.tipo_contrato ?? 'clt').toLowerCase() === 'clt'
+    const descontar  = isCLT
+
+    const calc = recalcularPeriodo(primeiroDia(competencia), ultimoDia(competencia), contarSab, competencia, colabSel, null, 0, 0, descontar)
 
     setEditando(null)
     setVtDiarioSnap(null)   // novo lançamento sempre usa base atual do colaborador
@@ -469,9 +488,10 @@ export default function ValeTransportePage() {
         const contSab = key === 'contar_sabado'  ? Boolean(value) : next.contar_sabado
         const faltas  = parseInt(key === 'num_faltas' ? String(value) : next.num_faltas) || 0
         const sabExt  = parseInt(key === 'num_sabados_extras' ? String(value) : next.num_sabados_extras) || 0
+        const desc6   = key === 'descontar_6pct' ? Boolean(value) : next.descontar_6pct
         // Em modo edição: usa taxa diária congelada do lançamento original (vtDiarioSnap)
         // Em novo lançamento: usa base atual do colaborador (vtDiarioSnap = null)
-        const calc    = recalcularPeriodo(ini, fim, contSab, next.competencia, colabSel, vtDiarioSnap, faltas, sabExt)
+        const calc    = recalcularPeriodo(ini, fim, contSab, next.competencia, colabSel, vtDiarioSnap, faltas, sabExt, desc6)
         return { ...next, ...calc }
       }
 
@@ -655,23 +675,16 @@ export default function ValeTransportePage() {
     }
     setSavingLancarLote(true)
 
-    // Calcular dias úteis no período selecionado
-    const [iniY,iniM,iniD] = loteInicio.split('-').map(Number)
-    const [fimY,fimM,fimD] = loteFim.split('-').map(Number)
-    const cursor = new Date(iniY, iniM-1, iniD)
-    const fimDate= new Date(fimY, fimM-1, fimD)
-    let qtdDias = 0
-    while (cursor <= fimDate) {
-      if (cursor.getDay() !== 0) qtdDias++ // excluir domingos
-      cursor.setDate(cursor.getDate()+1)
-    }
-    if (qtdDias === 0) qtdDias = diasUteisMes.length
-
+    // Calcular inserts por colaborador (cada um pode ter obra com considera_sabado_util diferente)
     const inserts = colabsAptos.map(c => {
       const isCLT = (c.tipo_contrato ?? '').toLowerCase() === 'clt'
+      // Sábado sempre contado — a passagem do sábado deve ser paga
+      const contarSab = true
+      const qtdDias = contarDiasUteis(loteInicio, loteFim, contarSab)
       const vtDiario = vtDiarioColab(c.vt_dados as any)
       const valorBruto = +(vtDiario * qtdDias).toFixed(2)
       const salarioBruto = c.salario ?? 0
+      // Desconto 6%: somente CLT
       const desc6 = (loteDesconto6 && isCLT) ? +Math.min(salarioBruto * 0.06, valorBruto).toFixed(2) : 0
       return {
         colaborador_id:       c.id,
@@ -1109,6 +1122,11 @@ export default function ValeTransportePage() {
                       {form.contar_sabado ? 'Contando Seg → Sáb' : 'Contando apenas Seg → Sex'}
                       {' · '}
                       <strong style={{ color: 'var(--foreground)' }}>{form.dias_trabalhados} dia(s)</strong> no período
+                      {' · '}
+                      {obras.find(o => o.id === colabSel?.obra_id)?.considera_sabado_util
+                        ? <span style={{ color:'#15803d', fontWeight:600 }}>Sáb. já incluso no VT mensal</span>
+                        : <span style={{ color:'#b45309', fontWeight:600 }}>Sáb. pago separado</span>
+                      }
                     </div>
                   </div>
                   <button onClick={() => setField('contar_sabado', !form.contar_sabado)}
@@ -1186,35 +1204,54 @@ export default function ValeTransportePage() {
                 </div>
               </div>
 
-              {/* Toggle desconto 6% — apenas flag, cálculo real no Fechamento */}
+              {/* Toggle desconto 6% — somente CLT */}
               <div className="col-span-2">
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: form.descontar_6pct ? '#fef3c7' : 'var(--muted)', borderRadius: 8, padding: '10px 14px', border: `1px solid ${form.descontar_6pct ? '#fde68a' : 'var(--border)'}` }}>
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: form.descontar_6pct ? '#92400e' : 'var(--foreground)' }}>
-                      Descontar 6% do salário bruto do colaborador
+                {(() => {
+                  const ehCLT = (colabSel?.tipo_contrato ?? 'clt').toLowerCase() === 'clt'
+                  return ehCLT ? (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: form.descontar_6pct ? '#fef3c7' : 'var(--muted)', borderRadius: 8, padding: '10px 14px', border: `1px solid ${form.descontar_6pct ? '#fde68a' : 'var(--border)'}` }}>
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: form.descontar_6pct ? '#92400e' : 'var(--foreground)' }}>
+                          Descontar 6% do salário bruto (CLT)
+                        </div>
+                        <div style={{ fontSize: 11, color: form.descontar_6pct ? '#b45309' : 'var(--muted-foreground)', marginTop: 2 }}>
+                          {form.descontar_6pct
+                            ? `⚠ Desconto: ${formatCurrency(parseFloat(form.desconto_colaborador)||0)} | Empresa paga: ${formatCurrency(parseFloat(form.valor_empresa)||0)}`
+                            : 'Empresa arca com 100% do VT — nenhum desconto no holerite'}
+                        </div>
+                      </div>
+                      <button onClick={() => setField('descontar_6pct', !form.descontar_6pct)}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: form.descontar_6pct ? '#b45309' : 'var(--muted-foreground)', flexShrink: 0 }}>
+                        {form.descontar_6pct ? <ToggleRight size={32} /> : <ToggleLeft size={32} />}
+                      </button>
                     </div>
-                    <div style={{ fontSize: 11, color: form.descontar_6pct ? '#b45309' : 'var(--muted-foreground)', marginTop: 2 }}>
-                      {form.descontar_6pct
-                        ? '⚠ O desconto de 6% sobre o salário bruto será aplicado no Fechamento de Ponto'
-                        : 'Empresa arca com 100% do VT — nenhum desconto no holerite'}
+                  ) : (
+                    <div style={{ display:'flex', alignItems:'center', gap:8, background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:8, padding:'10px 14px' }}>
+                      <span style={{ fontSize:18 }}>✅</span>
+                      <div>
+                        <div style={{ fontSize:13, fontWeight:600, color:'#15803d' }}>Autônomo / PJ — sem desconto de 6%</div>
+                        <div style={{ fontSize:11, color:'#16a34a', marginTop:2 }}>Desconto de 6% se aplica apenas a colaboradores CLT. Empresa arca com 100% do VT.</div>
+                      </div>
                     </div>
-                  </div>
-                  <button onClick={() => setField('descontar_6pct', !form.descontar_6pct)}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: form.descontar_6pct ? '#b45309' : 'var(--muted-foreground)', flexShrink: 0 }}>
-                    {form.descontar_6pct ? <ToggleRight size={32} /> : <ToggleLeft size={32} />}
-                  </button>
-                </div>
+                  )
+                })()}
               </div>
 
-              {/* Valor empresa = valor bruto do VT (desconto apurado no Fechamento) */}
+              {/* Resumo financeiro do VT */}
               <div className="col-span-2">
                 <Label className="text-xs" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  Valor total do VT (empresa)
+                  Resumo do VT
                   <span style={{ fontSize: 9, background: '#dbeafe', color: '#1d4ed8', borderRadius: 3, padding: '1px 4px', fontWeight: 600 }}>AUTO</span>
                 </Label>
-                <div style={{ marginTop: 4, height: 36, display: 'flex', alignItems: 'center', padding: '0 12px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 6, fontSize: 14, fontWeight: 800, color: '#1d4ed8' }}>
-                  {formatCurrency(parseFloat(form.valor) || 0)}
-                  {form.descontar_6pct && <span style={{ marginLeft: 8, fontSize: 10, color: '#b45309', fontWeight: 600 }}>(-6% sal. bruto no fechamento)</span>}
+                <div style={{ marginTop:4, display:'grid', gridTemplateColumns:'1fr 1fr', gap:6 }}>
+                  <div style={{ padding:'8px 12px', background:'#eff6ff', border:'1px solid #bfdbfe', borderRadius:6, textAlign:'center' }}>
+                    <div style={{ fontSize:10, color:'#6b7280', marginBottom:2 }}>Valor Bruto</div>
+                    <div style={{ fontSize:15, fontWeight:800, color:'#1d4ed8' }}>{formatCurrency(parseFloat(form.valor)||0)}</div>
+                  </div>
+                  <div style={{ padding:'8px 12px', background: parseFloat(form.desconto_colaborador||'0') > 0 ? '#fef2f2':'#f0fdf4', border:`1px solid ${parseFloat(form.desconto_colaborador||'0') > 0 ? '#fecaca':'#bbf7d0'}`, borderRadius:6, textAlign:'center' }}>
+                    <div style={{ fontSize:10, color:'#6b7280', marginBottom:2 }}>Empresa paga</div>
+                    <div style={{ fontSize:15, fontWeight:800, color: parseFloat(form.desconto_colaborador||'0') > 0 ? '#dc2626':'#15803d' }}>{formatCurrency(parseFloat(form.valor_empresa)||0)}</div>
+                  </div>
                 </div>
               </div>
 
