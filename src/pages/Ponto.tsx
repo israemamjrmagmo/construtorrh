@@ -98,29 +98,106 @@ function clampPeriodoColab(
 }
 
 // DSR helpers ──────────────────────────────────────────────────────────────
-// Dias úteis = Seg-Sex do período que NÃO sejam feriados
-function diasUteisPeriodo(inicio:string,fim:string,feriadosSet?:Set<string>):number {
+// Dias úteis = Seg-Sab do período (feriados AGORA SÃO DIAS NORMAIS, não excluídos)
+function diasUteisPeriodo(inicio:string,fim:string,_feriadosSet?:Set<string>):number {
   const dias=expandRange(inicio,fim)
   return dias.filter(d=>{
     const dow=new Date(d+'T12:00:00').getDay()
-    if(dow<1||dow>5) return false        // só Seg-Sex
-    if(feriadosSet?.has(d)) return false // exclui feriados
-    return true
+    return dow>=1&&dow<=6   // Seg-Sab (feriados não são mais excluídos)
   }).length
 }
-// Domingos + feriados do período (base DSR)
-function domingosFeriadosPeriodo(inicio:string,fim:string,feriadosSet?:Set<string>):number {
+// Domingos do período (base DSR) — feriados não são mais candidatos a DSR
+function domingosFeriadosPeriodo(inicio:string,fim:string,_feriadosSet?:Set<string>):number {
   const dias=expandRange(inicio,fim)
-  const domingos=dias.filter(d=>new Date(d+'T12:00:00').getDay()===0).length
-  // Feriados em dias úteis (Seg-Sex) que não sejam domingo
-  const feriadosUteis=feriadosSet
-    ? dias.filter(d=>{
-        if(!feriadosSet.has(d)) return false
-        const dow=new Date(d+'T12:00:00').getDay()
-        return dow>=1&&dow<=5
-      }).length
-    : 0
-  return domingos+feriadosUteis
+  return dias.filter(d=>new Date(d+'T12:00:00').getDay()===0).length
+}
+
+// ─── Cálculo do direito ao feriado ──────────────────────────────────────────
+// Regras:
+//   1. Feriado em dom/sáb → o colaborador recebe o dia normalmente (já está no DSR/sáb).
+//      Somente feriados em Seg–Sex geram direito separado.
+//   2. Se o colaborador TRABALHOU no feriado → recebe pelas horas normais (já em calcDia).
+//      O "direito ao feriado" aqui é para quem NÃO trabalhou mas tem direito ao dia.
+//   3. Perde o direito se tiver falta no dia útil IMEDIATAMENTE anterior ou posterior ao feriado.
+export interface FeriadoInfo {
+  data: string
+  perdeu: boolean          // true = perdeu o direito por falta adjacente
+  motivo: string           // descrição do motivo da perda
+  horas_devidas: number    // minutos da jornada (para quem não trabalhou)
+  trabalhou: boolean       // true = marcou ponto naquele dia
+}
+
+function calcFeriados(
+  diasLanc: DiaRegistro[],
+  feriadosSet: Set<string>,
+  datasComFalta: Set<string>,
+  horObra: Record<string,HorarioDia>   // jornada padrão da obra
+): FeriadoInfo[] {
+  // Montar mapa data→DiaRegistro para acesso rápido
+  const mapaD: Record<string,DiaRegistro> = {}
+  diasLanc.forEach(d=>{ mapaD[d.data]=d })
+
+  // Filtrar feriados em Seg–Sex dentro do período do lançamento
+  const feriadosUteis = diasLanc
+    .filter(d=>{
+      if(!feriadosSet.has(d.data)) return false
+      const dow=new Date(d.data+'T12:00:00').getDay()
+      return dow>=1&&dow<=5   // Seg-Sex apenas
+    })
+    .map(d=>d.data)
+
+  const DIAS_PT=['dom','seg','ter','qua','qui','sex','sab']
+
+  return feriadosUteis.map(data=>{
+    const dow=new Date(data+'T12:00:00').getDay()
+    const d=mapaD[data]
+    const trabalhou=!!(d?.presente&&!d.falta)
+
+    // Dia útil imediatamente anterior ao feriado (pula FDS e outros feriados)
+    let antData: string|null=null
+    const antRaw=new Date(data+'T12:00:00'); antRaw.setDate(antRaw.getDate()-1)
+    // Anda para trás até encontrar Seg–Sex não-feriado dentro do lançamento
+    for(let i=0;i<7;i++){
+      const dd=antRaw.toISOString().slice(0,10)
+      if(!mapaD[dd]){antRaw.setDate(antRaw.getDate()-1);continue}
+      const dw=antRaw.getDay()
+      if(dw>=1&&dw<=5&&!feriadosSet.has(dd)){antData=dd;break}
+      antRaw.setDate(antRaw.getDate()-1)
+    }
+
+    // Dia útil imediatamente posterior ao feriado
+    let posData: string|null=null
+    const posRaw=new Date(data+'T12:00:00'); posRaw.setDate(posRaw.getDate()+1)
+    for(let i=0;i<7;i++){
+      const dd=posRaw.toISOString().slice(0,10)
+      if(!mapaD[dd]){posRaw.setDate(posRaw.getDate()+1);continue}
+      const dw=posRaw.getDay()
+      if(dw>=1&&dw<=5&&!feriadosSet.has(dd)){posData=dd;break}
+      posRaw.setDate(posRaw.getDate()+1)
+    }
+
+    let perdeu=false; let motivo=''
+    if(antData&&datasComFalta.has(antData)){
+      perdeu=true
+      motivo=`Falta em ${new Date(antData+'T12:00:00').toLocaleDateString('pt-BR')} (dia anterior ao feriado)`
+    } else if(posData&&datasComFalta.has(posData)){
+      perdeu=true
+      motivo=`Falta em ${new Date(posData+'T12:00:00').toLocaleDateString('pt-BR')} (dia posterior ao feriado)`
+    }
+
+    // Horas devidas = jornada padrão do dia da semana na obra
+    const diaSemKey=DIAS_PT[dow]
+    const hor=horObra[diaSemKey]
+    let horas_devidas=0
+    if(hor?.hora_entrada&&hor?.hora_saida){
+      let bruto=diffMin(hor.hora_entrada,hor.hora_saida)
+      if(hor.saida_almoco&&hor.retorno_almoco) bruto-=diffMin(hor.saida_almoco,hor.retorno_almoco)
+      else if(hor.saida_almoco) bruto-=60
+      horas_devidas=Math.max(0,bruto)
+    }
+
+    return{data,perdeu,motivo,horas_devidas,trabalhou}
+  })
 }
 
 function calcDia(d:DiaRegistro,isFeriado=false):{normais:number;extras50:number;extras100:number;total:number} {
@@ -135,12 +212,12 @@ function calcDia(d:DiaRegistro,isFeriado=false):{normais:number;extras50:number;
     horasDia=Math.max(0,bruto)
   }
   let he=0; if(d.he_entrada&&d.he_saida)he=Math.max(0,diffMin(d.he_entrada,d.he_saida))
-  // Feriado: TODAS as horas têm adicional 100% (2×)
-  if(isFeriado){
-    const total=horasDia+he
-    return{normais:0,extras50:0,extras100:total,total}
-  }
-  const normais=isSab?0:horasDia; const extras50=isSab?horasDia+he:he
+
+  // NOVA REGRA: feriado e sábado são dias normais.
+  // Horas trabalhadas entram como normais; HE entram como 50% (igual dia útil comum).
+  // Não há mais adicional 100% automático por ser feriado ou sábado.
+  const normais = horasDia
+  const extras50 = he
   return{normais,extras50,extras100:0,total:normais+extras50}
 }
 
@@ -1000,20 +1077,41 @@ export default function Ponto() {
     return excedente > 0 ? excedente : 0
   },[colabSel,totalProd,totalHoras,dsrInfo])
 
+  // ── Feriados: direito por lançamento ─────────────────────────────────────
+  // feriadosInfo: { lancId → FeriadoInfo[] }
+  const feriadosInfoMap = useMemo(()=>{
+    const res: Record<string, FeriadoInfo[]> = {}
+    lancamentos.forEach(lanc=>{
+      const dias = diasMap[lanc.id!] ?? []
+      const datasComFalta = new Set(dias.filter(d=>d.falta).map(d=>d.data))
+      const horObra = horariosObra[lanc.obra_id] ?? {}
+      res[lanc.id!] = calcFeriados(dias, feriados, datasComFalta, horObra)
+    })
+    return res
+  },[lancamentos,diasMap,feriados,horariosObra])
+
+  // Valor total de feriados devidos (não-trabalhados, não-perdidos) × valor/hora
+  const totalFeriados = useMemo(()=>{
+    return lancamentos.reduce((sum,lanc)=>{
+      const vh = valorHoraDoLanc(lanc.id!)
+      const infos = feriadosInfoMap[lanc.id!] ?? []
+      return sum + infos.reduce((s,f)=>{
+        if(f.trabalhou) return s  // trabalhou → já contou em calcDia
+        if(f.perdeu)    return s  // perdeu direito → não paga
+        return s + fmtDecimal(f.horas_devidas) * vh
+      },0)
+    },0)
+  },[lancamentos,feriadosInfoMap,valorHora,snapshotPorLanc])
+
   const totalReceber = useMemo(()=>{
     if(!colabSel)return totalProd
     if(colabSel.tipo_contrato==='autonomo'||colabSel.tipo_contrato==='pj'){
-      // REGRA AUTÔNOMO: dias com produção → paga só a produção (não soma horas do dia)
-      //                 dias sem produção → paga as horas normalmente
-      // horasAutonomoSemProd já exclui os dias que têm produção
-      return horasAutonomoSemProd + totalProd
+      return horasAutonomoSemProd + totalProd + totalFeriados
     }
-    // CLT: salário = horas + DSR
-    // Se produção > salário → paga salário + prêmio (= produção - salário)
-    // Se salário >= produção → paga apenas salário
-    const salario = totalHoras + dsrInfo.valor
-    return salario + premioCLT   // premioCLT já é 0 quando salário >= produção
-  },[colabSel,totalHoras,horasAutonomoSemProd,totalProd,dsrInfo,premioCLT])
+    // CLT: salário = horas + DSR + feriados devidos
+    const salario = totalHoras + dsrInfo.valor + totalFeriados
+    return salario + premioCLT
+  },[colabSel,totalHoras,horasAutonomoSemProd,totalProd,dsrInfo,premioCLT,totalFeriados])
 
   // ── Toggle dia ────────────────────────────────────────────────────────────
   function togglePresente(lancId:string,idx:number,colab:ColabSimples){
@@ -1320,6 +1418,51 @@ export default function Ponto() {
     if(q)lista=lista.filter(c=>c.nome.toLowerCase().includes(q)||(c.chapa??'').toLowerCase().includes(q)||c.funcao_nome.toLowerCase().includes(q))
     return lista
   },[colaboradores,busca,obraFiltro,funcaoFiltro,filtroStatus,statusPontoMap,ano,mes])
+
+  // ── Renderiza bloco de feriados de um lançamento ──────────────────────────
+  function renderFeriadosLanc(lancId: string, vh: number) {
+    const ferInfos = feriadosInfoMap[lancId] ?? []
+    if (ferInfos.length === 0) return null
+    const totalFerias = ferInfos.reduce((s,f) => {
+      if (f.trabalhou || f.perdeu) return s
+      return s + fmtDecimal(f.horas_devidas) * vh
+    }, 0)
+    return (
+      <div style={{margin:'8px 0 0',borderRadius:8,border:'1px solid #fde68a',background:'#fffbeb',padding:'10px 14px'}}>
+        <div style={{fontWeight:700,fontSize:12,color:'#92400e',marginBottom:6}}>🎌 Feriados no período</div>
+        {ferInfos.map(fi => {
+          const dtFmt = new Date(fi.data+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'})
+          const valorDia = fmtDecimal(fi.horas_devidas) * vh
+          if (fi.trabalhou) return (
+            <div key={fi.data} style={{display:'flex',alignItems:'center',gap:8,padding:'4px 0',borderBottom:'1px solid #fef3c7',fontSize:12}}>
+              <span style={{width:110,fontWeight:600,color:'#78350f'}}>{dtFmt}</span>
+              <span style={{background:'#dcfce7',color:'#15803d',borderRadius:4,padding:'1px 6px',fontSize:11}}>✓ Trabalhou — horas contadas normalmente</span>
+            </div>
+          )
+          if (fi.perdeu) return (
+            <div key={fi.data} style={{display:'flex',alignItems:'center',gap:8,padding:'4px 0',borderBottom:'1px solid #fef3c7',fontSize:12}}>
+              <span style={{width:110,fontWeight:600,color:'#dc2626'}}>{dtFmt}</span>
+              <span style={{background:'#fee2e2',color:'#dc2626',borderRadius:4,padding:'1px 6px',fontSize:11}}>🚫 Direito perdido</span>
+              <span style={{fontSize:11,color:'#6b7280'}}>{fi.motivo}</span>
+            </div>
+          )
+          return (
+            <div key={fi.data} style={{display:'flex',alignItems:'center',gap:8,padding:'4px 0',borderBottom:'1px solid #fef3c7',fontSize:12}}>
+              <span style={{width:110,fontWeight:600,color:'#92400e'}}>{dtFmt}</span>
+              <span style={{background:'#fef3c7',color:'#92400e',borderRadius:4,padding:'1px 6px',fontSize:11}}>🎌 Feriado pago</span>
+              <span style={{fontSize:11,color:'#6b7280'}}>{fmtHHMM(fi.horas_devidas)} × R$ {vh.toFixed(4)}/h</span>
+              <span style={{fontWeight:700,color:'#15803d',marginLeft:'auto'}}>+ {formatCurrency(valorDia)}</span>
+            </div>
+          )
+        })}
+        {totalFerias > 0 && (
+          <div style={{display:'flex',justifyContent:'flex-end',marginTop:6,fontWeight:700,fontSize:13,color:'#15803d'}}>
+            Total feriados: + {formatCurrency(totalFerias)}
+          </div>
+        )}
+      </div>
+    )
+  }
 
   // ─────────────────────────────────────────────────────────────────────────
   return (
@@ -1876,7 +2019,7 @@ export default function Ponto() {
                   )}
 
                   {/* Tabela de ponto */}
-                  {exp&&(
+                  {exp ? (
                     <div style={{overflowX:'auto',overflowY:'auto',maxHeight:'60vh'}}>
                       <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
                         <thead>
@@ -1893,10 +2036,21 @@ export default function Ponto() {
                         <tbody>
                           {diasLanc.map((d,idx)=>{
                             const fds=isFDS(d.data); const eFeriado=feriados.has(d.data); const calc=calcDia(d,eFeriado); const lancBloq=!['rascunho','recusado'].includes(lanc.status)
-                            const bg=d.evento==='suspensao'?'rgba(239,68,68,0.09)':d.evento==='atestado'?'rgba(59,130,246,0.09)':eFeriado&&d.presente?'rgba(245,158,11,0.12)':fds?'rgba(100,100,100,0.04)':d.falta?'rgba(239,68,68,0.05)':d.presente?'rgba(22,163,74,0.03)':'transparent'
+                            const ferInfoLanc = feriadosInfoMap[lanc.id!] ?? []
+                            const ferInfo = eFeriado ? ferInfoLanc.find(f=>f.data===d.data) : undefined
+                            const bg=d.evento==='suspensao'?'rgba(239,68,68,0.09)':d.evento==='atestado'?'rgba(59,130,246,0.09)':eFeriado?'rgba(245,158,11,0.10)':fds?'rgba(100,100,100,0.04)':d.falta?'rgba(239,68,68,0.05)':d.presente?'rgba(22,163,74,0.03)':'transparent'
                             return(
                               <tr key={d.data} style={{borderBottom:'1px solid var(--border)',background:bg}}>
-                                <td style={{...TD,fontWeight:700,textAlign:'center',color:eFeriado?'#d97706':fds?'#9ca3af':undefined}}>{diaSemana(d.data)}{eFeriado&&<span title='Feriado - adicional 100%' style={{fontSize:9,marginLeft:2}}>🎌</span>}</td>
+                                <td style={{...TD,fontWeight:700,textAlign:'center',color:eFeriado?'#d97706':fds?'#9ca3af':undefined}}>
+                                  {diaSemana(d.data)}
+                                  {eFeriado&&(
+                                    ferInfo?.perdeu
+                                      ? <span title={`Direito perdido: ${ferInfo.motivo}`} style={{fontSize:9,marginLeft:2,color:'#dc2626'}}>🚫</span>
+                                      : ferInfo&&!ferInfo.trabalhou
+                                        ? <span title='Feriado — dia pago mesmo sem trabalhar' style={{fontSize:9,marginLeft:2}}>🎌✓</span>
+                                        : <span title='Feriado — trabalhou, horas contadas normalmente' style={{fontSize:9,marginLeft:2}}>🎌</span>
+                                  )}
+                                </td>
                                 <td style={{...TD,textAlign:'center',fontFamily:'monospace',fontWeight:600}}>{d.data.slice(8)}/{d.data.slice(5,7)}</td>
                                 <td style={{...TD,textAlign:'center'}}>
                                   {d.evento==='atestado'?<span title="Afastamento">🩺</span>
@@ -2000,7 +2154,9 @@ export default function Ponto() {
                         </tfoot>
                       </table>
                     </div>
-                  )}
+
+                  ) : null}
+                  {exp && feriadosInfoMap[lanc.id!]?.length > 0 && renderFeriadosLanc(lanc.id!, valorHoraDoLanc(lanc.id!))}
                 </div>
               )
             })}
