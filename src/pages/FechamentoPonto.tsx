@@ -393,10 +393,13 @@ export default function FechamentoPonto() {
       const tipo  = colab?.tipo_contrato ?? 'clt'
       const horasAgg = mapaHoras[l.id] ?? { norm: 0, extra: 0, dias: 0, faltas: 0, diasDatas: new Set(), datasComFalta: new Set(), sabsDomTrab: 0 }
 
-      // Segurança: ignorar lançamento se inicio for antes da admissão do colaborador
-      if (colab?.data_admissao && l.data_inicio < colab.data_admissao) {
-        return null   // será filtrado abaixo
-      }
+      // Segurança: se o período inicia antes da admissão, ajustar data de referência
+      // MAS nunca descartar o lançamento — o colaborador pode ter sido admitido no meio do período
+      // e as horas lançadas já refletem apenas os dias após a admissão.
+      // (A checagem anterior causava bug: DORGIVAL admitido 23/03 com lanc iniciando 16/03)
+      const dataInicioEfetivo = (colab?.data_admissao && l.data_inicio < colab.data_admissao)
+        ? colab.data_admissao
+        : l.data_inicio
 
       // ══ TRAVA DE SNAPSHOT ══════════════════════════════════════════════════
       // Lançamentos já aprovados/liberados/pagos usam EXCLUSIVAMENTE os valores
@@ -473,7 +476,7 @@ export default function FechamentoPonto() {
         valorHoras = horasAgg.norm * vh + horasAgg.extra * vh * 1.5
         // DSR com regra de perda por falta semanal
         const datasComFaltaLanc = (horasAgg as any).datasComFalta ?? new Set<string>()
-        const dsrRes = calcDSRComFaltas(valorHoras, l.data_inicio, l.data_fim, datasComFaltaLanc)
+        const dsrRes = calcDSRComFaltas(valorHoras, dataInicioEfetivo, l.data_fim, datasComFaltaLanc)
         dsr = dsrRes.dsr
         const salario = valorHoras + dsr
         // ═ REGRA PRODUÇÃO CLT ═
@@ -695,7 +698,7 @@ export default function FechamentoPonto() {
 
   // ── Contadores para as abas ─────────────────────────────────────────────
   const contAbas = useMemo(() => ({
-    fechamento:  lancamentos.filter(l => ['em_fechamento','rascunho','aguardando_aprovacao'].includes(l.status)).length,
+    fechamento:  lancamentos.filter(l => ['em_fechamento','rascunho'].includes(l.status)).length,
     pendente:    lancamentos.filter(l => l.status === 'aguardando_aprovacao').length,
     aprovado:    lancamentos.filter(l => l.status === 'aprovado').length,       // aguardando liberação
     liberado:    lancamentos.filter(l => l.status === 'liberado').length,       // liberado p/ pagamento
@@ -708,7 +711,7 @@ export default function FechamentoPonto() {
     const q = busca.toLowerCase()
     // Filtro por aba
     const statusAba: string[] = abaFechamento === 'fechamento'
-      ? ['em_fechamento', 'rascunho', 'aguardando_aprovacao']
+      ? ['em_fechamento', 'rascunho']
       : abaFechamento === 'pendente'
         ? ['aguardando_aprovacao']
         : abaFechamento === 'aprovado'
@@ -1001,8 +1004,8 @@ export default function FechamentoPonto() {
     em_fechamento:        { bg: '#dbeafe', color: '#1d4ed8', label: '🔒 Em Fechamento' },
     aguardando_aprovacao: { bg: '#fef3c7', color: '#b45309', label: '⏳ Ag. Aprovação' },
     aprovado:             { bg: '#dcfce7', color: '#15803d', label: '✅ Aprovado' },
-    liberado:             { bg: '#fef3c7', color: '#b45309', label: '💜 Ag. Pagamento' },
-    pago:                 { bg: '#ede9fe', color: '#6d28d9', label: '💰 Pago' },
+    liberado:             { bg: '#ede9fe', color: '#7c3aed', label: '📜 Liberado p/ Pgto' },
+    pago:                 { bg: '#f0fdf4', color: '#166534', label: '💳 Pago' },
     rascunho:             { bg: '#f1f5f9', color: '#475569', label: '↩ Devolvido p/ Edição' },
     recusado:             { bg: '#fee2e2', color: '#dc2626', label: '❌ Recusado' },
   }
@@ -1054,8 +1057,8 @@ export default function FechamentoPonto() {
       {/* ── Abas de status ── */}
       <div style={{ display: 'flex', gap: 0, marginBottom: 20, borderBottom: '2px solid var(--border)', flexWrap: 'wrap' }}>
         {([
-          { key: 'fechamento',  label: '🔒 Pendentes / Em Fechamento',  cnt: contAbas.fechamento,  cor: '#1d4ed8' },
-          { key: 'pendente',    label: '⏳ Ag. Aprovação',           cnt: contAbas.pendente,    cor: '#b45309' },
+          { key: 'fechamento',  label: '🔒 Em Fechamento',              cnt: contAbas.fechamento,  cor: '#1d4ed8' },
+          { key: 'pendente',    label: '⏳ Ag. Aprovação',               cnt: contAbas.pendente,    cor: '#b45309' },
           { key: 'aprovado',    label: '✅ Aprovado',                cnt: contAbas.aprovado,    cor: '#059669' },
           { key: 'liberado',    label: '💜 Liberado p/ Pagamento',   cnt: contAbas.liberado,    cor: '#7c3aed' },
           { key: 'pago',        label: '💳 Pago',                    cnt: contAbas.pago,        cor: '#1d4ed8' },
@@ -1397,7 +1400,7 @@ export default function FechamentoPonto() {
                                   onClick={() => abrirEspelho(lanc)}>
                                   <Eye size={11} /> Ver Ponto
                                 </Button>
-                                {lanc.status === 'em_fechamento' && (
+                                {(lanc.status === 'em_fechamento' || lanc.status === 'aguardando_aprovacao') && (
                                   <>
                                     <Button size="sm" style={{ height: 26, fontSize: 11, background: '#15803d', color: '#fff' }}
                                       disabled={saving}
