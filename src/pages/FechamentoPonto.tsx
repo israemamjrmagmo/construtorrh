@@ -197,7 +197,7 @@ export default function FechamentoPonto() {
         snap_valor_hora, snap_horas_normais, snap_horas_extras, snap_valor_horas,
         snap_valor_producao, snap_valor_dsr, snap_valor_premio, snap_valor_total,
         snap_faltas, snap_vt_diario, snap_desconto_vt, snap_desconto_adiant,
-        snap_inss, snap_ir, snap_liquido, snap_fechado_em, snap_considera_sabado_util,
+        snap_inss, snap_ir, snap_liquido, snap_fechado_em,
         colaboradores(nome, chapa, tipo_contrato, funcao_id, vale_transporte, vt_dados, data_admissao, funcoes(nome)),
         obras(nome, considera_sabado_util)
       `)
@@ -207,6 +207,7 @@ export default function FechamentoPonto() {
 
     if (lancsErr) {
       console.error('[FechamentoPonto] erro ao buscar lançamentos:', lancsErr)
+      toast.error('Erro ao carregar dados do banco: ' + lancsErr.message)
       setLoading(false)
       return
     }
@@ -999,12 +1000,13 @@ export default function FechamentoPonto() {
 
   // ── Liberar para pagamento (direto, sem fechamento intermediário) ──────────
     const STATUS_BADGE: Record<string, { bg: string; color: string; label: string }> = {
-    em_fechamento:{ bg: '#dbeafe', color: '#1d4ed8', label: '🔒 Em Fechamento' },
-    aprovado:     { bg: '#dcfce7', color: '#15803d', label: '✅ Aprovado' },
-    liberado:     { bg: '#fef3c7', color: '#b45309', label: '💜 Ag. Pagamento' },
-    pago:         { bg: '#ede9fe', color: '#6d28d9', label: '💰 Pago' },
-    rascunho:     { bg: '#f1f5f9', color: '#475569', label: '↩ Devolvido p/ Edição' },
-    recusado:     { bg: '#fee2e2', color: '#dc2626', label: '❌ Recusado' },
+    em_fechamento:        { bg: '#dbeafe', color: '#1d4ed8', label: '🔒 Em Fechamento' },
+    aguardando_aprovacao: { bg: '#fef3c7', color: '#b45309', label: '⏳ Ag. Aprovação' },
+    aprovado:             { bg: '#dcfce7', color: '#15803d', label: '✅ Aprovado' },
+    liberado:             { bg: '#fef3c7', color: '#b45309', label: '💜 Ag. Pagamento' },
+    pago:                 { bg: '#ede9fe', color: '#6d28d9', label: '💰 Pago' },
+    rascunho:             { bg: '#f1f5f9', color: '#475569', label: '↩ Devolvido p/ Edição' },
+    recusado:             { bg: '#fee2e2', color: '#dc2626', label: '❌ Recusado' },
   }
 
   // ─────────────────────────────────────────────────────────────────────────
