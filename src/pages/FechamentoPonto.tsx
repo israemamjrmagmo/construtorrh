@@ -393,10 +393,8 @@ export default function FechamentoPonto() {
       const tipo  = colab?.tipo_contrato ?? 'clt'
       const horasAgg = mapaHoras[l.id] ?? { norm: 0, extra: 0, dias: 0, faltas: 0, diasDatas: new Set(), datasComFalta: new Set(), sabsDomTrab: 0 }
 
-      // Segurança: se o período inicia antes da admissão, ajustar data de referência
-      // MAS nunca descartar o lançamento — o colaborador pode ter sido admitido no meio do período
-      // e as horas lançadas já refletem apenas os dias após a admissão.
-      // (A checagem anterior causava bug: DORGIVAL admitido 23/03 com lanc iniciando 16/03)
+      // Segurança: período já deve ter sido gerado corretamente (respeitando admissão e inativação)
+      // Se por legado o data_inicio for anterior à admissão, usar admissão como referência de cálculo
       const dataInicioEfetivo = (colab?.data_admissao && l.data_inicio < colab.data_admissao)
         ? colab.data_admissao
         : l.data_inicio

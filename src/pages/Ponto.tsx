@@ -79,6 +79,24 @@ function expandRange(inicio:string,fim:string):string[] {
   return dias
 }
 
+// ─── Clamp de período: garante que data_inicio e data_fim respeitam admissão e inativação ──
+// Regra: data_inicio = max(inicio_mes, data_admissao)
+//        data_fim    = min(fim_mes,   data_inativacao)  — usa data_status quando status ≠ ativo
+function clampPeriodoColab(
+  inicioMes: string,
+  fimMes: string,
+  dataAdmissao: string | null,
+  dataInativacao: string | null // data_status quando inativo/demitido
+): { inicio: string; fim: string } {
+  let inicio = inicioMes
+  let fim    = fimMes
+  if (dataAdmissao && dataAdmissao > inicio) inicio = dataAdmissao
+  if (dataInativacao && dataInativacao < fim) fim = dataInativacao
+  // segurança: se inicio > fim, usa admissão como único dia
+  if (inicio > fim) fim = inicio
+  return { inicio, fim }
+}
+
 // DSR helpers ──────────────────────────────────────────────────────────────
 // Dias úteis = Seg-Sex do período que NÃO sejam feriados
 function diasUteisPeriodo(inicio:string,fim:string,feriadosSet?:Set<string>):number {
@@ -262,9 +280,17 @@ export default function Ponto() {
       if (existentes && existentes.length > 0) {
         lancId = existentes[0].id
       } else {
+        // Cria novo — respeitando data_admissao e data_status do colaborador
+        const colabRefProd = colaboradores.find(c => c.id === reg.colaborador_id)
+        const dataInativProd = (colabRefProd && colabRefProd.status !== 'ativo' && colabRefProd.data_status) ? colabRefProd.data_status : null
+        const { inicio: pInicio, fim: pFim } = clampPeriodoColab(
+          `${mr}-01`, `${mr}-31`,
+          colabRefProd?.data_admissao ?? null,
+          dataInativProd
+        )
         const { data: newLanc } = await supabase.from('ponto_lancamentos').insert({
           colaborador_id: reg.colaborador_id, obra_id: reg.obra_id,
-          mes_referencia: mr, data_inicio: `${mr}-01`, data_fim: `${mr}-31`,
+          mes_referencia: mr, data_inicio: pInicio, data_fim: pFim,
           status: 'rascunho', criado_por: 'portal',
         }).select('id').single()
         lancId = newLanc?.id ?? null
@@ -369,15 +395,23 @@ export default function Ponto() {
       .limit(1)
     lancId = lancs?.[0]?.id ?? null
 
-    // 2. Se não existe, cria automaticamente
+    // 2. Se não existe, cria automaticamente — respeitando data_admissao e data_status
     if (!lancId) {
       const mr = data.slice(0, 7)
+      // Busca dados do colaborador para clampar o período
+      const colabRef = colaboradores.find(c => c.id === colabId)
+      const dataInativImp = (colabRef && colabRef.status !== 'ativo' && colabRef.data_status) ? colabRef.data_status : null
+      const { inicio: impInicio, fim: impFim } = clampPeriodoColab(
+        `${mr}-01`, `${mr}-31`,
+        colabRef?.data_admissao ?? null,
+        dataInativImp
+      )
       const { data: novoLanc, error: errL } = await supabase
         .from('ponto_lancamentos')
         .insert({
           colaborador_id: colabId, obra_id: obraRef,
           mes_referencia: mr,
-          data_inicio: `${mr}-01`, data_fim: `${mr}-31`,
+          data_inicio: impInicio, data_fim: impFim,
           status: 'rascunho',
         })
         .select('id').single()
@@ -1081,17 +1115,29 @@ export default function Ponto() {
   async function criarLancamento(){
     if(!colabSel||!novoLancObraId||!novoLancInicio||!novoLancFim){toast.error('Preencha todos os campos');return}
     if(novoLancInicio>novoLancFim){toast.error('Data de início deve ser anterior à data de fim');return}
-    // Bloquear se o período for antes da data de admissão
-    if(colabSel.data_admissao && novoLancInicio < colabSel.data_admissao){
-      toast.error(`${colabSel.nome} só pode ter ponto a partir de ${new Date(colabSel.data_admissao+'T12:00:00').toLocaleDateString('pt-BR')} (data de admissão)`)
-      return
+
+    // ── REGRA: clamp nas datas do colaborador ─────────────────────────────
+    // Nenhum lançamento pode iniciar antes da admissão ou terminar após a inativação
+    const dataInativ = (colabSel.status !== 'ativo' && colabSel.data_status) ? colabSel.data_status : null
+    const { inicio: iniClamp, fim: fimClamp } = clampPeriodoColab(
+      novoLancInicio, novoLancFim, colabSel.data_admissao, dataInativ
+    )
+    if (iniClamp !== novoLancInicio || fimClamp !== novoLancFim) {
+      const admFmt  = colabSel.data_admissao ? new Date(colabSel.data_admissao+'T12:00:00').toLocaleDateString('pt-BR') : '—'
+      const inativFmt = dataInativ ? new Date(dataInativ+'T12:00:00').toLocaleDateString('pt-BR') : '—'
+      const msg = iniClamp !== novoLancInicio
+        ? `Período ajustado automaticamente: início alterado para ${new Date(iniClamp+'T12:00:00').toLocaleDateString('pt-BR')} (data de admissão: ${admFmt})`
+        : `Período ajustado automaticamente: fim alterado para ${new Date(fimClamp+'T12:00:00').toLocaleDateString('pt-BR')} (data de inativação: ${inativFmt})`
+      toast.info(msg)
     }
+    const novoLancInicioFinal = iniClamp
+    const novoLancFimFinal    = fimClamp
     // Bloquear se houver lançamento em rascunho ou recusado (precisa aprovar antes)
     const temAberto=lancamentos.some(l=>l.status==='rascunho'||l.status==='recusado'||l.status==='aguardando_aprovacao')
     if(temAberto){toast.error('Finalize os lançamentos em aberto (envie para Fechamento) antes de criar um novo');return}
     const lancsPorObra=lancamentos.filter(l=>l.obra_id===novoLancObraId).length
     if(lancsPorObra>=2){toast.error('Esta obra já tem 2 lançamentos neste mês');return}
-    const diasNovos=new Set(expandRange(novoLancInicio,novoLancFim))
+    const diasNovos=new Set(expandRange(novoLancInicioFinal,novoLancFimFinal))
     // Conflito BLOQUEANTE apenas quando a obra for a mesma
     const conflitoMesmaObra=lancamentos
       .filter(l=>l.obra_id===novoLancObraId)
@@ -1101,7 +1147,7 @@ export default function Ponto() {
     // Obras diferentes: apenas aviso informativo (não bloqueia)
     setSavingLanc(true)
     // Determinar tipo de contrato vigente na data de início do lançamento
-    const today2 = novoLancInicio || new Date().toISOString().slice(0,10)
+    const today2 = novoLancInicioFinal || new Date().toISOString().slice(0,10)
     const periodoVigente = historicoContrato.find(p =>
       p.data_inicio <= today2 && (p.data_fim === null || p.data_fim >= today2)
     )
@@ -1110,7 +1156,7 @@ export default function Ponto() {
 
     const{error}=await supabase.from('ponto_lancamentos').insert({
       colaborador_id:colabSel.id,obra_id:novoLancObraId,mes_referencia:mesRef,
-      data_inicio:novoLancInicio,data_fim:novoLancFim,
+      data_inicio:novoLancInicioFinal,data_fim:novoLancFimFinal,
       status:'rascunho',
       tipo_contrato_lanc: tcNovo,
       valor_hora_snapshot: vhNovo > 0 ? vhNovo : null,
