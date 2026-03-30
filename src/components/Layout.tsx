@@ -9,18 +9,17 @@ import {
   LayoutDashboard, Users, Building2, Shield,
   AlertTriangle, FileText, Clock, DollarSign, Award,
   Calculator, Bus, BarChart3, Settings, LogOut, Menu,
-  HardHat, ChevronLeft, ChevronRight, UserCog,
+  HardHat, ChevronRight, UserCog,
   ClipboardList, Lock, CalendarDays, Briefcase, Wallet,
-  Smartphone, Inbox, Scale, MessageSquare, X,
+  Smartphone, Inbox, Scale, MessageSquare,
   Search, Bell, ChevronDown,
   LayoutGrid, FolderKanban, HeartPulse, Banknote, Gavel, Cog,
-  BookOpen, CreditCard, Layers, ClipboardCheck, ShoppingBasket,
+  BookOpen, CreditCard, Layers, ClipboardCheck, ShoppingBasket, FolderOpen,
 } from 'lucide-react'
 
 // ─── Cor principal da sidebar ───────────────────────────────────────────────
-const SIDEBAR_BG    = '#0d3f56'
-const SIDEBAR_HOVER = '#0a3347'
-const SIDEBAR_W     = 62   // largura fixa (somente ícones de grupo)
+const SIDEBAR_BG = '#0d3f56'
+const SIDEBAR_W  = 68   // um pouco mais largo para labels legíveis
 
 // ─── Mapa de títulos de páginas ─────────────────────────────────────────────
 const PAGE_TITLES: Record<string, { label: string; icon: React.ElementType; color: string }> = {
@@ -35,8 +34,8 @@ const PAGE_TITLES: Record<string, { label: string; icon: React.ElementType; colo
   '/ocorrencias':       { label: 'Ocorrências',         icon: AlertTriangle,   color: '#f97316' },
   '/documentos':        { label: 'Documentos',          icon: FileText,        color: '#64748b' },
   '/ponto':             { label: 'Ponto',               icon: Clock,           color: '#0ea5e9' },
-  '/vt':               { label: 'Vale Transporte',     icon: Bus,            color: '#06b6d4' },
-  '/cesta-basica':     { label: 'Cesta Básica',        icon: ShoppingBasket, color: '#f59e0b' },
+  '/vt':                { label: 'Vale Transporte',     icon: Bus,             color: '#06b6d4' },
+  '/cesta-basica':      { label: 'Cesta Básica',        icon: ShoppingBasket,  color: '#f59e0b' },
   '/adiantamentos':     { label: 'Adiantamentos',       icon: Wallet,          color: '#10b981' },
   '/premios':           { label: 'Prêmios',             icon: Award,           color: '#f59e0b' },
   '/fechamento-ponto':  { label: 'Fechamento de Ponto', icon: Lock,            color: '#f97316' },
@@ -50,11 +49,13 @@ const PAGE_TITLES: Record<string, { label: string; icon: React.ElementType; colo
   '/configuracoes':     { label: 'Configurações',       icon: Settings,        color: '#64748b' },
 }
 
-// ─── Grupos de navegação (flyout) ────────────────────────────────────────────
+// ─── Grupos de navegação ─────────────────────────────────────────────────────
+// 7 grupos bem distribuídos — sem itens únicos perdidos
 const NAV_GROUPS = [
   {
     id:    'dashboard',
-    label: 'Dashboard',
+    label: 'Início',
+    short: 'Início',
     icon:  LayoutDashboard,
     items: [
       { to: '/', label: 'Dashboard', icon: LayoutDashboard, color: '#818cf8', badge: 'sol' as const },
@@ -63,87 +64,72 @@ const NAV_GROUPS = [
   {
     id:    'principal',
     label: 'Principal',
+    short: 'Principal',
     icon:  LayoutGrid,
     items: [
-      { to: '/solicitacoes', label: 'Solicitações', icon: Inbox,           color: '#f87171', badge: 'sol' as const },
-      { to: '/mensagens',    label: 'Mensagens',    icon: MessageSquare,   color: '#a78bfa', badge: 'msg' as const },
-      { to: '/relatorios',   label: 'Relatórios',   icon: BarChart3,       color: '#818cf8' },
+      { to: '/solicitacoes', label: 'Solicitações', icon: Inbox,         color: '#f87171', badge: 'sol' as const },
+      { to: '/mensagens',    label: 'Mensagens',    icon: MessageSquare, color: '#a78bfa', badge: 'msg' as const },
+      { to: '/relatorios',   label: 'Relatórios',   icon: BarChart3,     color: '#818cf8' },
     ],
   },
   {
     id:    'cadastros',
     label: 'Cadastros',
+    short: 'Cadastros',
     icon:  FolderKanban,
     items: [
       { to: '/colaboradores', label: 'Colaboradores', icon: Users,        color: '#38bdf8' },
       { to: '/obras',         label: 'Obras',         icon: Building2,    color: '#2dd4bf' },
       { to: '/playbooks',     label: 'Playbooks',     icon: ClipboardList,color: '#a78bfa' },
       { to: '/feriados',      label: 'Feriados',      icon: CalendarDays, color: '#fbbf24' },
+      { to: '/documentos',    label: 'Documentos',    icon: FileText,     color: '#64748b' },
     ],
   },
   {
     id:    'saude',
-    label: 'Saúde & Seg.',
+    label: 'Saúde',
+    short: 'Saúde',
     icon:  HeartPulse,
     items: [
-      { to: '/epis',       label: 'EPIs',       icon: Shield,        color: '#f87171' },
-      { to: '/ocorrencias',label: 'Ocorrências',icon: AlertTriangle, color: '#fb923c' },
-      { to: '/documentos', label: 'Documentos', icon: FileText,      color: '#94a3b8' },
+      { to: '/epis',        label: 'EPIs',        icon: Shield,        color: '#f87171' },
+      { to: '/ocorrencias', label: 'Ocorrências', icon: AlertTriangle, color: '#fb923c' },
     ],
   },
   {
     id:    'lancamentos',
     label: 'Lançamentos',
+    short: 'Lanç.',
     icon:  Layers,
     items: [
-      { to: '/ponto',         label: 'Ponto',          icon: Clock,   color: '#38bdf8' },
-      { to: '/vt',            label: 'Vale Transporte', icon: Bus,             color: '#22d3ee' },
-      { to: '/cesta-basica',  label: 'Cesta Básica',    icon: ShoppingBasket,  color: '#f59e0b' },
-      { to: '/adiantamentos', label: 'Adiantamentos',   icon: Wallet,          color: '#34d399' },
-      { to: '/premios',       label: 'Prêmios',        icon: Award,   color: '#fbbf24' },
+      { to: '/ponto',         label: 'Ponto',          icon: Clock,         color: '#38bdf8' },
+      { to: '/vt',            label: 'Vale Transporte', icon: Bus,           color: '#22d3ee' },
+      { to: '/cesta-basica',  label: 'Cesta Básica',   icon: ShoppingBasket,color: '#f59e0b' },
+      { to: '/adiantamentos', label: 'Adiantamentos',  icon: Wallet,        color: '#34d399' },
+      { to: '/premios',       label: 'Prêmios',        icon: Award,         color: '#fbbf24' },
     ],
   },
   {
-    id:    'fechamento',
-    label: 'Fechamento',
-    icon:  ClipboardCheck,
+    id:    'financeiro',
+    label: 'Financeiro',
+    short: 'Finanças',
+    icon:  Banknote,
     items: [
-      { to: '/fechamento-ponto', label: 'Fechamento de Ponto', icon: Lock, color: '#fb923c', badge: 'fech' as const },
-    ],
-  },
-  {
-    id:    'pagamentos',
-    label: 'Pagamentos',
-    icon:  CreditCard,
-    items: [
-      { to: '/pagamentos', label: 'Pagamentos', icon: DollarSign, color: '#4ade80' },
-    ],
-  },
-  {
-    id:    'encargos',
-    label: 'Encargos',
-    icon:  Briefcase,
-    items: [
-      { to: '/encargos',  label: 'Encargos',           icon: Briefcase,  color: '#a78bfa' },
-      { to: '/provisoes', label: 'Provisões Rescisão', icon: Calculator, color: '#f472b6' },
-    ],
-  },
-  {
-    id:    'juridico',
-    label: 'Jurídico',
-    icon:  Gavel,
-    items: [
-      { to: '/juridico', label: 'Jurídico', icon: Scale, color: '#94a3b8' },
+      { to: '/fechamento-ponto', label: 'Fechamento',         icon: Lock,       color: '#fb923c', badge: 'fech' as const },
+      { to: '/pagamentos',       label: 'Pagamentos',         icon: DollarSign, color: '#4ade80' },
+      { to: '/encargos',         label: 'Encargos',           icon: Briefcase,  color: '#a78bfa' },
+      { to: '/provisoes',        label: 'Provisões Rescisão', icon: Calculator, color: '#f472b6' },
+      { to: '/juridico',         label: 'Jurídico',           icon: Scale,      color: '#94a3b8' },
     ],
   },
   {
     id:    'sistema',
     label: 'Sistema',
+    short: 'Sistema',
     icon:  Cog,
     items: [
-      { to: '/usuarios',      label: 'Usuários',      icon: UserCog,    color: '#38bdf8', adminOnly: true },
-      { to: '/portal-admin',  label: 'Portal da Obra',icon: Smartphone, color: '#34d399', adminOnly: true },
-      { to: '/configuracoes', label: 'Configurações', icon: Settings,   color: '#94a3b8' },
+      { to: '/usuarios',      label: 'Usuários',       icon: UserCog,   color: '#38bdf8', adminOnly: true },
+      { to: '/portal-admin',  label: 'Portal da Obra', icon: Smartphone,color: '#34d399', adminOnly: true },
+      { to: '/configuracoes', label: 'Configurações',  icon: Settings,  color: '#94a3b8' },
     ],
   },
 ]
@@ -154,27 +140,25 @@ const SEARCH_PAGES = NAV_GROUPS.flatMap(g => g.items).map(i => ({ label: i.label
 interface LayoutProps { children: React.ReactNode }
 
 export function Layout({ children }: LayoutProps) {
-  const [mobileOpen, setMobileOpen]   = useState(false)
-  const [openGroup,  setOpenGroup]    = useState<string | null>(null)
-  const [searchOpen, setSearchOpen]   = useState(false)
-  const [searchQ,    setSearchQ]      = useState('')
-  const [showNotif,  setShowNotif]    = useState(false)
+  const [mobileOpen, setMobileOpen] = useState(false)
+  const [openGroup,  setOpenGroup]  = useState<string | null>(null)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchQ,    setSearchQ]    = useState('')
+  const [showNotif,  setShowNotif]  = useState(false)
 
-  // Refs para flyout e notificações
   const flyoutTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const searchRef   = useRef<HTMLInputElement>(null)
   const notifRef    = useRef<HTMLDivElement>(null)
 
-  const { user, signOut }   = useAuth()
-  const { profile }         = useProfile()
-  const navigate            = useNavigate()
-  const location            = useLocation()
+  const { user, signOut } = useAuth()
+  const { profile }       = useProfile()
+  const navigate          = useNavigate()
+  const location          = useLocation()
 
   const [solicitacoesPendentes, setSolicitacoesPendentes] = useState(0)
   const [fechamentosPendentes,  setFechamentosPendentes]  = useState(0)
   const [mensagensNaoLidas,     setMensagensNaoLidas]     = useState(0)
 
-  // ── Fetches de badges ─────────────────────────────────────────────────────
   const fetchFechamentos = useCallback(async () => {
     const { count } = await supabase.from('ponto_lancamentos')
       .select('id', { count:'exact', head:true }).eq('status','aguardando_aprovacao')
@@ -201,7 +185,6 @@ export function Layout({ children }: LayoutProps) {
   useEffect(() => { fetchSolicitacoes(); const t = setInterval(fetchSolicitacoes, 60_000); return () => clearInterval(t) }, [fetchSolicitacoes])
   useEffect(() => { fetchMensagens();    const t = setInterval(fetchMensagens,    30_000); return () => clearInterval(t) }, [fetchMensagens])
 
-  // ── Fechar notif ao clicar fora ───────────────────────────────────────────
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (notifRef.current && !notifRef.current.contains(e.target as Node)) setShowNotif(false)
@@ -210,7 +193,6 @@ export function Layout({ children }: LayoutProps) {
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
-  // ── Ctrl+K para busca ─────────────────────────────────────────────────────
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') { e.preventDefault(); setSearchOpen(true); setTimeout(() => searchRef.current?.focus(), 50) }
@@ -220,19 +202,18 @@ export function Layout({ children }: LayoutProps) {
     return () => document.removeEventListener('keydown', handler)
   }, [])
 
-  // ── Flyout hover handlers ─────────────────────────────────────────────────
   function handleGroupEnter(id: string) {
     if (flyoutTimer.current) clearTimeout(flyoutTimer.current)
     setOpenGroup(id)
   }
   function handleGroupLeave() {
-    flyoutTimer.current = setTimeout(() => setOpenGroup(null), 120)
+    flyoutTimer.current = setTimeout(() => setOpenGroup(null), 150)
   }
   function handleFlyoutEnter() {
     if (flyoutTimer.current) clearTimeout(flyoutTimer.current)
   }
   function handleFlyoutLeave() {
-    flyoutTimer.current = setTimeout(() => setOpenGroup(null), 120)
+    flyoutTimer.current = setTimeout(() => setOpenGroup(null), 150)
   }
 
   const handleSignOut = async () => { await signOut(); navigate('/login') }
@@ -242,43 +223,37 @@ export function Layout({ children }: LayoutProps) {
   const role      = profile?.role ?? 'visualizador'
   const roleMeta  = ROLE_PERMISSIONS[role]
 
-  // Página atual
-  const pathKey    = '/' + location.pathname.split('/').filter(Boolean)[0]
-  const pageMeta   = PAGE_TITLES[location.pathname] ?? PAGE_TITLES[pathKey] ?? { label: 'ConstrutorRH', icon: HardHat, color: '#6366f1' }
-  const PageIcon   = pageMeta.icon
+  const pathKey  = '/' + location.pathname.split('/').filter(Boolean)[0]
+  const pageMeta = PAGE_TITLES[location.pathname] ?? PAGE_TITLES[pathKey] ?? { label: 'ConstrutorRH', icon: HardHat, color: '#6366f1' }
+  const PageIcon = pageMeta.icon
   const totalNotif = solicitacoesPendentes + fechamentosPendentes + mensagensNaoLidas
 
-  // Grupo ativo (para destacar o ícone do grupo na sidebar)
   const activeGroupId = NAV_GROUPS.find(g => g.items.some(i => {
     if (i.to === '/') return location.pathname === '/'
     return location.pathname.startsWith(i.to)
   }))?.id ?? null
 
-  // Badge count por tipo
   function getBadgeCount(badge?: string) {
     if (badge === 'sol')  return solicitacoesPendentes
     if (badge === 'msg')  return mensagensNaoLidas
     if (badge === 'fech') return fechamentosPendentes
     return 0
   }
-
-  // Badge color por tipo
   function getBadgeColor(badge?: string) {
     if (badge === 'msg')  return '#a78bfa'
     if (badge === 'fech') return '#fb923c'
     return '#f87171'
   }
-
-  // Badge total por grupo
   function getGroupBadge(groupId: string) {
     if (groupId === 'principal')  return solicitacoesPendentes + mensagensNaoLidas
-    if (groupId === 'fechamento') return fechamentosPendentes
+    if (groupId === 'financeiro') return fechamentosPendentes
     return 0
   }
 
-  // Busca filtrada
   const searchResults = SEARCH_PAGES.filter(p =>
-    p.label.toLowerCase().includes(searchQ.toLowerCase())
+    p.label.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').includes(
+      searchQ.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    )
   ).slice(0, 8)
 
   return (
@@ -290,16 +265,16 @@ export function Layout({ children }: LayoutProps) {
           style={{ position:'fixed', inset:0, zIndex:40, background:'rgba(0,0,0,0.55)', backdropFilter:'blur(3px)' }} />
       )}
 
-      {/* ═══════════════════════════════════════════════
-          SIDEBAR — ultra-compacta com flyout
-      ═══════════════════════════════════════════════ */}
+      {/* ════════════════════════════════════
+          SIDEBAR
+      ════════════════════════════════════ */}
       <aside
         style={{
           width: SIDEBAR_W, minWidth: SIDEBAR_W, maxWidth: SIDEBAR_W,
           display:'flex', flexDirection:'column',
           background: SIDEBAR_BG,
           flexShrink:0, zIndex:50,
-          boxShadow:'3px 0 16px rgba(0,0,0,0.18)',
+          boxShadow:'3px 0 20px rgba(0,0,0,0.20)',
           position:'relative',
         }}
         className={cn(
@@ -312,29 +287,30 @@ export function Layout({ children }: LayoutProps) {
         <div style={{
           height:58, flexShrink:0,
           display:'flex', alignItems:'center', justifyContent:'center',
-          borderBottom:`1px solid rgba(255,255,255,0.08)`,
-          background:'rgba(0,0,0,0.15)',
+          borderBottom:'1px solid rgba(255,255,255,0.08)',
+          background:'rgba(0,0,0,0.18)',
         }}>
           <div style={{
-            width:34, height:34, borderRadius:10,
+            width:36, height:36, borderRadius:10,
             background:'rgba(255,255,255,0.15)',
             display:'flex', alignItems:'center', justifyContent:'center',
             border:'1.5px solid rgba(255,255,255,0.25)',
           }}>
-            <HardHat size={16} color="#fff" strokeWidth={2.2}/>
+            <HardHat size={17} color="#fff" strokeWidth={2.2}/>
           </div>
         </div>
 
-        {/* Grupos de navegação */}
-        <nav style={{ flex:1, display:'flex', flexDirection:'column', padding:'8px 0', gap:2, overflowY:'auto', overflowX:'visible' }}
-          className="sidebar-scroll">
+        {/* Navegação */}
+        <nav
+          style={{ flex:1, display:'flex', flexDirection:'column', padding:'6px 0', gap:1, overflowY:'auto', overflowX:'visible' }}
+          className="sidebar-scroll"
+        >
           {NAV_GROUPS.map(group => {
-            const GroupIcon    = group.icon
-            const isActive     = activeGroupId === group.id
-            const isOpen       = openGroup === group.id
-            const groupBadge   = getGroupBadge(group.id)
+            const GroupIcon  = group.icon
+            const isActive   = activeGroupId === group.id
+            const isOpen     = openGroup === group.id
+            const groupBadge = getGroupBadge(group.id)
 
-            // Filtra itens do grupo conforme permissões
             const visibleItems = group.items.filter((item: any) => {
               if (item.adminOnly && user?.email !== 'magmodrive@gmail.com') return false
               const isFinanceiro = ['/ponto','/vt','/adiantamentos','/premios','/fechamento-ponto','/pagamentos','/encargos','/provisoes','/relatorios'].includes(item.to)
@@ -342,7 +318,9 @@ export function Layout({ children }: LayoutProps) {
               return true
             })
 
-            // ── Grupo com item único → navega direto, sem flyout ──────────────
+            if (visibleItems.length === 0) return null
+
+            // ── Item único → NavLink direto (sem flyout) ──────────────────
             const isSingleItem = visibleItems.length === 1
 
             return (
@@ -350,9 +328,7 @@ export function Layout({ children }: LayoutProps) {
                 onMouseEnter={() => { if (!isSingleItem) handleGroupEnter(group.id) }}
                 onMouseLeave={() => { if (!isSingleItem) handleGroupLeave() }}
               >
-                {/* Botão do grupo */}
                 {isSingleItem ? (
-                  /* Grupos com 1 item → NavLink direto */
                   <NavLink
                     to={visibleItems[0].to}
                     end={visibleItems[0].to === '/'}
@@ -360,54 +336,33 @@ export function Layout({ children }: LayoutProps) {
                     style={{ textDecoration:'none', display:'block' }}
                   >
                     {({ isActive: isLinkActive }) => (
-                      <div style={{
-                        width:'100%', height:48,
-                        display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:3,
-                        background: isLinkActive ? 'rgba(255,255,255,0.15)' : 'transparent',
-                        cursor:'pointer', position:'relative', transition:'background 0.15s',
-                        borderLeft: isLinkActive ? '3px solid rgba(255,255,255,0.80)' : '3px solid transparent',
-                      }}
-                        onMouseEnter={e => { if (!isLinkActive) (e.currentTarget as HTMLElement).style.background='rgba(255,255,255,0.07)' }}
-                        onMouseLeave={e => { if (!isLinkActive) (e.currentTarget as HTMLElement).style.background='transparent' }}
-                      >
-                        <GroupIcon size={18} color={isLinkActive ? '#fff' : 'rgba(255,255,255,0.55)'} strokeWidth={isLinkActive ? 2.3 : 1.8}/>
-                        <span style={{ fontSize:8, fontWeight:700, color: isLinkActive ? '#fff' : 'rgba(255,255,255,0.40)', letterSpacing:'0.03em', lineHeight:1, userSelect:'none' }}>
-                          {group.label.length > 8 ? group.label.slice(0,8) : group.label}
-                        </span>
-                        {groupBadge > 0 && (
-                          <span style={{ position:'absolute', top:6, right:6, background:'#f87171', color:'#fff', borderRadius:8, fontSize:7, fontWeight:800, padding:'0 3px', minWidth:13, textAlign:'center', lineHeight:'13px', boxShadow:`0 0 0 1.5px ${SIDEBAR_BG}` }}>
-                            {groupBadge > 99 ? '99+' : groupBadge}
-                          </span>
-                        )}
-                      </div>
+                      <SidebarBtn
+                        icon={<GroupIcon size={19} color={isLinkActive ? '#fff' : 'rgba(255,255,255,0.60)'} strokeWidth={isLinkActive ? 2.3 : 1.8}/>}
+                        label={group.short}
+                        active={isLinkActive}
+                        badge={groupBadge}
+                        sidebarBg={SIDEBAR_BG}
+                      />
                     )}
                   </NavLink>
                 ) : (
-                  /* Grupos com múltiplos itens → abre flyout */
                   <button
                     title={group.label}
-                    style={{
-                      width:'100%', height:48,
-                      display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:3,
-                      background: isActive ? 'rgba(255,255,255,0.15)' : isOpen ? 'rgba(255,255,255,0.10)' : 'transparent',
-                      border:'none', cursor:'pointer', position:'relative',
-                      transition:'background 0.15s',
-                      borderLeft: isActive ? '3px solid rgba(255,255,255,0.80)' : '3px solid transparent',
-                    }}
+                    onClick={() => setOpenGroup(isOpen ? null : group.id)}
+                    style={{ width:'100%', background:'none', border:'none', padding:0, cursor:'pointer', display:'block' }}
                   >
-                    <GroupIcon size={18} color={isActive ? '#fff' : 'rgba(255,255,255,0.55)'} strokeWidth={isActive ? 2.3 : 1.8}/>
-                    <span style={{ fontSize:8, fontWeight:700, color: isActive ? '#fff' : 'rgba(255,255,255,0.40)', letterSpacing:'0.03em', lineHeight:1, userSelect:'none' }}>
-                      {group.id === 'saude' ? 'Saúde' : group.label}
-                    </span>
-                    {groupBadge > 0 && (
-                      <span style={{ position:'absolute', top:6, right:6, background:'#f87171', color:'#fff', borderRadius:8, fontSize:7, fontWeight:800, padding:'0 3px', minWidth:13, textAlign:'center', lineHeight:'13px', boxShadow:`0 0 0 1.5px ${SIDEBAR_BG}` }}>
-                        {groupBadge > 99 ? '99+' : groupBadge}
-                      </span>
-                    )}
+                    <SidebarBtn
+                      icon={<GroupIcon size={19} color={isActive ? '#fff' : isOpen ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.60)'} strokeWidth={isActive ? 2.3 : 1.8}/>}
+                      label={group.short}
+                      active={isActive}
+                      open={isOpen}
+                      badge={groupBadge}
+                      sidebarBg={SIDEBAR_BG}
+                    />
                   </button>
                 )}
 
-                {/* ── Flyout submenu (só para grupos com múltiplos itens) ── */}
+                {/* ── Flyout ── */}
                 {!isSingleItem && isOpen && (
                   <div
                     onMouseEnter={handleFlyoutEnter}
@@ -417,33 +372,36 @@ export function Layout({ children }: LayoutProps) {
                       left: SIDEBAR_W,
                       top:0,
                       height:'100vh',
-                      width:220,
+                      width:228,
                       background:'#fff',
-                      borderRight:'1px solid #e4e8f0',
-                      boxShadow:'4px 0 24px rgba(0,0,0,0.12)',
+                      borderRight:'1px solid #e2e8f0',
+                      boxShadow:'6px 0 28px rgba(0,0,0,0.13)',
                       zIndex:200,
                       display:'flex', flexDirection:'column',
-                      paddingTop:8,
-                      opacity: 1,
-                      pointerEvents: 'auto',
-                      transition:'opacity 0.14s ease',
                     }}
                   >
-                    {/* Cabeçalho do flyout */}
+                    {/* Cabeçalho flyout */}
                     <div style={{
-                      padding:'10px 16px 8px',
-                      display:'flex', alignItems:'center', gap:8,
+                      padding:'14px 16px 10px',
+                      display:'flex', alignItems:'center', gap:10,
                       borderBottom:'1px solid #f1f5f9',
-                      marginBottom:4,
+                      background:'#fafbfc',
                     }}>
-                      <div style={{ width:28, height:28, borderRadius:8, background:`${SIDEBAR_BG}18`, display:'flex', alignItems:'center', justifyContent:'center' }}>
-                        <GroupIcon size={14} color={SIDEBAR_BG} strokeWidth={2}/>
+                      <div style={{
+                        width:32, height:32, borderRadius:9,
+                        background:`${SIDEBAR_BG}18`,
+                        display:'flex', alignItems:'center', justifyContent:'center',
+                        flexShrink:0,
+                      }}>
+                        <GroupIcon size={16} color={SIDEBAR_BG} strokeWidth={2}/>
                       </div>
-                      <span style={{ fontSize:12, fontWeight:800, color:'#1e293b', letterSpacing:'0.01em' }}>{group.label}</span>
+                      <span style={{ fontSize:13, fontWeight:800, color:'#1e293b', letterSpacing:'0.01em' }}>
+                        {group.label}
+                      </span>
                     </div>
 
-                    {/* Itens do flyout */}
-                    <div style={{ flex:1, overflowY:'auto', padding:'4px 8px' }} className="sidebar-scroll">
+                    {/* Itens */}
+                    <div style={{ flex:1, overflowY:'auto', padding:'8px 10px' }} className="sidebar-scroll">
                       {visibleItems.map((item: any) => {
                         const ItemIcon   = item.icon
                         const badgeCount = getBadgeCount(item.badge)
@@ -458,56 +416,44 @@ export function Layout({ children }: LayoutProps) {
                             to={item.to}
                             end={item.to === '/'}
                             onClick={() => { setOpenGroup(null); setMobileOpen(false) }}
-                            style={{ textDecoration:'none' }}
+                            style={{ textDecoration:'none', display:'block' }}
                           >
-                            {() => (
-                              <div style={{
+                            <div
+                              className="flyout-item"
+                              style={{
                                 display:'flex', alignItems:'center', gap:10,
-                                padding:'8px 10px', borderRadius:8, marginBottom:1,
+                                padding:'9px 10px', borderRadius:9, marginBottom:2,
                                 background: isItemActive ? `${SIDEBAR_BG}14` : 'transparent',
-                                transition:'background 0.12s',
                                 cursor:'pointer',
                               }}
-                                onMouseEnter={e => { if (!isItemActive) (e.currentTarget as HTMLElement).style.background = '#f1f5f9' }}
-                                onMouseLeave={e => { if (!isItemActive) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
-                              >
-                                {/* Ícone do item */}
-                                <div style={{
-                                  width:30, height:30, borderRadius:8, flexShrink:0,
-                                  background: isItemActive ? `${item.color}20` : '#f8fafc',
-                                  display:'flex', alignItems:'center', justifyContent:'center',
-                                  border: isItemActive ? `1px solid ${item.color}35` : '1px solid #f1f5f9',
-                                }}>
-                                  <ItemIcon size={14} color={isItemActive ? item.color : '#94a3b8'} strokeWidth={isItemActive ? 2.2 : 1.8}/>
-                                </div>
-
-                                {/* Label */}
-                                <span style={{
-                                  flex:1, fontSize:13, fontWeight: isItemActive ? 700 : 500,
-                                  color: isItemActive ? '#1e293b' : '#475569',
-                                  overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
-                                }}>
-                                  {item.label}
-                                </span>
-
-                                {/* Badge */}
-                                {badgeCount > 0 && (
-                                  <span style={{
-                                    background: badgeColor, color:'#fff',
-                                    borderRadius:10, padding:'1px 6px',
-                                    fontSize:10, fontWeight:800, minWidth:18, textAlign:'center',
-                                    flexShrink:0,
-                                  }}>
-                                    {badgeCount > 99 ? '99+' : badgeCount}
-                                  </span>
-                                )}
-
-                                {/* Seta ativa */}
-                                {isItemActive && (
-                                  <ChevronRight size={12} color={item.color}/>
-                                )}
+                            >
+                              <div style={{
+                                width:32, height:32, borderRadius:8, flexShrink:0,
+                                background: isItemActive ? `${item.color}1a` : '#f1f5f9',
+                                display:'flex', alignItems:'center', justifyContent:'center',
+                                border: isItemActive ? `1.5px solid ${item.color}40` : '1.5px solid #e8eef4',
+                              }}>
+                                <ItemIcon size={15} color={isItemActive ? item.color : '#94a3b8'} strokeWidth={isItemActive ? 2.2 : 1.8}/>
                               </div>
-                            )}
+                              <span style={{
+                                flex:1, fontSize:13, fontWeight: isItemActive ? 700 : 500,
+                                color: isItemActive ? '#0f172a' : '#475569',
+                                overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
+                              }}>
+                                {item.label}
+                              </span>
+                              {badgeCount > 0 && (
+                                <span style={{
+                                  background: badgeColor, color:'#fff',
+                                  borderRadius:10, padding:'1px 7px',
+                                  fontSize:10, fontWeight:800, minWidth:20, textAlign:'center',
+                                  flexShrink:0,
+                                }}>
+                                  {badgeCount > 99 ? '99+' : badgeCount}
+                                </span>
+                              )}
+                              {isItemActive && <ChevronRight size={13} color={item.color} style={{ flexShrink:0 }}/>}
+                            </div>
                           </NavLink>
                         )
                       })}
@@ -519,60 +465,59 @@ export function Layout({ children }: LayoutProps) {
           })}
         </nav>
 
-        {/* Footer — avatar + sair */}
-        <div style={{ borderTop:`1px solid rgba(255,255,255,0.08)`, flexShrink:0, padding:'8px 0' }}>
-          {/* Avatar */}
+        {/* Footer */}
+        <div style={{ borderTop:'1px solid rgba(255,255,255,0.08)', flexShrink:0, padding:'8px 0' }}>
           <div style={{ display:'flex', justifyContent:'center', marginBottom:4 }}>
             <div title={userLogin} style={{
               width:32, height:32, borderRadius:9,
               background:'rgba(255,255,255,0.15)',
               display:'flex', alignItems:'center', justifyContent:'center',
               fontSize:12, fontWeight:800, color:'#fff',
-              border:'1.5px solid rgba(255,255,255,0.22)',
-              cursor:'default',
+              border:'1.5px solid rgba(255,255,255,0.22)', cursor:'default',
             }}>
               {initials}
             </div>
           </div>
-          {/* Sair */}
           <button onClick={handleSignOut} title="Sair da conta"
             style={{
               display:'flex', alignItems:'center', justifyContent:'center',
               width:'100%', padding:'8px 0',
               background:'none', border:'none', cursor:'pointer',
-              color:'rgba(255,255,255,0.32)', transition:'all 0.15s',
+              color:'rgba(255,255,255,0.35)', transition:'all 0.15s',
             }}
             onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.color='#fca5a5'; el.style.background='rgba(239,68,68,0.15)' }}
-            onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.color='rgba(255,255,255,0.32)'; el.style.background='' }}
+            onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.color='rgba(255,255,255,0.35)'; el.style.background='' }}
           >
-            <LogOut size={15}/>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+            </svg>
           </button>
         </div>
       </aside>
 
-      {/* ═══════════════════════════════════════════════
+      {/* ════════════════════════════════════
           ÁREA PRINCIPAL
-      ═══════════════════════════════════════════════ */}
+      ════════════════════════════════════ */}
       <div style={{ flex:1, display:'flex', flexDirection:'column', minWidth:0, overflow:'hidden' }}>
 
-        {/* ── HEADER ──────────────────────────────────────────────────── */}
+        {/* ── HEADER ───────────────────────────────────────────────── */}
         <header style={{
-          height:58, flexShrink:0,
+          height:56, flexShrink:0,
           display:'flex', alignItems:'center',
           padding:'0 20px', gap:12,
           background:'#fff',
           borderBottom:'1px solid #e4e8f0',
-          boxShadow:'0 1px 6px rgba(0,0,0,0.06)',
+          boxShadow:'0 1px 4px rgba(0,0,0,0.05)',
           zIndex:30,
         }}>
-          {/* Menu mobile */}
+          {/* Botão mobile */}
           <button onClick={() => setMobileOpen(true)} className="lg:hidden"
             style={{ width:34, height:34, display:'flex', alignItems:'center', justifyContent:'center', borderRadius:8, border:'1px solid #e4e8f0', background:'transparent', color:'#94a3b8', cursor:'pointer', flexShrink:0 }}>
-            <Menu size={16}/>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
           </button>
 
           {/* Título da página */}
-          <div style={{ display:'flex', alignItems:'center', gap:8, minWidth:0 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:8, minWidth:0, flexShrink:0 }}>
             <div style={{
               width:30, height:30, borderRadius:8, flexShrink:0,
               background:`${pageMeta.color}18`,
@@ -586,14 +531,14 @@ export function Layout({ children }: LayoutProps) {
           </div>
 
           {/* Busca global */}
-          <div style={{ flex:1, maxWidth:340, position:'relative' }}>
+          <div style={{ flex:1, maxWidth:360, marginLeft:8 }}>
             <button
               onClick={() => { setSearchOpen(true); setTimeout(() => searchRef.current?.focus(), 50) }}
               style={{
                 width:'100%', height:34, display:'flex', alignItems:'center', gap:8,
                 padding:'0 12px', borderRadius:8, border:'1px solid #e4e8f0',
-                background:'#f8fafc', cursor:'text',
-                color:'#94a3b8', fontSize:12, transition:'all 0.15s',
+                background:'#f8fafc', cursor:'text', color:'#94a3b8', fontSize:12,
+                transition:'all 0.15s',
               }}
               onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor=SIDEBAR_BG; el.style.boxShadow=`0 0 0 3px ${SIDEBAR_BG}14` }}
               onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor='#e4e8f0'; el.style.boxShadow='none' }}
@@ -607,7 +552,7 @@ export function Layout({ children }: LayoutProps) {
           <div style={{ flex:1 }}/>
 
           {/* Notificações */}
-          <div style={{ position:'relative' }} ref={notifRef}>
+          <div style={{ position:'relative', flexShrink:0 }} ref={notifRef}>
             <button onClick={() => setShowNotif(v => !v)}
               style={{
                 width:36, height:36, display:'flex', alignItems:'center', justifyContent:'center',
@@ -632,7 +577,6 @@ export function Layout({ children }: LayoutProps) {
               )}
             </button>
 
-            {/* Dropdown notificações */}
             {showNotif && (
               <div style={{
                 position:'absolute', top:'calc(100% + 8px)', right:0,
@@ -700,11 +644,12 @@ export function Layout({ children }: LayoutProps) {
           </div>
 
           {/* Avatar + nome */}
-          <button style={{
-            display:'flex', alignItems:'center', gap:8, padding:'5px 10px',
-            borderRadius:9, border:'1px solid #e4e8f0',
-            background:'transparent', cursor:'pointer', transition:'all 0.15s',
-          }}
+          <button
+            style={{
+              display:'flex', alignItems:'center', gap:8, padding:'5px 10px',
+              borderRadius:9, border:'1px solid #e4e8f0',
+              background:'transparent', cursor:'pointer', transition:'all 0.15s', flexShrink:0,
+            }}
             onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.background='#f1f5f9'; el.style.borderColor='#cbd5e1' }}
             onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.background='transparent'; el.style.borderColor='#e4e8f0' }}
           >
@@ -724,7 +669,7 @@ export function Layout({ children }: LayoutProps) {
           </button>
         </header>
 
-        {/* ── CONTENT ─────────────────────────────────────────────────── */}
+        {/* ── CONTENT ───────────────────────────────────────────────── */}
         <main style={{ flex:1, overflowY:'auto', padding:0, background:'#f0f2f5' }}>
           <ErrorBoundary>
             {children}
@@ -732,11 +677,12 @@ export function Layout({ children }: LayoutProps) {
         </main>
       </div>
 
-      {/* ══════════════════════════════════════════
+      {/* ══════════════════════════════════
           MODAL BUSCA GLOBAL
-      ══════════════════════════════════════════ */}
+      ══════════════════════════════════ */}
       {searchOpen && (
-        <div style={{ position:'fixed', inset:0, zIndex:300, display:'flex', alignItems:'flex-start', justifyContent:'center', paddingTop:80 }}
+        <div
+          style={{ position:'fixed', inset:0, zIndex:300, display:'flex', alignItems:'flex-start', justifyContent:'center', paddingTop:80 }}
           onClick={e => { if (e.target === e.currentTarget) { setSearchOpen(false); setSearchQ('') } }}
         >
           <div style={{ position:'absolute', inset:0, background:'rgba(15,23,42,0.45)', backdropFilter:'blur(4px)' }}
@@ -785,7 +731,61 @@ export function Layout({ children }: LayoutProps) {
         .sidebar-scroll::-webkit-scrollbar-track { background:transparent; }
         .sidebar-scroll::-webkit-scrollbar-thumb { background:rgba(255,255,255,0.15); border-radius:4px; }
         .sidebar-scroll::-webkit-scrollbar-thumb:hover { background:rgba(255,255,255,0.28); }
+        .flyout-item:hover { background:#f1f5f9 !important; }
       `}</style>
+    </div>
+  )
+}
+
+// ─── Componente de botão da sidebar ──────────────────────────────────────────
+function SidebarBtn({
+  icon, label, active, open, badge, sidebarBg,
+}: {
+  icon: React.ReactNode
+  label: string
+  active?: boolean
+  open?: boolean
+  badge?: number
+  sidebarBg: string
+}) {
+  const bg = active
+    ? 'rgba(255,255,255,0.16)'
+    : open
+      ? 'rgba(255,255,255,0.09)'
+      : 'transparent'
+
+  return (
+    <div
+      className="sidebar-nav-btn"
+      style={{
+        width:'100%', height:52,
+        display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:4,
+        background: bg,
+        position:'relative',
+        borderLeft: active ? '3px solid rgba(255,255,255,0.82)' : '3px solid transparent',
+        transition:'background 0.14s',
+        userSelect:'none',
+      }}
+    >
+      {icon}
+      <span style={{
+        fontSize:9, fontWeight:700, letterSpacing:'0.02em', lineHeight:1,
+        color: active ? '#fff' : open ? 'rgba(255,255,255,0.75)' : 'rgba(255,255,255,0.45)',
+        maxWidth:56, textAlign:'center', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
+      }}>
+        {label}
+      </span>
+      {(badge ?? 0) > 0 && (
+        <span style={{
+          position:'absolute', top:7, right:7,
+          background:'#f87171', color:'#fff', borderRadius:8,
+          fontSize:7, fontWeight:800, padding:'0 3px', minWidth:13,
+          textAlign:'center', lineHeight:'13px',
+          boxShadow:`0 0 0 1.5px ${sidebarBg}`,
+        }}>
+          {(badge ?? 0) > 99 ? '99+' : badge}
+        </span>
+      )}
     </div>
   )
 }
