@@ -1795,18 +1795,13 @@ export default function Colaboradores() {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
             <div style={{ display: 'flex', gap: 8, flex: 1, flexWrap: 'wrap' }}>
               <div style={{ position: 'relative', width: 280 }}>
-                <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted-foreground)', pointerEvents: 'none' }} />
-                <input
-                  type="text"
-                  style={{ paddingLeft: 32, width: '100%', height: 40, borderRadius: 6, border: '1px solid hsl(var(--input))', fontSize: 14, outline: 'none', background: '#fff', color: '#0f172a' }}
+                <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted-foreground)', pointerEvents: 'none', zIndex: 1 }} />
+                <Input
+                  style={{ paddingLeft: 32, height: 40, fontSize: 14 }}
                   placeholder="Buscar por nome, chapa ou CPF…"
                   autoComplete="off"
-                  autoCorrect="off"
-                  spellCheck={false}
                   value={busca}
                   onChange={e => setBusca(e.target.value)}
-                  onFocus={e => (e.target.style.boxShadow = '0 0 0 2px rgba(59,130,246,0.3)')}
-                  onBlur={e => (e.target.style.boxShadow = 'none')}
                 />
               </div>
               <Select value={filterStatus} onValueChange={setFilterStatus}>
