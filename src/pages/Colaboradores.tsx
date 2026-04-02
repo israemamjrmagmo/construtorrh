@@ -1768,7 +1768,8 @@ export default function Colaboradores() {
       {pageTab === 'funcoes' && <FuncoesTab />}
 
       {/* ── ABA COLABORADORES ───────────────────────────────────────────── */}
-      {pageTab === 'colaboradores' && (
+      {/* Usa div com display:none em vez de && para evitar remount ao digitar na busca */}
+      <div style={{ display: pageTab === 'colaboradores' ? 'block' : 'none' }}>
         <>
           {/* Contadores rápidos */}
           <div style={{ display:'flex', gap:10, marginBottom:14, flexWrap:'wrap' }}>
@@ -1915,7 +1916,7 @@ export default function Colaboradores() {
             </div>
           )}
         </>
-      )}
+      </div>
 
       {/* ═══════════ CONFIRMAR ATUALIZAÇÃO DE EPIs ════════════════════════ */}
       <AlertDialog open={confirmarAtualizEpis} onOpenChange={setConfirmarAtualizEpis}>
