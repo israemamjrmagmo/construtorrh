@@ -19,6 +19,14 @@ import { toast } from 'sonner'
 import { traduzirErro } from '@/lib/erros'
 import { SummaryCard } from '@/components/Shared'
 import {
+
+// ─── helper: último dia real do mês ─────────────────────────────────────────
+function getUltimoDia(mesAno: string): string {
+  const [y, m] = mesAno.split('-').map(Number)
+  const ud = new Date(y, m, 0).getDate()
+  return `${mesAno}-${String(ud).padStart(2, '0')}`
+}
+
   Bus, Plus, Pencil, Trash2, Search, ChevronLeft, ChevronRight,
   CheckCircle2, AlertCircle, X, ToggleLeft, ToggleRight,
   CreditCard, Building2, CheckSquare, Square, Loader2, FileText,
@@ -396,7 +404,7 @@ export default function ValeTransportePage() {
   const colabsFiltrados = useMemo(() => colaboradores.filter(c => {
     // Ocultar colaborador se ainda não admitido no mês da competência
     if (c.data_admissao) {
-      const ultimoDiaMes = `${competencia}-31`
+      const ultimoDiaMes = `${getUltimoDia(competencia)}`
       if (c.data_admissao > ultimoDiaMes) return false
     }
     if (obraFiltro !== 'todas' && c.obra_id !== obraFiltro) return false

@@ -14,6 +14,14 @@ import { traduzirErro } from '@/lib/erros'
 import { Briefcase, Download } from 'lucide-react'
 import { toast } from 'sonner'
 
+// ─── helper: último dia real do mês ─────────────────────────────────────────
+function getUltimoDia(mesAno: string): string {
+  const [y, m] = mesAno.split('-').map(Number)
+  const ud = new Date(y, m, 0).getDate()
+  return `${mesAno}-${String(ud).padStart(2, '0')}`
+}
+
+
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
 interface LinhaEncargo {
@@ -119,7 +127,7 @@ export default function EncargosPage() {
     try {
       const mesRef    = `${ano}-${String(mes).padStart(2, '0')}`
       const mesRefIni = `${mesRef}-01`
-      const mesRefFim = `${mesRef}-31`
+      const mesRefFim = `${getUltimoDia(mesRef)}`
 
       // 1. Todos os lançamentos do mês (qualquer status válido)
       const { data: lancsRaw, error: errL } = await supabase

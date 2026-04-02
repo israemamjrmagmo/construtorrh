@@ -956,6 +956,8 @@ export default function Colaboradores() {
 
   // delete
   const [deleteId, setDeleteId] = useState<string | null>(null)
+  // ficha lateral (painel direito estilo Ponto)
+  const [colabFicha, setColabFicha] = useState<ColaboradorRow | null>(null)
   // mapa: colaborador_id → tem ponto lançado? (bloqueia exclusão visualmente)
   const [colabsComPonto, setColabsComPonto] = useState<Set<string>>(new Set())
 
@@ -1771,7 +1773,9 @@ export default function Colaboradores() {
 
       {/* ── ABA COLABORADORES ───────────────────────────────────────────── */}
       {/* Usa div com display:none em vez de && para evitar remount ao digitar na busca */}
-      <div style={{ display: pageTab === 'colaboradores' ? 'block' : 'none' }}>
+      <div style={{ display: pageTab === 'colaboradores' ? 'flex' : 'none', gap: 0, minHeight: 'calc(100vh - 160px)' }}>
+        {/* ── PAINEL ESQUERDO — lista ── */}
+        <div style={{ width: colabFicha ? 320 : '100%', flexShrink: 0, borderRight: colabFicha ? '1px solid var(--border)' : 'none', transition: 'width .2s', overflow: 'hidden' }}>
         <>
           {/* Contadores rápidos */}
           <div style={{ display:'flex', gap:10, marginBottom:14, flexWrap:'wrap' }}>
@@ -1863,7 +1867,10 @@ export default function Colaboradores() {
                       </TableCell>
                       <TableCell style={{ fontWeight: 500 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          {c.nome}
+                          <button onClick={() => setColabFicha(colabFicha?.id === c.id ? null : c)}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', fontWeight: 500, fontSize: 14, color: 'hsl(var(--primary))', textDecoration: 'underline', textDecorationStyle: 'dotted', textUnderlineOffset: 3, padding: 0, textAlign: 'left' }}>
+                            {c.nome}
+                          </button>
                           {(c as any).vinculo_anterior_id && (
                             <span title="Recontratado — possui vínculo anterior" style={{ fontSize: 9, padding: '2px 6px', borderRadius: 99, background: '#ede9fe', color: '#7c3aed', fontWeight: 800, whiteSpace: 'nowrap' }}>
                               ↩ RECONTRATADO
@@ -1913,6 +1920,98 @@ export default function Colaboradores() {
             </div>
           )}
         </>
+        </div>
+
+        {/* ── PAINEL DIREITO — ficha do colaborador ── */}
+        {colabFicha && (() => {
+          const c = colabFicha
+          const fn  = (c.funcoes as any)?.nome ?? '—'
+          const ob  = (c.obras  as any)?.nome ?? '—'
+          const statusColor = c.status === 'ativo' ? '#16a34a' : c.status === 'inativo' ? '#dc2626' : '#d97706'
+          const statusBg    = c.status === 'ativo' ? '#f0fdf4' : c.status === 'inativo' ? '#fff1f2' : '#fffbeb'
+          return (
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--card)' }}>
+              {/* Header da ficha */}
+              <div style={{ padding: '16px 18px 12px', background: '#1e3a5f', color: '#fff', position: 'relative' }}>
+                <button onClick={() => setColabFicha(null)} style={{ position: 'absolute', top: 12, right: 12, background: 'rgba(255,255,255,.15)', border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer', padding: '4px 8px', fontSize: 12 }}>✕ Fechar</button>
+                <div style={{ fontSize: 11, color: '#93c5fd', fontWeight: 600, marginBottom: 2 }}>{c.chapa ?? '—'}</div>
+                <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 4 }}>{c.nome}</div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <span style={{ background: 'rgba(255,255,255,.15)', borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 600 }}>🏷️ {fn}</span>
+                  <span style={{ background: statusBg, color: statusColor, borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 700 }}>{c.status?.toUpperCase()}</span>
+                  <span style={{ background: 'rgba(255,255,255,.10)', borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 600 }}>{c.tipo_contrato?.toUpperCase() ?? '—'}</span>
+                </div>
+              </div>
+
+              {/* Conteúdo da ficha */}
+              <div style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+                {/* Dados principais */}
+                <div style={{ background: 'var(--background)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--muted-foreground)', textTransform: 'uppercase', marginBottom: 10, letterSpacing: '0.05em' }}>📋 Dados Cadastrais</div>
+                  {[
+                    ['Obra',        ob],
+                    ['CPF',         c.cpf ?? '—'],
+                    ['RG',          c.rg ?? '—'],
+                    ['PIS/NIT',     c.pis_nit ?? '—'],
+                    ['Nascimento',  c.data_nascimento ? new Date(c.data_nascimento + 'T12:00:00').toLocaleDateString('pt-BR') : '—'],
+                    ['Admissão',    c.data_admissao  ? new Date(c.data_admissao  + 'T12:00:00').toLocaleDateString('pt-BR') : '—'],
+                    ['Telefone',    c.telefone ?? '—'],
+                    ['E-mail',      c.email ?? '—'],
+                  ].map(([k, v]) => (
+                    <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: '1px solid var(--border)', fontSize: 13 }}>
+                      <span style={{ color: 'var(--muted-foreground)', fontWeight: 500 }}>{k}</span>
+                      <span style={{ fontWeight: 600, textAlign: 'right', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Dados bancários */}
+                {(c.banco || c.agencia || c.conta) && (
+                  <div style={{ background: 'var(--background)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
+                    <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--muted-foreground)', textTransform: 'uppercase', marginBottom: 10, letterSpacing: '0.05em' }}>🏦 Dados Bancários</div>
+                    {[
+                      ['Banco',    c.banco ?? '—'],
+                      ['Agência',  c.agencia ?? '—'],
+                      ['Conta',    c.conta ?? '—'],
+                      ['PIX',      c.pix_key ?? c.cpf ?? '—'],
+                    ].map(([k, v]) => (
+                      <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: '1px solid var(--border)', fontSize: 13 }}>
+                        <span style={{ color: 'var(--muted-foreground)', fontWeight: 500 }}>{k}</span>
+                        <span style={{ fontWeight: 600 }}>{v}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Ações rápidas */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  <button onClick={() => { openEdit(c); setColabFicha(null) }}
+                    style={{ flex: 1, minWidth: 120, padding: '8px 12px', borderRadius: 8, border: '1px solid hsl(var(--primary))', background: 'hsl(var(--primary)/.08)', color: 'hsl(var(--primary))', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
+                    ✏️ Editar Cadastro
+                  </button>
+                  <button onClick={() => { openHist(c.id) }}
+                    style={{ flex: 1, minWidth: 120, padding: '8px 12px', borderRadius: 8, border: '1px solid #7c3aed', background: '#faf5ff', color: '#7c3aed', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
+                    📋 Histórico Chapa
+                  </button>
+                  {c.status !== 'inativo' && (
+                    <button onClick={() => { abrirModalInativar(c.id, c.nome, c.status ?? 'ativo'); setColabFicha(null) }}
+                      style={{ flex: 1, minWidth: 120, padding: '8px 12px', borderRadius: 8, border: '1px solid #dc2626', background: '#fff1f2', color: '#dc2626', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
+                      🚫 Inativar
+                    </button>
+                  )}
+                  {c.status === 'inativo' && (
+                    <button onClick={() => { setRecontColabId(c.id); setModalRecontratar(true); setColabFicha(null) }}
+                      style={{ flex: 1, minWidth: 120, padding: '8px 12px', borderRadius: 8, border: '1px solid #16a34a', background: '#f0fdf4', color: '#16a34a', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
+                      🔄 Recontratar
+                    </button>
+                  )}
+                </div>
+
+              </div>
+            </div>
+          )
+        })()}
       </div>
 
       {/* ═══════════ CONFIRMAR ATUALIZAÇÃO DE EPIs ════════════════════════ */}

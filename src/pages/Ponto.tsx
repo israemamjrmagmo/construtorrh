@@ -13,6 +13,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { traduzirErro } from '@/lib/erros'
 import { calcDSRComFaltas } from '@/lib/dsr'
 
+// ─── helper: último dia real do mês ─────────────────────────────────────────
+function getUltimoDia(mesAno: string): string {
+  const [y, m] = mesAno.split('-').map(Number)
+  const ud = new Date(y, m, 0).getDate()
+  return `${mesAno}-${String(ud).padStart(2, '0')}`
+}
+
+
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
 interface ColabSimples {
@@ -427,7 +435,7 @@ export default function Ponto() {
         const colabRefProd = colaboradores.find(c => c.id === reg.colaborador_id)
         const dataInativProd = (colabRefProd && colabRefProd.status !== 'ativo' && colabRefProd.data_status) ? colabRefProd.data_status : null
         const { inicio: pInicio, fim: pFim } = clampPeriodoColab(
-          `${mr}-01`, `${mr}-31`,
+          `${mr}-01`, `${getUltimoDia(mr)}`,
           colabRefProd?.data_admissao ?? null,
           dataInativProd
         )
@@ -545,7 +553,7 @@ export default function Ponto() {
       const colabRef = colaboradores.find(c => c.id === colabId)
       const dataInativImp = (colabRef && colabRef.status !== 'ativo' && colabRef.data_status) ? colabRef.data_status : null
       const { inicio: impInicio, fim: impFim } = clampPeriodoColab(
-        `${mr}-01`, `${mr}-31`,
+        `${mr}-01`, `${getUltimoDia(mr)}`,
         colabRef?.data_admissao ?? null,
         dataInativImp
       )
@@ -788,7 +796,7 @@ export default function Ponto() {
       .select('obra_id')
       .is('sincronizado_em', null)
       .gte('data', `${mr}-01`)
-      .lte('data', `${mr}-31`)
+      .lte('data', `${getUltimoDia(mr)}`)
     const map: Record<string,number> = {}
     ;(data ?? []).forEach((r: any) => {
       map[r.obra_id] = (map[r.obra_id] ?? 0) + 1

@@ -4,6 +4,14 @@ import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
 import { fetchEmpresaData, CABECALHO_CSS, gerarCabecalhoHTML } from '@/lib/relatorioHeader'
 import {
+
+// ─── helper: último dia real do mês ─────────────────────────────────────────
+function getUltimoDia(mesAno: string): string {
+  const [y, m] = mesAno.split('-').map(Number)
+  const ud = new Date(y, m, 0).getDate()
+  return `${mesAno}-${String(ud).padStart(2, '0')}`
+}
+
   Scale, UserX, Search, Plus, Trash2, FileText, ChevronDown, ChevronUp,
   Loader2, ShieldAlert, X, Building2, Calendar, CreditCard, Clock,
   AlertTriangle, Shield, DollarSign, Truck, Package, MapPin, Phone,
@@ -283,7 +291,7 @@ export default function Juridico() {
 
     // ── Ponto detalhado ───────────────────────────────────────────────────
     const pontosHTML = pontos.map((p:any) => {
-      const linhas = regs.filter((r:any) => r.lancamento_id === p.id || (r.colaborador_id === d.id && r.data >= `${p.mes_referencia}-01` && r.data <= `${p.mes_referencia}-31`))
+      const linhas = regs.filter((r:any) => r.lancamento_id === p.id || (r.colaborador_id === d.id && r.data >= `${p.mes_referencia}-01` && r.data <= getUltimoDia(p.mes_referencia)))
       const faltas = linhas.filter((r:any) => r.falta).length
       const hext   = linhas.reduce((s:number, r:any) => s + (r.horas_extras ?? 0), 0)
       return `
@@ -1033,7 +1041,7 @@ function FichaCompleta({ fichaData, onPDF }: { fichaData: Record<string,any>; on
           ? <div style={{ textAlign: 'center', padding: 16, color: 'var(--muted-foreground)', fontSize: 12, fontStyle: 'italic' }}>Nenhum período de ponto</div>
           : pontos.map((p: any) => {
               const mesIni = `${p.mes_referencia}-01`
-              const mesFim = `${p.mes_referencia}-31`
+              const mesFim = getUltimoDia(p.mes_referencia)
 
               // registros de ponto do período
               const linhas = regs.filter((r: any) =>
