@@ -1517,7 +1517,8 @@ export default function Ponto() {
   const colabsFiltrados=useMemo(()=>{
     // Primeiro dia e último do mês visualizado
     const primeiroDiaMes = `${ano}-${String(mes).padStart(2,'0')}-01`
-    const ultimoDiaMes   = `${ano}-${String(mes).padStart(2,'0')}-31`
+    const _ud1 = new Date(ano, mes, 0).getDate()
+    const ultimoDiaMes   = `${ano}-${String(mes).padStart(2,'0')}-${String(_ud1).padStart(2,'0')}`
     let lista=colaboradores.filter(c=> {
       // Colaborador inativo nunca aparece
       if(c.status === 'inativo') return false
@@ -1570,7 +1571,8 @@ export default function Ponto() {
             const semLanc  = colaboradores.filter(c=>{
               if(c.status === 'inativo') return false
               const pd=`${ano}-${String(mes).padStart(2,'0')}-01`
-              const ud=`${ano}-${String(mes).padStart(2,'0')}-31`
+              const _ud2=new Date(ano,mes,0).getDate()
+              const ud=`${ano}-${String(mes).padStart(2,'0')}-${String(_ud2).padStart(2,'0')}`
               if(c.data_admissao && c.data_admissao > ud) return false
               if(c.status !== 'ativo' && c.data_status && c.data_status < pd) return false
               return true

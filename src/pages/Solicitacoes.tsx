@@ -1317,7 +1317,8 @@ function TabRelatorio({ obras, colabs }: { obras: Obra[]; colabs: Colab[] }) {
     setLoading(true); setResultado(null); setEditDia(null)
     const [ano, mes] = mesAno.split('-').map(Number)
     const inicio = `${ano}-${String(mes).padStart(2,'0')}-01`
-    const fim    = `${ano}-${String(mes).padStart(2,'0')}-31`
+    const ultimoDia = new Date(ano, mes, 0).getDate()  // último dia real do mês
+    const fim    = `${ano}-${String(mes).padStart(2,'0')}-${String(ultimoDia).padStart(2,'0')}`
 
     // ── 1. Busca portal_ponto_diario ───────────────────────────────────────
     let qPortal = supabase

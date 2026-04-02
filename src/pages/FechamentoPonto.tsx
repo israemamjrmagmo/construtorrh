@@ -253,7 +253,7 @@ export default function FechamentoPonto() {
       supabase.from('feriados')
         .select('data')
         .gte('data', mr + '-01')
-        .lte('data', mr + '-31'),
+        .lte('data', (() => { const [y,m] = mr.split('-').map(Number); const ud = new Date(y,m,0).getDate(); return `${mr}-${String(ud).padStart(2,'0')}` })()),
 
       // Adiantamentos a descontar
       colabIds.length
