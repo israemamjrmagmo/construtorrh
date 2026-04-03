@@ -1771,80 +1771,106 @@ export default function Colaboradores() {
       {/* ── ABA FUNÇÕES ─────────────────────────────────────────────────── */}
       {pageTab === 'funcoes' && <FuncoesTab />}
 
-      {/* ── ABA COLABORADORES ───────────────────────────────────────────── */}
-      {/* Usa div com display:none em vez de && para evitar remount ao digitar na busca */}
-      <div style={{ display: pageTab === 'colaboradores' ? 'flex' : 'none', gap: 0, minHeight: 'calc(100vh - 160px)' }}>
-        {/* ── PAINEL ESQUERDO — lista ── */}
-        <div style={{ width: colabFicha ? 320 : '100%', flexShrink: 0, borderRight: colabFicha ? '1px solid var(--border)' : 'none', transition: 'width .2s', overflow: 'hidden' }}>
-        <>
-          {/* Contadores rápidos */}
-          <div style={{ display:'flex', gap:10, marginBottom:14, flexWrap:'wrap' }}>
-            {[
-              { label:'Ativos',    value: totalAtivos,   color:'#16a34a', bg:'#f0fdf4', border:'#bbf7d0', filter:'ativo', field:'status' },
-              { label:'CLT',       value: totalCLT,      color:'#1d4ed8', bg:'#eff6ff', border:'#bfdbfe', filter:'clt',   field:'contrato' },
-              { label:'Autônomo',  value: totalAutonomo, color:'#7c3aed', bg:'#faf5ff', border:'#ddd6fe', filter:'autonomo', field:'contrato' },
-              { label:'Inativos',  value: totalInativos, color:'#dc2626', bg:'#fff1f2', border:'#fecdd3', filter:'inativo', field:'status' },
-            ].map(c => (
-              <div key={c.label}
-                onClick={() => { if(c.field==='status'){setFilterStatus(f => f===c.filter?'todos':c.filter);setFilterContrato('todos')} else {setFilterContrato(f => f===c.filter?'todos':c.filter);setFilterStatus('todos')} }}
-                style={{ display:'flex', alignItems:'center', gap:8, padding:'7px 14px', borderRadius:10, border:`1.5px solid ${c.border}`, background:c.bg, cursor:'pointer', userSelect:'none', transition:'box-shadow 0.1s' }}
-                onMouseEnter={e => (e.currentTarget as HTMLElement).style.boxShadow='0 2px 8px rgba(0,0,0,0.12)'}
-                onMouseLeave={e => (e.currentTarget as HTMLElement).style.boxShadow=''}
-              >
-                <span style={{ fontSize:20, fontWeight:800, color:c.color, lineHeight:1 }}>{c.value}</span>
-                <span style={{ fontSize:11, fontWeight:600, color:c.color, opacity:0.8 }}>{c.label}</span>
-              </div>
-            ))}
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
-            <div style={{ display: 'flex', gap: 8, flex: 1, flexWrap: 'wrap' }}>
-              <div style={{ position: 'relative', width: 280 }}>
-                <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted-foreground)', pointerEvents: 'none', zIndex: 1 }} />
-                <Input
-                  style={{ paddingLeft: 32, height: 40, fontSize: 14 }}
-                  placeholder="Buscar por nome, chapa ou CPF…"
-                  autoComplete="off"
-                  value={busca}
-                  onChange={e => setBusca(e.target.value)}
-                />
-              </div>
-              <Select value={filterStatus} onValueChange={setFilterStatus}>
-                <SelectTrigger style={{ width: 150 }}><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todos">Todos os status</SelectItem>
-                  <SelectItem value="ativo">Ativos</SelectItem>
-                  <SelectItem value="inativo">Inativos</SelectItem>
-                  <SelectItem value="afastado">Afastados</SelectItem>
-                  <SelectItem value="ferias">Férias</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={filterFuncao} onValueChange={setFilterFuncao}>
-                <SelectTrigger style={{ width: 180 }}><SelectValue placeholder="Todas as funções" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todas">Todas as funções</SelectItem>
-                  {funcoes.map(f => (
-                    <SelectItem key={f.id} value={f.id}>{f.nome}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={filterContrato} onValueChange={v => { setFilterContrato(v); setFilterStatus('todos') }}>
-                <SelectTrigger style={{ width: 160 }}><SelectValue placeholder="Tipo de contrato" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todos">Todos os contratos</SelectItem>
-                  <SelectItem value="clt">CLT</SelectItem>
-                  <SelectItem value="autonomo">Autônomo</SelectItem>
-                </SelectContent>
-              </Select>
+      {/* ── ABA COLABORADORES — layout estilo Ponto ─────────────────────── */}
+      <div style={{ display: pageTab === 'colaboradores' ? 'flex' : 'none', minHeight: 'calc(100vh - 120px)', overflow: 'hidden' }}>
+
+        {/* ── PAINEL ESQUERDO — busca + filtros + lista ── */}
+        <div style={{ width: colabFicha ? 300 : 360, flexShrink: 0, borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', overflow: 'hidden', transition: 'width .2s' }}>
+
+          {/* Header escuro estilo Ponto */}
+          <div style={{ padding: '12px 12px 10px', background: '#1e3a5f', display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ fontWeight: 700, fontSize: 13, color: '#fff' }}>👷 Colaboradores</span>
+              <button onClick={openNew} style={{ background: 'rgba(255,255,255,.2)', border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer', padding: '4px 10px', fontSize: 11, fontWeight: 700 }}>+ Novo</button>
             </div>
-            <Button onClick={openNew} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Plus size={15} /> Novo Colaborador
-            </Button>
+            {/* Busca */}
+            <div style={{ position: 'relative' }}>
+              <Search size={13} style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }} />
+              <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Nome, chapa ou CPF…"
+                style={{ width: '100%', height: 33, border: '1px solid #334155', borderRadius: 7, paddingLeft: 28, paddingRight: 8, fontSize: 12, background: '#0f172a', color: '#fff', boxSizing: 'border-box' }} />
+            </div>
+            {/* Badges de filtro rápido */}
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+              {[
+                { key: 'todos',    label: 'todos',    val: rows.length,      bg: 'rgba(255,255,255,.15)', cor: '#fff',    field: 'status' },
+                { key: 'ativo',    label: 'ativos',   val: totalAtivos,      bg: 'rgba(34,197,94,.25)',   cor: '#86efac', field: 'status' },
+                { key: 'inativo',  label: 'inativos', val: totalInativos,    bg: 'rgba(248,113,113,.25)', cor: '#fca5a5', field: 'status' },
+                { key: 'clt',      label: 'CLT',      val: totalCLT,         bg: 'rgba(59,130,246,.25)',  cor: '#93c5fd', field: 'contrato' },
+                { key: 'autonomo', label: 'autôn.',   val: totalAutonomo,    bg: 'rgba(167,139,250,.25)', cor: '#c4b5fd', field: 'contrato' },
+              ].map(b => {
+                const ativo = b.field === 'status' ? filterStatus === b.key : filterContrato === b.key
+                return (
+                  <button key={b.key}
+                    onClick={() => {
+                      if (b.key === 'todos') { setFilterStatus('todos'); setFilterContrato('todos') }
+                      else if (b.field === 'status') { setFilterStatus(s => s === b.key ? 'todos' : b.key); setFilterContrato('todos') }
+                      else { setFilterContrato(s => s === b.key ? 'todos' : b.key); setFilterStatus('todos') }
+                    }}
+                    style={{ background: ativo ? b.bg : 'rgba(255,255,255,.07)', border: `1.5px solid ${ativo ? b.cor : 'transparent'}`, borderRadius: 5, padding: '2px 7px', fontSize: 10, fontWeight: 700, color: ativo ? b.cor : '#94a3b8', cursor: 'pointer' }}>
+                    {b.label}: {b.val}
+                  </button>
+                )
+              })}
+            </div>
+            {/* Filtro função */}
+            <select value={filterFuncao} onChange={e => setFilterFuncao(e.target.value)}
+              style={{ height: 28, borderRadius: 6, border: '1px solid #334155', background: '#0f172a', color: '#94a3b8', fontSize: 11, paddingLeft: 8 }}>
+              <option value="todas">Todas as funções</option>
+              {funcoes.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}
+            </select>
+            <div style={{ fontSize: 11, color: '#64748b' }}>{filtered.length} de {rows.length} colaborador(es)</div>
           </div>
 
-          {loading ? <LoadingSkeleton rows={5} /> : filtered.length === 0 ? (
+          {/* Lista de colaboradores */}
+          <div style={{ flex: 1, overflowY: 'auto' }}>
+            {loading ? <LoadingSkeleton rows={6} /> : filtered.length === 0 ? (
+              <div style={{ padding: 24, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>Nenhum colaborador encontrado</div>
+            ) : filtered.map(c => {
+              const fn = (c.funcoes as any)?.nome ?? '—'
+              const sel = colabFicha?.id === c.id
+              const statusDot = c.status === 'ativo' ? '#22c55e' : c.status === 'inativo' ? '#ef4444' : '#f59e0b'
+              return (
+                <div key={c.id} onClick={() => setColabFicha(sel ? null : c)}
+                  style={{ padding: '10px 14px', cursor: 'pointer', borderBottom: '1px solid var(--border)', background: sel ? 'hsl(var(--primary)/.08)' : 'transparent', borderLeft: `3px solid ${sel ? 'hsl(var(--primary))' : 'transparent'}`, transition: 'background .12s' }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 6 }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 10, color: sel ? 'hsl(var(--primary))' : '#94a3b8', fontWeight: 600, marginBottom: 1 }}>{c.chapa ?? '—'}</div>
+                      <div style={{ fontSize: 13, fontWeight: sel ? 700 : 600, color: sel ? 'hsl(var(--primary))' : 'var(--foreground)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 200 }}>{c.nome}</div>
+                      <div style={{ fontSize: 11, color: 'var(--muted-foreground)', marginTop: 1 }}>{fn} · <span style={{ color: c.tipo_contrato === 'clt' ? '#60a5fa' : '#a78bfa', fontWeight: 600 }}>{(c.tipo_contrato ?? '').toUpperCase() || '—'}</span></div>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
+                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: statusDot, display: 'inline-block', marginTop: 3 }} title={c.status} />
+                      <div style={{ display: 'flex', gap: 2 }}>
+                        <button onClick={e => { e.stopPropagation(); openEdit(c) }}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: 2 }} title="Editar">
+                          <Pencil size={12} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* ── PAINEL DIREITO — ficha ou tela vazia ── */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <>
+
+          {/* Painel direito — ficha do colaborador ou tela de boas-vindas */}
+          {!colabFicha ? (
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 12, color: 'var(--muted-foreground)', padding: 40 }}>
+              <Users size={48} strokeWidth={1.2} />
+              <div style={{ fontSize: 16, fontWeight: 600 }}>Selecione um colaborador</div>
+              <div style={{ fontSize: 13, textAlign: 'center' }}>Clique em qualquer colaborador na lista à esquerda para ver sua ficha completa.</div>
+              <Button onClick={openNew} size="sm" style={{ marginTop: 8 }}><Plus size={13} /> Novo Colaborador</Button>
+            </div>
+          ) : null}
+          {false && loading ? <LoadingSkeleton rows={5} /> : false ? (
             <EmptyState icon={<Users size={32} />} title="Nenhum colaborador encontrado" description="Cadastre o primeiro colaborador ou ajuste os filtros." action={<Button onClick={openNew} size="sm"><Plus size={13} /> Novo Colaborador</Button>} />
           ) : (
-            <div style={{ borderRadius: 8, border: '1px solid var(--border)', overflow: 'hidden' }}>
+            <div style={{ display: 'none' }}>
               <Table>
                 <TableHeader>
                   <TableRow style={{ background: 'var(--muted)' }}>
