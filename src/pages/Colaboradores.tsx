@@ -1476,6 +1476,7 @@ ${c.observacoes ? `<div class="sec"><div class="sec-title">Observações</div><t
   const openEditInline = async (c: ColaboradorRow) => {
     await openEdit(c)   // reutiliza toda a lógica de carregamento
     setModalOpen(false) // mas não abre o modal
+    setSection('pessoal') // primeira aba é Dados Pessoais
     setInlineEditing(true)
   }
 
@@ -2157,80 +2158,103 @@ ${c.observacoes ? `<div class="sec"><div class="sec-title">Observações</div><t
                   </div>
                 </div>
 
-                {/* ── Botões de ação ── */}
-                <div style={{ display: 'flex', gap: 6, padding: '10px 14px', borderBottom: '1px solid var(--border)', background: '#f8fafc', flexWrap: 'wrap', flexShrink: 0 }}>
-                  {!inlineEditing && (
-                    <button onClick={() => openEditInline(c)}
-                      style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 7, border: '1px solid hsl(var(--primary))', background: 'hsl(var(--primary)/.08)', color: 'hsl(var(--primary))', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
-                      <Pencil size={12} /> Editar
-                    </button>
-                  )}
-                  {!inlineEditing && (
-                    <button onClick={() => openHist(c.id)}
-                      style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 7, border: '1px solid #7c3aed', background: '#faf5ff', color: '#7c3aed', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
-                      <History size={12} /> Histórico
-                    </button>
-                  )}
-                  {!inlineEditing && (
-                    <button onClick={() => gerarFichaRegistroPDF(c)} disabled={gerandoPDF}
-                      style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 7, border: '1px solid #0ea5e9', background: '#f0f9ff', color: '#0284c7', fontWeight: 700, fontSize: 12, cursor: gerandoPDF ? 'not-allowed' : 'pointer', opacity: gerandoPDF ? 0.7 : 1 }}>
-                      <Printer size={12} /> {gerandoPDF ? 'Gerando…' : 'Ficha PDF'}
-                    </button>
-                  )}
-                  {!inlineEditing && c.status !== 'inativo' && (
+                {/* ── Barra de ação (visualização) ── */}
+                {!inlineEditing && (
+                <div style={{ display: 'flex', gap: 6, padding: '8px 14px', borderBottom: '1px solid var(--border)', background: '#f8fafc', flexWrap: 'wrap', flexShrink: 0, alignItems: 'center' }}>
+                  <button onClick={() => openEditInline(c)}
+                    style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 7, border: '1px solid hsl(var(--primary))', background: 'hsl(var(--primary)/.08)', color: 'hsl(var(--primary))', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
+                    <Pencil size={12} /> Editar
+                  </button>
+                  <button onClick={() => openHist(c.id)}
+                    style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 7, border: '1px solid #7c3aed', background: '#faf5ff', color: '#7c3aed', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
+                    <History size={12} /> Histórico
+                  </button>
+                  <button onClick={() => gerarFichaRegistroPDF(c)} disabled={gerandoPDF}
+                    style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 7, border: '1px solid #0ea5e9', background: '#f0f9ff', color: '#0284c7', fontWeight: 700, fontSize: 12, cursor: gerandoPDF ? 'not-allowed' : 'pointer', opacity: gerandoPDF ? 0.7 : 1 }}>
+                    <Printer size={12} /> {gerandoPDF ? 'Gerando…' : 'Ficha PDF'}
+                  </button>
+                  {c.status !== 'inativo' && (
                     <button onClick={() => { abrirModalInativar(c.id, c.nome, c.status ?? 'ativo') }}
                       style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 7, border: '1px solid #dc2626', background: '#fff1f2', color: '#dc2626', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
                       <XCircle size={12} /> Inativar
                     </button>
                   )}
-                  {!inlineEditing && c.status === 'inativo' && (
+                  {c.status === 'inativo' && (
                     <button onClick={() => { setRecontColabId(c.id); setModalRecontratar(true) }}
                       style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 7, border: '1px solid #16a34a', background: '#f0fdf4', color: '#16a34a', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
                       🔄 Recontratar
                     </button>
                   )}
-                  {/* Botões Salvar / Cancelar (modo inline) */}
-                  {inlineEditing && (
-                    <>
-                      <button
-                        onClick={handleSave}
-                        disabled={saving || gerando}
-                        style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 14px', borderRadius: 7, border: 'none', background: saving ? '#94a3b8' : 'hsl(var(--primary))', color: '#fff', fontWeight: 700, fontSize: 12, cursor: saving ? 'not-allowed' : 'pointer' }}>
-                        {saving ? <><Loader2 size={12} className="animate-spin" /> Salvando…</> : '💾 Salvar alterações'}
-                      </button>
-                      <button
-                        onClick={() => { setInlineEditing(false); setEditId(null) }}
-                        disabled={saving}
-                        style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--background)', color: 'var(--foreground)', fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>
-                        ✕ Cancelar
-                      </button>
-                      {editId && form.status === 'ativo' && (
-                        <button
-                          onClick={() => {
-                            const hoje = new Date().toISOString().split('T')[0]
-                            setRecontDataEnc(hoje); setRecontDataAdm(hoje)
-                            setRecontMotivo('mudanca_vinculo')
-                            setRecontNovoTipo(form.tipo_contrato === 'clt' ? 'autonomo' : 'clt')
-                            setRecontNovoFuncaoId('__manter')
-                            setRecontStep(1); setRecontColabId(editId)
-                            setInlineEditing(false)
-                            setModalRecontratar(true)
-                          }}
-                          style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 7, border: '1px solid #fde68a', background: '#fffbeb', color: '#d97706', fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>
-                          🔄 Encerrar e Recontratar
-                        </button>
-                      )}
-                    </>
+                </div>
+                )}
+
+                {/* ── Barra de ação (modo edição inline) ── */}
+                {inlineEditing && (
+                <div style={{ display: 'flex', gap: 8, padding: '8px 14px', borderBottom: '1px solid var(--border)', background: '#f8fafc', flexShrink: 0, alignItems: 'center', flexWrap: 'wrap' }}>
+
+                  {/* Bloco de status compacto */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--background)', border: '1px solid var(--border)', borderRadius: 8, padding: '4px 10px' }}>
+                    <span style={{ fontSize: 11, color: 'var(--muted-foreground)', fontWeight: 600, whiteSpace: 'nowrap' }}>Status:</span>
+                    <select
+                      value={form.status}
+                      onChange={e => {
+                        const v = e.target.value
+                        if (v === 'inativo' && editId) {
+                          const colab = rows.find(r => r.id === editId)
+                          abrirModalInativar(editId, colab?.nome ?? form.nome, form.status)
+                        } else { set('status', v); if (v === 'ativo') set('data_status', '') }
+                      }}
+                      style={{ height: 28, border: 'none', background: 'transparent', fontSize: 12, fontWeight: 700, cursor: 'pointer', outline: 'none', color:
+                        form.status === 'ativo' ? '#16a34a' : form.status === 'inativo' ? '#dc2626' : form.status === 'afastado' ? '#d97706' : '#0ea5e9',
+                      }}>
+                      <option value="ativo">✅ Ativo</option>
+                      <option value="inativo">🔴 Inativo</option>
+                      <option value="afastado">🟡 Afastado</option>
+                      <option value="ferias">🌴 Férias</option>
+                    </select>
+                    {form.status !== 'ativo' && (
+                      <input type="date" value={form.data_status} onChange={e => set('data_status', e.target.value)}
+                        style={{ height: 28, border: '1px solid var(--border)', borderRadius: 5, fontSize: 11, padding: '0 6px', background: 'var(--background)', color: 'var(--foreground)' }} />
+                    )}
+                  </div>
+
+                  {/* Salvar + Cancelar */}
+                  <button onClick={handleSave} disabled={saving || gerando}
+                    style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 14px', borderRadius: 7, border: 'none', background: saving ? '#94a3b8' : 'hsl(var(--primary))', color: '#fff', fontWeight: 700, fontSize: 12, cursor: saving ? 'not-allowed' : 'pointer' }}>
+                    {saving ? <><Loader2 size={12} className="animate-spin" /> Salvando…</> : '💾 Salvar'}
+                  </button>
+                  <button onClick={() => { setInlineEditing(false); setEditId(null) }} disabled={saving}
+                    style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--background)', color: 'var(--foreground)', fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>
+                    ✕ Cancelar
+                  </button>
+
+                  {/* Encerrar e Recontratar — direita */}
+                  {editId && form.status === 'ativo' && (
+                    <button
+                      onClick={() => {
+                        const hoje = new Date().toISOString().split('T')[0]
+                        setRecontDataEnc(hoje); setRecontDataAdm(hoje)
+                        setRecontMotivo('mudanca_vinculo')
+                        setRecontNovoTipo(form.tipo_contrato === 'clt' ? 'autonomo' : 'clt')
+                        setRecontNovoFuncaoId('__manter')
+                        setRecontStep(1); setRecontColabId(editId)
+                        setInlineEditing(false)
+                        setModalRecontratar(true)
+                      }}
+                      style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 7, border: '1px solid #fde68a', background: '#fffbeb', color: '#d97706', fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>
+                      🔄 Encerrar e Recontratar
+                    </button>
                   )}
                 </div>
+                )}
 
                 {/* ── Conteúdo: MODO EDIÇÃO INLINE ── */}
                 {inlineEditing && (
                   <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                    {/* Abas */}
+                    {/* Abas (sem Status) */}
                     <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--border)', padding: '0 14px', flexShrink: 0, background: 'var(--background)', flexWrap: 'wrap' }}>
-                      {(['status', 'pessoal', 'funcao', 'bancario', 'vt', 'epis'] as const).map(s => {
-                        const labels: Record<string, string> = { status: '📋 Status', pessoal: 'Dados Pessoais', funcao: 'Função & Contrato', bancario: 'Dados Bancários', vt: 'Vale Transporte', epis: '🦺 EPIs' }
+                      {(['pessoal', 'funcao', 'bancario', 'vt', 'epis'] as const).map(s => {
+                        const labels: Record<string, string> = { pessoal: 'Dados Pessoais', funcao: 'Função & Contrato', bancario: 'Dados Bancários', vt: 'Vale Transporte', epis: '🦺 EPIs' }
                         const hasEpis = s === 'epis' && epiList.length > 0
                         return (
                           <button key={s} onClick={() => setSection(s)} style={{
@@ -2251,92 +2275,18 @@ ${c.observacoes ? `<div class="sec"><div class="sec-title">Observações</div><t
                       })}
                     </div>
 
-                    {/* Conteúdo das abas */}
+                    {/* Conteúdo das abas — sem aba Status */}
                     <div style={{ flex: 1, overflowY: 'auto', padding: '16px 14px' }}>
 
-                      {/* ── STATUS & COMPLEMENTARES ── */}
-                      {section === 'status' && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                          <Sec title="Status do Colaborador">
-                            <Grid cols={2}>
-                              <Field label="Status">
-                                <Select value={form.status} onValueChange={v => {
-                                  if (v === 'inativo' && editId) {
-                                    const colab = rows.find(r => r.id === editId)
-                                    abrirModalInativar(editId, colab?.nome ?? form.nome, form.status)
-                                  } else { set('status', v); if (v === 'ativo') set('data_status', '') }
-                                }}>
-                                  <SelectTrigger><SelectValue /></SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="ativo">✅ Ativo</SelectItem>
-                                    <SelectItem value="inativo">🔴 Inativo</SelectItem>
-                                    <SelectItem value="afastado">🟡 Afastado</SelectItem>
-                                    <SelectItem value="ferias">🌴 Férias</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </Field>
-                              {form.status !== 'ativo' && (
-                                <Field label={`Data de ${form.status === 'inativo' ? 'inativação' : form.status === 'afastado' ? 'afastamento' : 'início das férias'} *`}>
-                                  <Input type="date" value={form.data_status} onChange={e => set('data_status', e.target.value)}
-                                    style={{ borderColor: !form.data_status ? '#dc2626' : undefined }} />
-                                  {!form.data_status && <div style={{fontSize:10,color:'#dc2626',marginTop:2}}>Obrigatório</div>}
-                                </Field>
-                              )}
-                              <Field label="Observações" span={2}>
-                                <Textarea value={form.observacoes} onChange={e => set('observacoes', e.target.value)} rows={3} placeholder="Observações gerais…" />
-                              </Field>
-                            </Grid>
-                          </Sec>
-                          <Sec title="📋 Dados Complementares">
-                            <Grid cols={2}>
-                              <Field label="Nome do Pai">
-                                <Input value={form.nome_pai} onChange={e => set('nome_pai', e.target.value)} placeholder="Nome completo do pai" />
-                              </Field>
-                              <Field label="Nome da Mãe">
-                                <Input value={form.nome_mae} onChange={e => set('nome_mae', e.target.value)} placeholder="Nome completo da mãe" />
-                              </Field>
-                              <Field label="Cor / Raça">
-                                <Select value={form.cor_raca} onValueChange={v => set('cor_raca', v)}>
-                                  <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="branca">Branca</SelectItem>
-                                    <SelectItem value="preta">Preta</SelectItem>
-                                    <SelectItem value="parda">Parda</SelectItem>
-                                    <SelectItem value="amarela">Amarela</SelectItem>
-                                    <SelectItem value="indigena">Indígena</SelectItem>
-                                    <SelectItem value="nao_declarada">Não declarada</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </Field>
-                              <Field label="Documento Militar">
-                                <Input value={form.doc_militar} onChange={e => set('doc_militar', e.target.value)} placeholder="Nº do documento" />
-                              </Field>
-                              <Field label="Matrícula eSocial">
-                                <Input value={form.matricula_esocial} onChange={e => set('matricula_esocial', e.target.value)} placeholder="Ex: 11" />
-                              </Field>
-                              <Field label="Deficiência">
-                                <div style={{ display:'flex', alignItems:'center', gap:10, height:36 }}>
-                                  <button type="button"
-                                    onClick={() => { set('deficiencia', !form.deficiencia); if (form.deficiencia) set('tipo_deficiencia', '') }}
-                                    style={{ position:'relative', display:'inline-flex', width:44, height:24, borderRadius:12, border:'none', cursor:'pointer', background: form.deficiencia ? '#dc2626' : 'rgba(0,0,0,0.15)', transition:'background 150ms', flexShrink:0 }}>
-                                    <span style={{ position:'absolute', top:3, left: form.deficiencia ? 22 : 3, width:18, height:18, borderRadius:'50%', background:'#fff', boxShadow:'0 1px 3px rgba(0,0,0,0.2)', transition:'left 150ms' }} />
-                                  </button>
-                                  <span style={{ fontSize:12, color:'var(--muted-foreground)' }}>{form.deficiencia ? 'Sim' : 'Não'}</span>
-                                </div>
-                              </Field>
-                              {form.deficiencia && (
-                                <Field label="Tipo de Deficiência" span={2}>
-                                  <Input value={form.tipo_deficiencia} onChange={e => set('tipo_deficiencia', e.target.value)} placeholder="Ex: Visual, Auditiva, Física…" />
-                                </Field>
-                              )}
-                            </Grid>
-                          </Sec>
-                        </div>
-                      )}
-
-                      {/* ── DADOS PESSOAIS ── */}
+                      {/* ── DADOS PESSOAIS (+ Complementares + Endereço) ── */}
                       {section === 'pessoal' && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+                          {/* Observações — compacta no topo */}
+                          <Sec title="📝 Observações">
+                            <Textarea value={form.observacoes} onChange={e => set('observacoes', e.target.value)} rows={2} placeholder="Observações gerais sobre o colaborador…" />
+                          </Sec>
+
                           <Sec title="Identificação">
                             <Grid cols={2}>
                               <Field label="Nome completo *" span={2}>
@@ -2392,6 +2342,7 @@ ${c.observacoes ? `<div class="sec"><div class="sec-title">Observações</div><t
                               </Field>
                             </Grid>
                           </Sec>
+
                           <Sec title="Endereço">
                             <Grid cols={2}>
                               <Field label="Endereço" span={2}>
@@ -2408,6 +2359,53 @@ ${c.observacoes ? `<div class="sec"><div class="sec-title">Observações</div><t
                               </Field>
                             </Grid>
                           </Sec>
+
+                          {/* Dados Complementares — integrados em Dados Pessoais */}
+                          <Sec title="📋 Dados Complementares">
+                            <Grid cols={2}>
+                              <Field label="Nome do Pai">
+                                <Input value={form.nome_pai} onChange={e => set('nome_pai', e.target.value)} placeholder="Nome completo do pai" />
+                              </Field>
+                              <Field label="Nome da Mãe">
+                                <Input value={form.nome_mae} onChange={e => set('nome_mae', e.target.value)} placeholder="Nome completo da mãe" />
+                              </Field>
+                              <Field label="Cor / Raça">
+                                <Select value={form.cor_raca} onValueChange={v => set('cor_raca', v)}>
+                                  <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="branca">Branca</SelectItem>
+                                    <SelectItem value="preta">Preta</SelectItem>
+                                    <SelectItem value="parda">Parda</SelectItem>
+                                    <SelectItem value="amarela">Amarela</SelectItem>
+                                    <SelectItem value="indigena">Indígena</SelectItem>
+                                    <SelectItem value="nao_declarada">Não declarada</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </Field>
+                              <Field label="Documento Militar">
+                                <Input value={form.doc_militar} onChange={e => set('doc_militar', e.target.value)} placeholder="Nº do documento" />
+                              </Field>
+                              <Field label="Matrícula eSocial">
+                                <Input value={form.matricula_esocial} onChange={e => set('matricula_esocial', e.target.value)} placeholder="Ex: 11" />
+                              </Field>
+                              <Field label="Deficiência">
+                                <div style={{ display:'flex', alignItems:'center', gap:10, height:36 }}>
+                                  <button type="button"
+                                    onClick={() => { set('deficiencia', !form.deficiencia); if (form.deficiencia) set('tipo_deficiencia', '') }}
+                                    style={{ position:'relative', display:'inline-flex', width:44, height:24, borderRadius:12, border:'none', cursor:'pointer', background: form.deficiencia ? '#dc2626' : 'rgba(0,0,0,0.15)', transition:'background 150ms', flexShrink:0 }}>
+                                    <span style={{ position:'absolute', top:3, left: form.deficiencia ? 22 : 3, width:18, height:18, borderRadius:'50%', background:'#fff', boxShadow:'0 1px 3px rgba(0,0,0,0.2)', transition:'left 150ms' }} />
+                                  </button>
+                                  <span style={{ fontSize:12, color:'var(--muted-foreground)' }}>{form.deficiencia ? 'Sim' : 'Não'}</span>
+                                </div>
+                              </Field>
+                              {form.deficiencia && (
+                                <Field label="Tipo de Deficiência" span={2}>
+                                  <Input value={form.tipo_deficiencia} onChange={e => set('tipo_deficiencia', e.target.value)} placeholder="Ex: Visual, Auditiva, Física…" />
+                                </Field>
+                              )}
+                            </Grid>
+                          </Sec>
+
                         </div>
                       )}
 
@@ -2741,10 +2739,10 @@ ${c.observacoes ? `<div class="sec"><div class="sec-title">Observações</div><t
             </DialogTitle>
           </DialogHeader>
 
-          {/* abas do modal */}
+          {/* abas do modal — sem Status */}
           <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--border)', margin: '12px 24px 0', flexShrink: 0 }}>
-            {(['status', 'pessoal', 'funcao', 'bancario', 'vt', 'epis'] as const).map(s => {
-              const labels: Record<string, string> = { status: '📋 Status & Compl.', pessoal: 'Dados Pessoais', funcao: 'Função & Contrato', bancario: 'Dados Bancários', vt: 'Vale Transporte', epis: '🦺 EPIs' }
+            {(['pessoal', 'funcao', 'bancario', 'vt', 'epis'] as const).map(s => {
+              const labels: Record<string, string> = { pessoal: 'Dados Pessoais', funcao: 'Função & Contrato', bancario: 'Dados Bancários', vt: 'Vale Transporte', epis: '🦺 EPIs' }
               const isEpisTab = s === 'epis'
               const hasEpis   = isEpisTab && epiList.length > 0
               return (
@@ -2773,144 +2771,15 @@ ${c.observacoes ? `<div class="sec"><div class="sec-title">Observações</div><t
           {/* conteúdo scrollável */}
           <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
 
-            {/* ── SEÇÃO STATUS & COMPLEMENTARES ──────────────────────────── */}
-            {section === 'status' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-
-                {/* Status + Observações */}
-                <Sec title="Status do Colaborador">
-                  <Grid cols={2}>
-                    <Field label="Status">
-                      <Select value={form.status} onValueChange={v => {
-                        if (v === 'inativo' && editId) {
-                          const colab = rows.find(r => r.id === editId)
-                          abrirModalInativar(editId, colab?.nome ?? form.nome, form.status)
-                        } else { set('status', v); if (v === 'ativo') set('data_status', '') }
-                      }}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="ativo">✅ Ativo</SelectItem>
-                          <SelectItem value="inativo">🔴 Inativo</SelectItem>
-                          <SelectItem value="afastado">🟡 Afastado</SelectItem>
-                          <SelectItem value="ferias">🌴 Férias</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </Field>
-                    {form.status !== 'ativo' && (
-                      <Field label={`Data de ${form.status === 'inativo' ? 'inativação' : form.status === 'afastado' ? 'afastamento' : 'início das férias'} *`}>
-                        <Input type="date" value={form.data_status} onChange={e => set('data_status', e.target.value)}
-                          style={{ borderColor: !form.data_status ? '#dc2626' : undefined }} />
-                        {!form.data_status && <div style={{fontSize:10,color:'#dc2626',marginTop:2}}>Obrigatório para status não-ativo</div>}
-                      </Field>
-                    )}
-                    <Field label="Observações" span={2}>
-                      <Textarea value={form.observacoes} onChange={e => set('observacoes', e.target.value)} rows={3} placeholder="Observações gerais…" />
-                    </Field>
-                  </Grid>
-                  {/* Botão Encerrar e Recontratar — somente em edição de ativo */}
-                  {editId && form.status !== 'inativo' && (
-                    <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
-                      <button type="button"
-                        onClick={() => { setModalOpen(false); setTimeout(() => { setRecontColabId(editId); setModalRecontratar(true) }, 80) }}
-                        style={{ display:'flex', alignItems:'center', gap:8, padding:'9px 16px', borderRadius:8, border:'1.5px solid #7c3aed', background:'#faf5ff', color:'#7c3aed', fontWeight:700, fontSize:13, cursor:'pointer' }}>
-                        🔄 Encerrar e Recontratar
-                      </button>
-                      <p style={{ fontSize:11, color:'var(--muted-foreground)', marginTop:6 }}>Encerra o vínculo atual e abre um novo cadastro preservando os dados pessoais.</p>
-                    </div>
-                  )}
-                </Sec>
-
-                {/* Dados Complementares */}
-                <Sec title="📋 Dados Complementares">
-                  <Grid cols={2}>
-                    <Field label="Nome do Pai">
-                      <Input value={form.nome_pai} onChange={e => set('nome_pai', e.target.value)} placeholder="Nome completo do pai" />
-                    </Field>
-                    <Field label="Nome da Mãe">
-                      <Input value={form.nome_mae} onChange={e => set('nome_mae', e.target.value)} placeholder="Nome completo da mãe" />
-                    </Field>
-                    <Field label="Cor / Raça">
-                      <Select value={form.cor_raca} onValueChange={v => set('cor_raca', v)}>
-                        <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="branca">Branca</SelectItem>
-                          <SelectItem value="preta">Preta</SelectItem>
-                          <SelectItem value="parda">Parda</SelectItem>
-                          <SelectItem value="amarela">Amarela</SelectItem>
-                          <SelectItem value="indigena">Indígena</SelectItem>
-                          <SelectItem value="nao_declarada">Não declarada</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </Field>
-                    <Field label="Documento Militar">
-                      <Input value={form.doc_militar} onChange={e => set('doc_militar', e.target.value)} placeholder="Nº do documento" />
-                    </Field>
-                    <Field label="Matrícula eSocial">
-                      <Input value={form.matricula_esocial} onChange={e => set('matricula_esocial', e.target.value)} placeholder="Ex: 11" />
-                    </Field>
-                    <Field label="Deficiência">
-                      <div style={{ display:'flex', alignItems:'center', gap:10, height:36 }}>
-                        <button type="button"
-                          onClick={() => { set('deficiencia', !form.deficiencia); if (form.deficiencia) set('tipo_deficiencia', '') }}
-                          style={{ position:'relative', display:'inline-flex', width:44, height:24, borderRadius:12, border:'none', cursor:'pointer', background: form.deficiencia ? '#dc2626' : 'rgba(0,0,0,0.15)', transition:'background 150ms', flexShrink:0 }}>
-                          <span style={{ position:'absolute', top:3, left: form.deficiencia ? 22 : 3, width:18, height:18, borderRadius:'50%', background:'#fff', boxShadow:'0 1px 3px rgba(0,0,0,0.2)', transition:'left 150ms' }} />
-                        </button>
-                        <span style={{ fontSize:12, color:'var(--muted-foreground)' }}>{form.deficiencia ? 'Sim' : 'Não'}</span>
-                      </div>
-                    </Field>
-                    {form.deficiencia && (
-                      <Field label="Tipo de Deficiência" span={2}>
-                        <Input value={form.tipo_deficiencia} onChange={e => set('tipo_deficiencia', e.target.value)} placeholder="Ex: Visual, Auditiva, Física…" />
-                      </Field>
-                    )}
-                  </Grid>
-                </Sec>
-
-                {/* Histórico de Vínculos */}
-                {editId && (() => {
-                  const colabAtual = rows.find(r => r.id === editId)
-                  const cpfAtual   = colabAtual?.cpf
-                  const outros = cpfAtual ? rows.filter(r => r.cpf === cpfAtual && r.id !== editId).sort((a,b) => (a.data_admissao ?? '').localeCompare(b.data_admissao ?? '')) : []
-                  if (outros.length === 0) return null
-                  return (
-                    <div style={{ borderTop:'1px solid var(--border)', paddingTop:16 }}>
-                      <div style={{ fontWeight:800, fontSize:13, color:'#7c3aed', marginBottom:10, display:'flex', alignItems:'center', gap:6 }}>
-                        🔗 Histórico de Vínculos ({outros.length + 1} registros no CPF {cpfAtual})
-                      </div>
-                      <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
-                        {[...outros, colabAtual!].sort((a,b) => (a?.data_admissao ?? '').localeCompare(b?.data_admissao ?? '')).map((v, i, arr) => {
-                          const isAtual = v.id === editId; const isUltimo = i === arr.length - 1
-                          const cor = v.tipo_contrato === 'clt' ? '#1d4ed8' : '#d97706'; const bg = v.tipo_contrato === 'clt' ? '#dbeafe' : '#fef3c7'
-                          return (
-                            <div key={v.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 12px', borderRadius:8, background: isAtual ? bg : 'var(--muted)', border:`1px solid ${isAtual ? cor : 'var(--border)'}`, opacity: v.status === 'inativo' ? 0.7 : 1 }}>
-                              <div style={{ width:24, height:24, borderRadius:'50%', background: isAtual ? cor : '#9ca3af', color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:800, fontSize:11, flexShrink:0 }}>{i+1}</div>
-                              <div style={{ flex:1, minWidth:0 }}>
-                                <div style={{ fontWeight:700, fontSize:12, color: isAtual ? cor : 'var(--foreground)', display:'flex', gap:6, alignItems:'center' }}>
-                                  <span style={{ fontFamily:'monospace' }}>{v.chapa ?? '—'}</span>
-                                  <span style={{ textTransform:'uppercase', fontSize:10 }}>{v.tipo_contrato}</span>
-                                  {isAtual && <span style={{ fontSize:9, background:cor, color:'#fff', padding:'1px 5px', borderRadius:99 }}>ATUAL</span>}
-                                  {!isAtual && isUltimo && <span style={{ fontSize:9, background:'#10b981', color:'#fff', padding:'1px 5px', borderRadius:99 }}>MAIS RECENTE</span>}
-                                </div>
-                                <div style={{ fontSize:10, color:'var(--muted-foreground)', marginTop:2 }}>
-                                  {v.data_admissao ? new Date(v.data_admissao+'T12:00:00').toLocaleDateString('pt-BR') : '—'}{' → '}
-                                  {v.status === 'inativo' && (v as any).data_encerramento ? new Date((v as any).data_encerramento+'T12:00:00').toLocaleDateString('pt-BR') : v.status === 'ativo' ? 'Presente' : v.status?.toUpperCase()}
-                                  {(v as any).motivo_encerramento && <span style={{ marginLeft:8, fontStyle:'italic' }}>({(v as any).motivo_encerramento.replace(/_/g,' ')})</span>}
-                                </div>
-                              </div>
-                              {!isAtual && (<button type="button" onClick={() => openEdit(v as ColaboradorRow)} style={{ fontSize:10, padding:'3px 8px', borderRadius:5, border:'1px solid var(--border)', background:'var(--card)', cursor:'pointer', color:'var(--primary)', fontWeight:600 }}>Ver ficha</button>)}
-                            </div>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  )
-                })()}
-              </div>
-            )}
-
-            {/* ── SEÇÃO DADOS PESSOAIS ───────────────────────────────────── */}
+            {/* ── SEÇÃO DADOS PESSOAIS (+ Complementares + Endereço) ──────────── */}
             {section === 'pessoal' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+                {/* Observações compactas no topo */}
+                <Sec title="📝 Observações">
+                  <Textarea value={form.observacoes} onChange={e => set('observacoes', e.target.value)} rows={2} placeholder="Observações gerais…" />
+                </Sec>
+
                 <Sec title="Identificação">
                   <Grid cols={2}>
                     <Field label="Nome completo *" span={2}>
@@ -2981,6 +2850,52 @@ ${c.observacoes ? `<div class="sec"><div class="sec-title">Observações</div><t
                     <Field label="CEP">
                       <Input value={form.cep} onChange={e => set('cep', maskCEP(e.target.value))} placeholder="00000-000" inputMode="numeric" />
                     </Field>
+                  </Grid>
+                </Sec>
+
+                {/* Dados Complementares integrados */}
+                <Sec title="📋 Dados Complementares">
+                  <Grid cols={2}>
+                    <Field label="Nome do Pai">
+                      <Input value={form.nome_pai} onChange={e => set('nome_pai', e.target.value)} placeholder="Nome completo do pai" />
+                    </Field>
+                    <Field label="Nome da Mãe">
+                      <Input value={form.nome_mae} onChange={e => set('nome_mae', e.target.value)} placeholder="Nome completo da mãe" />
+                    </Field>
+                    <Field label="Cor / Raça">
+                      <Select value={form.cor_raca} onValueChange={v => set('cor_raca', v)}>
+                        <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="branca">Branca</SelectItem>
+                          <SelectItem value="preta">Preta</SelectItem>
+                          <SelectItem value="parda">Parda</SelectItem>
+                          <SelectItem value="amarela">Amarela</SelectItem>
+                          <SelectItem value="indigena">Indígena</SelectItem>
+                          <SelectItem value="nao_declarada">Não declarada</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                    <Field label="Documento Militar">
+                      <Input value={form.doc_militar} onChange={e => set('doc_militar', e.target.value)} placeholder="Nº do documento" />
+                    </Field>
+                    <Field label="Matrícula eSocial">
+                      <Input value={form.matricula_esocial} onChange={e => set('matricula_esocial', e.target.value)} placeholder="Ex: 11" />
+                    </Field>
+                    <Field label="Deficiência">
+                      <div style={{ display:'flex', alignItems:'center', gap:10, height:36 }}>
+                        <button type="button"
+                          onClick={() => { set('deficiencia', !form.deficiencia); if (form.deficiencia) set('tipo_deficiencia', '') }}
+                          style={{ position:'relative', display:'inline-flex', width:44, height:24, borderRadius:12, border:'none', cursor:'pointer', background: form.deficiencia ? '#dc2626' : 'rgba(0,0,0,0.15)', transition:'background 150ms', flexShrink:0 }}>
+                          <span style={{ position:'absolute', top:3, left: form.deficiencia ? 22 : 3, width:18, height:18, borderRadius:'50%', background:'#fff', boxShadow:'0 1px 3px rgba(0,0,0,0.2)', transition:'left 150ms' }} />
+                        </button>
+                        <span style={{ fontSize:12, color:'var(--muted-foreground)' }}>{form.deficiencia ? 'Sim' : 'Não'}</span>
+                      </div>
+                    </Field>
+                    {form.deficiencia && (
+                      <Field label="Tipo de Deficiência" span={2}>
+                        <Input value={form.tipo_deficiencia} onChange={e => set('tipo_deficiencia', e.target.value)} placeholder="Ex: Visual, Auditiva, Física…" />
+                      </Field>
+                    )}
                   </Grid>
                 </Sec>
 
