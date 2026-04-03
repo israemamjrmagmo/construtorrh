@@ -1014,20 +1014,12 @@ export default function Colaboradores() {
   useEffect(() => { fetchData() }, [fetchData])
 
   // ── filtros ───────────────────────────────────────────────────────────────
-  // Filtro calculado direto no render — sem useState/useMemo, garante reatividade total
-  const _normColab = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-  const _q = _normColab(busca)
+  // Filtro por status/função/contrato (sem busca por nome)
   const filtered = rows.filter(c => {
-    const matchQ = !_q
-      || _normColab(c.nome).includes(_q)
-      || _normColab(c.chapa ?? '').includes(_q)
-      || (c.cpf ?? '').replace(/\D/g,'').includes(_q.replace(/\D/g,''))
-      || _normColab((c as any).funcoes?.nome ?? '').includes(_q)
-      || _normColab((c as any).obras?.nome ?? '').includes(_q)
     const matchS = filterStatus === 'todos' || c.status === filterStatus
     const matchF = filterFuncao === 'todas' || (c as any).funcao_id === filterFuncao
     const matchC = filterContrato === 'todos' || (c.tipo_contrato ?? '').toLowerCase() === filterContrato
-    return matchQ && matchS && matchF && matchC
+    return matchS && matchF && matchC
   })
 
   // ── helpers form ──────────────────────────────────────────────────────────
@@ -1782,19 +1774,7 @@ export default function Colaboradores() {
               <span style={{ fontWeight: 700, fontSize: 13, color: '#fff' }}>👷 Colaboradores</span>
               <button onClick={openNew} style={{ background: 'rgba(255,255,255,.2)', border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer', padding: '4px 10px', fontSize: 11, fontWeight: 700 }}>+ Novo</button>
             </div>
-            {/* Busca — mesmo padrão do Ponto.tsx */}
-            <div style={{ position: 'relative' }}>
-              <Search size={13} style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }} />
-              <input
-                value={busca}
-                onChange={e => { setBusca(e.target.value) }}
-                placeholder="Nome, chapa ou CPF…"
-                autoComplete="off"
-                autoCorrect="off"
-                spellCheck={false}
-                style={{ width: '100%', height: 33, border: '1px solid #334155', borderRadius: 7, paddingLeft: 28, paddingRight: 8, fontSize: 12, background: '#0f172a', color: '#fff', boxSizing: 'border-box' }}
-              />
-            </div>
+
             {/* Badges de filtro rápido */}
             <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
               {[
