@@ -81,7 +81,7 @@ export default function Juridico() {
         supabase.from('documentos').select('*').eq('colaborador_id', c.id).order('created_at', { ascending: false }),
         supabase.from('documentos_avulsos').select('*').eq('colaborador_id', c.id).order('created_at', { ascending: false }),
         supabase.from('colaborador_epi').select('*, epi_catalogo(nome,categoria,numero_ca)').eq('colaborador_id', c.id),
-        supabase.from('ponto_lancamentos').select('*, obras(nome)').eq('colaborador_id', c.id).in('status', ['pago', 'liberado']).order('mes_referencia', { ascending: false }),
+        supabase.from('ponto_lancamentos').select('*, obras(nome)').eq('colaborador_id', c.id).order('mes_referencia', { ascending: false }),
         supabase.from('registro_ponto').select('id,lancamento_id,colaborador_id,data,presente,falta,hora_entrada,saida_almoco,retorno_almoco,hora_saida,he_entrada,he_saida,horas_trabalhadas,horas_extras,status,observacoes,justificativa').eq('colaborador_id', c.id).order('data', { ascending: true }).limit(500),
         supabase.from('adiantamentos').select('*').eq('colaborador_id', c.id).order('competencia', { ascending: false }),
         supabase.from('premios').select('*').eq('colaborador_id', c.id).order('created_at', { ascending: false }),
@@ -91,6 +91,21 @@ export default function Juridico() {
         supabase.from('historico_chapa').select('*, funcoes(nome)').eq('colaborador_id', c.id).order('data_inicio', { ascending: false }),
         supabase.from('colaborador_historico_contrato').select('*, funcoes(nome), obras(nome)').eq('colaborador_id', c.id).order('data_inicio', { ascending: false }),
       ])
+      // ── Deduplicar lançamentos: 1 por mês, prioridade pago>liberado>aprovado>fechado>rascunho ──
+      const PRIORIDADE_STATUS: Record<string, number> = { pago: 5, liberado: 4, aprovado: 3, fechado: 2, rascunho: 1 }
+      const todosLancamentos = (pontRes.data ?? []) as any[]
+      const melhorPorMes: Record<string, any> = {}
+      for (const lanc of todosLancamentos) {
+        const mes = lanc.mes_referencia
+        const atual = melhorPorMes[mes]
+        const priorNovo  = PRIORIDADE_STATUS[lanc.status] ?? 0
+        const priorAtual = atual ? (PRIORIDADE_STATUS[atual.status] ?? 0) : -1
+        if (!atual || priorNovo > priorAtual) melhorPorMes[mes] = lanc
+      }
+      const pontosDedup = Object.values(melhorPorMes).sort((a: any, b: any) =>
+        b.mes_referencia.localeCompare(a.mes_referencia)
+      )
+
       setFichaData({
         colab: colabRes.data,
         ocorrencias:  ocRes.data ?? [],
@@ -100,13 +115,13 @@ export default function Juridico() {
         documentos:   docRes.data ?? [],
         documentos_avulsos: docAvRes.data ?? [],
         epis:         epiRes.data ?? [],
-        ponto:        pontRes.data ?? [],
+        ponto:        pontosDedup,
         registros:    regPontRes.data ?? [],
         adiantamentos: adRes.data ?? [],
         premios:      premRes.data ?? [],
         vt:           vtRes.data ?? [],
         provisoes:    provRes.data ?? [],
-        pagamentos:   pontRes.data ?? [],  // ponto_lancamentos com status pago/liberado
+        pagamentos:   pontosDedup,  // lançamentos dedup (melhor por mês)
         historico_chapa: histChRes.data ?? [],
         historico_contrato: histContRes.data ?? [],
       })
@@ -203,6 +218,49 @@ export default function Juridico() {
       return (await tryFetch('cors')) ?? (await tryFetch('no-cors'))
     }
 
+    // ── Renderizar PDF como imagens PNG (uma por página) via pdf.js ───────
+    async function pdfToImages(url: string): Promise<string[]> {
+      try {
+        // Carregar pdf.js do CDN (sem dependência local)
+        const pdfjsLib = (window as any).pdfjsLib
+        if (!pdfjsLib) {
+          // Injetar pdf.js dinamicamente se não estiver carregado
+          await new Promise<void>((resolve, reject) => {
+            const s = document.createElement('script')
+            s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js'
+            s.onload = () => {
+              ;(window as any).pdfjsLib.GlobalWorkerOptions.workerSrc =
+                'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'
+              resolve()
+            }
+            s.onerror = reject
+            document.head.appendChild(s)
+          })
+        }
+        const lib = (window as any).pdfjsLib
+        lib.GlobalWorkerOptions.workerSrc =
+          'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'
+
+        // Buscar bytes do PDF
+        const resp = await fetch(url, { mode: 'cors', cache: 'no-store' })
+        const arrayBuffer = await resp.arrayBuffer()
+        const pdfDoc = await lib.getDocument({ data: arrayBuffer }).promise
+        const images: string[] = []
+
+        for (let i = 1; i <= pdfDoc.numPages; i++) {
+          const page = await pdfDoc.getPage(i)
+          const viewport = page.getViewport({ scale: 1.8 }) // boa resolução para impressão
+          const canvas = document.createElement('canvas')
+          canvas.width  = viewport.width
+          canvas.height = viewport.height
+          const ctx = canvas.getContext('2d')!
+          await page.render({ canvasContext: ctx, viewport }).promise
+          images.push(canvas.toDataURL('image/jpeg', 0.92))
+        }
+        return images
+      } catch { return [] }
+    }
+
     // ── Coletar TODOS os arquivos do colaborador ─────────────────────────
     interface ArquivoInfo { label: string; url: string; categoria: string; emoji: string; data?: string }
     const arquivos: ArquivoInfo[] = [
@@ -238,7 +296,16 @@ export default function Juridico() {
 
     toast.info(`⏳ Carregando ${arquivos.length} arquivo(s) em anexo…`)
     const arquivosComConteudo = await Promise.all(
-      arquivos.map(async a => ({ ...a, conteudo: await urlToBase64(a.url) }))
+      arquivos.map(async a => {
+        const conteudo = await urlToBase64(a.url)
+        // Se for PDF, renderizar páginas como imagens para impressão
+        let paginas: string[] = []
+        if (conteudo?.mime === 'application/pdf') {
+          toast.info(`⏳ Renderizando PDF: ${a.label.slice(0, 40)}…`)
+          paginas = await pdfToImages(a.url)
+        }
+        return { ...a, conteudo, paginas }
+      })
     )
 
     // ── CSS ──────────────────────────────────────────────────────────────
@@ -382,17 +449,35 @@ export default function Juridico() {
                 bodyHtml = `<img src="${c.b64}" alt="${a.label}"
                   style="max-width:100%;max-height:520px;object-fit:contain;border-radius:4px;display:block;margin:0 auto;border:1px solid #e2e8f0" />`
               } else if (c.mime === 'application/pdf') {
-                // PDF — iframe + link de abertura (iframe não imprime, mas fica visível na tela)
-                bodyHtml = `<div style="width:100%">
-                  <div style="background:#fee2e2;border:1.5px solid #fca5a5;border-radius:6px;padding:8px 12px;margin-bottom:8px;font-size:10px;font-weight:700;color:#b91c1c;text-align:center">
-                    ⚖️ DOCUMENTO PDF — Parte integrante deste dossiê
-                  </div>
-                  <iframe src="${a.url}#toolbar=0&navpanes=0&scrollbar=0" title="${a.label}"
-                    style="width:100%;height:500px;border:1px solid #cbd5e1;border-radius:4px;display:block"></iframe>
-                  <div style="text-align:center;margin-top:8px">
-                    <a href="${a.url}" target="_blank" class="link-btn">📄 Abrir PDF completo em nova aba</a>
-                  </div>
-                </div>`
+                // PDF — renderizado como imagens (imprime direto, sem iframe)
+                if (a.paginas && a.paginas.length > 0) {
+                  bodyHtml = `<div style="width:100%">
+                    <div style="background:#dbeafe;border:1.5px solid #93c5fd;border-radius:6px;padding:6px 12px;margin-bottom:10px;font-size:10px;font-weight:700;color:#1d4ed8;text-align:center">
+                      ⚖️ PDF — ${a.paginas.length} página(s) — renderizado para impressão
+                    </div>
+                    ${a.paginas.map((pg, idx) => `
+                      <div style="margin-bottom:${idx < a.paginas.length-1?'12px':'0'};page-break-inside:avoid">
+                        <div style="font-size:8px;color:#94a3b8;text-align:right;margin-bottom:3px">Página ${idx+1}/${a.paginas.length}</div>
+                        <img src="${pg}" alt="${a.label} — pág.${idx+1}"
+                          style="width:100%;border:1px solid #e2e8f0;border-radius:4px;display:block" />
+                      </div>`).join('')}
+                    <div style="text-align:center;margin-top:8px">
+                      <a href="${a.url}" target="_blank" class="link-btn">📄 Abrir PDF original</a>
+                    </div>
+                  </div>`
+                } else {
+                  // Fallback: pdf.js falhou — iframe + link
+                  bodyHtml = `<div style="width:100%">
+                    <div style="background:#fee2e2;border:1.5px solid #fca5a5;border-radius:6px;padding:8px 12px;margin-bottom:8px;font-size:10px;font-weight:700;color:#b91c1c;text-align:center">
+                      ⚖️ DOCUMENTO PDF — Parte integrante deste dossiê
+                    </div>
+                    <iframe src="${a.url}#toolbar=0&navpanes=0&scrollbar=0" title="${a.label}"
+                      style="width:100%;height:500px;border:1px solid #cbd5e1;border-radius:4px;display:block"></iframe>
+                    <div style="text-align:center;margin-top:8px">
+                      <a href="${a.url}" target="_blank" class="link-btn">📄 Abrir PDF completo em nova aba</a>
+                    </div>
+                  </div>`
+                }
               } else {
                 bodyHtml = `<div class="nao-carregado">
                   <div style="font-size:24px;margin-bottom:6px">📎</div>
@@ -401,7 +486,7 @@ export default function Juridico() {
                 </div>`
               }
 
-              const isFull = c?.mime === 'application/pdf' || !c
+              const isFull = (c?.mime === 'application/pdf') || !c
               return `<div class="arquivo-card${isFull ? ' full' : ''}">
                 <div class="arquivo-header">
                   <span style="font-size:16px">${a.emoji}</span>
