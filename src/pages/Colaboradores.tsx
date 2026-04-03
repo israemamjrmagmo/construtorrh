@@ -1816,7 +1816,7 @@ export default function Colaboradores() {
               const sel = colabFicha?.id === c.id
               const statusDot = c.status === 'ativo' ? '#22c55e' : c.status === 'inativo' ? '#ef4444' : '#f59e0b'
               return (
-                <div key={c.id} onClick={() => setColabFicha(sel ? null : c)}
+                <div key={c.id} onClick={() => setColabFicha(c)}
                   style={{ padding: '10px 14px', cursor: 'pointer', borderBottom: '1px solid var(--border)', background: sel ? 'hsl(var(--primary)/.08)' : 'transparent', borderLeft: `3px solid ${sel ? 'hsl(var(--primary))' : 'transparent'}`, transition: 'background .12s' }}>
                   <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 6 }}>
                     <div style={{ minWidth: 0 }}>
