@@ -1014,10 +1014,11 @@ export default function Colaboradores() {
   useEffect(() => { fetchData() }, [fetchData])
 
   // ── filtros ───────────────────────────────────────────────────────────────
-  const filtered = useMemo(() => {
+  const [filtered, setFiltered] = useState<ColaboradorRow[]>([])
+  useEffect(() => {
     const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     const q = norm(busca)
-    return rows.filter(c => {
+    setFiltered(rows.filter(c => {
       const matchQ = !q
         || norm(c.nome).includes(q)
         || norm(c.chapa ?? '').includes(q)
@@ -1028,7 +1029,7 @@ export default function Colaboradores() {
       const matchF = filterFuncao === 'todas' || (c as any).funcao_id === filterFuncao
       const matchC = filterContrato === 'todos' || (c.tipo_contrato ?? '').toLowerCase() === filterContrato
       return matchQ && matchS && matchF && matchC
-    })
+    }))
   }, [rows, busca, filterStatus, filterFuncao, filterContrato])
 
   // ── helpers form ──────────────────────────────────────────────────────────
