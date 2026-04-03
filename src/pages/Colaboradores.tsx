@@ -1015,10 +1015,7 @@ export default function Colaboradores() {
 
   // ── filtros ───────────────────────────────────────────────────────────────
   // Filtro inline — calculado a cada render
-  const _st = searchTerm.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'')
   const filtered = rows.filter(c => {
-    const _n = (s:string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'')
-    const matchT = !_st || _n(c.nome).includes(_st) || _n(c.chapa??'').includes(_st) || (c.cpf??'').replace(/\D/g,'').includes(searchTerm.replace(/\D/g,''))
     const matchS = filterStatus === 'todos' || c.status === filterStatus
     const matchF = filterFuncao === 'todas' || (c as any).funcao_id === filterFuncao
     const matchC = filterContrato === 'todos' || (c.tipo_contrato ?? '').toLowerCase() === filterContrato
