@@ -1783,11 +1783,18 @@ export default function Colaboradores() {
               <span style={{ fontWeight: 700, fontSize: 13, color: '#fff' }}>👷 Colaboradores</span>
               <button onClick={openNew} style={{ background: 'rgba(255,255,255,.2)', border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer', padding: '4px 10px', fontSize: 11, fontWeight: 700 }}>+ Novo</button>
             </div>
-            {/* Busca */}
+            {/* Busca — mesmo padrão do Ponto.tsx */}
             <div style={{ position: 'relative' }}>
               <Search size={13} style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }} />
-              <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Nome, chapa ou CPF…"
-                style={{ width: '100%', height: 33, border: '1px solid #334155', borderRadius: 7, paddingLeft: 28, paddingRight: 8, fontSize: 12, background: '#0f172a', color: '#fff', boxSizing: 'border-box' }} />
+              <input
+                value={busca}
+                onChange={e => { setBusca(e.target.value) }}
+                placeholder="Nome, chapa ou CPF…"
+                autoComplete="off"
+                autoCorrect="off"
+                spellCheck={false}
+                style={{ width: '100%', height: 33, border: '1px solid #334155', borderRadius: 7, paddingLeft: 28, paddingRight: 8, fontSize: 12, background: '#0f172a', color: '#fff', boxSizing: 'border-box' }}
+              />
             </div>
             {/* Badges de filtro rápido */}
             <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
