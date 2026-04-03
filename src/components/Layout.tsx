@@ -118,7 +118,15 @@ const NAV_GROUPS = [
       { to: '/pagamentos',       label: 'Pagamentos',         icon: DollarSign, color: '#4ade80' },
       { to: '/encargos',         label: 'Encargos',           icon: Briefcase,  color: '#a78bfa' },
       { to: '/provisoes',        label: 'Provisões Rescisão', icon: Calculator, color: '#f472b6' },
-      { to: '/juridico',         label: 'Jurídico',           icon: Scale,      color: '#94a3b8' },
+    ],
+  },
+  {
+    id:    'juridico',
+    label: 'Jurídico',
+    short: 'Juríd.',
+    icon:  Scale,
+    items: [
+      { to: '/juridico', label: 'Dossiê / Lista Negra', icon: Scale, color: '#a78bfa' },
     ],
   },
   {
