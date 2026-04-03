@@ -94,6 +94,13 @@ type FormData = {
   vt_trechos_volta: VtTrecho[]
   salario: string;
   status: string; data_status: string; observacoes: string
+  // ── Campos da Ficha de Registro (contabilidade) ──────────────────────────
+  nome_pai: string; nome_mae: string
+  cor_raca: string
+  deficiencia: boolean; tipo_deficiencia: string
+  doc_militar: string
+  matricula_esocial: string
+  tipo_desligamento: string; data_aviso_previo: string
 }
 
 const EMPTY: FormData = {
@@ -109,6 +116,10 @@ const EMPTY: FormData = {
   vt_trechos_ida: [], vt_trechos_volta: [],
   data_status: '',
   status: 'ativo', observacoes: '',
+  nome_pai: '', nome_mae: '',
+  cor_raca: '', deficiencia: false, tipo_deficiencia: '',
+  doc_militar: '', matricula_esocial: '',
+  tipo_desligamento: '', data_aviso_previo: '',
 }
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -1010,6 +1021,7 @@ export default function Colaboradores() {
       const genero: Record<string,string> = { masculino:'Masculino', feminino:'Feminino', outro:'Outro' }
       const tconta: Record<string,string> = { corrente:'Corrente', poupanca:'Poupança', salario:'Conta Salário' }
       const pixTipo: Record<string,string> = { cpf:'CPF', telefone:'Telefone', email:'E-mail', chave_aleatoria:'Chave Aleatória' }
+      const corRacaPDF: Record<string,string> = { branca:'Branca', preta:'Preta', parda:'Parda', amarela:'Amarela', indigena:'Indígena', nao_declarada:'Não declarada' }
 
       const row2 = (a: string, av: string, b: string, bv: string) =>
         `<tr><td class="lb">${a}</td><td>${av}</td><td class="lb">${b}</td><td>${bv}</td></tr>`
@@ -1056,8 +1068,11 @@ ${(c as any).foto_url ? `
   <table>
     ${row1('Nome Completo', `<strong>${fmt(c.nome)}</strong>`)}
     ${row2('CPF', fmt(c.cpf), 'RG', fmt(c.rg))}
-    ${row2('PIS / NIT', fmt(c.pis_nit), 'Data de Nascimento', fmtDate(c.data_nascimento))}
+    ${row2('PIS / NIT', fmt(c.pis_nit), 'Matrícula eSocial', fmt((c as any).matricula_esocial))}
+    ${row2('Data de Nascimento', fmtDate(c.data_nascimento), 'Doc. Militar', fmt((c as any).doc_militar))}
     ${row2('Gênero', genero[c.genero ?? ''] ?? fmt(c.genero), 'Estado Civil', civil[c.estado_civil ?? ''] ?? fmt(c.estado_civil))}
+    ${row2('Cor / Raça', corRacaPDF[(c as any).cor_raca ?? ''] ?? fmt((c as any).cor_raca), 'Deficiência', (c as any).deficiencia ? ((c as any).tipo_deficiencia || 'Sim') : 'Não')}
+    ${row2('Nome do Pai', fmt((c as any).nome_pai), 'Nome da Mãe', fmt((c as any).nome_mae))}
     ${row2('Telefone', fmt(c.telefone), 'E-mail', fmt(c.email))}
     ${row2('CTPS Nº', fmt(c.ctps_numero), 'Série CTPS', fmt(c.ctps_serie))}
   </table>
@@ -1418,6 +1433,14 @@ ${c.observacoes ? `<div class="sec"><div class="sec-title">Observações</div><t
       vt_trechos_volta: ((c as any).vt_dados?.trechos_volta ?? []) as VtTrecho[],
       status: c.status ?? 'ativo',
       data_status: (c as any).data_status ?? '', observacoes: c.observacoes ?? '',
+      nome_pai: (c as any).nome_pai ?? '', nome_mae: (c as any).nome_mae ?? '',
+      cor_raca: (c as any).cor_raca ?? '',
+      deficiencia: (c as any).deficiencia ?? false,
+      tipo_deficiencia: (c as any).tipo_deficiencia ?? '',
+      doc_militar: (c as any).doc_militar ?? '',
+      matricula_esocial: (c as any).matricula_esocial ?? '',
+      tipo_desligamento: (c as any).tipo_desligamento ?? '',
+      data_aviso_previo: (c as any).data_aviso_previo ?? '',
     })
     // Carregar EPIs do colaborador
     const { data: colabEpiData } = await supabase
@@ -1653,6 +1676,16 @@ ${c.observacoes ? `<div class="sec"><div class="sec-title">Observações</div><t
         trechos_ida: form.vt_trechos_ida,
         trechos_volta: form.vt_trechos_volta,
       },
+      // ── Campos da Ficha de Registro ────────────────────────────────────
+      nome_pai:          form.nome_pai          || null,
+      nome_mae:          form.nome_mae          || null,
+      cor_raca:          form.cor_raca          || null,
+      deficiencia:       form.deficiencia,
+      tipo_deficiencia:  form.tipo_deficiencia  || null,
+      doc_militar:       form.doc_militar       || null,
+      matricula_esocial: form.matricula_esocial || null,
+      tipo_desligamento: form.tipo_desligamento || null,
+      data_aviso_previo: form.data_aviso_previo || null,
     }
 
     // Se mudou função → registra histórico ANTES de atualizar
@@ -2018,6 +2051,8 @@ ${c.observacoes ? `<div class="sec"><div class="sec-title">Observações</div><t
             const genero: Record<string,string> = { masculino:'Masculino', feminino:'Feminino', outro:'Outro' }
             const tconta: Record<string,string> = { corrente:'Corrente', poupanca:'Poupança', salario:'Conta Salário' }
             const pixTipo: Record<string,string> = { cpf:'CPF', telefone:'Telefone', email:'E-mail', chave_aleatoria:'Chave Aleatória' }
+            const corRaca: Record<string,string> = { branca:'Branca', preta:'Preta', parda:'Parda', amarela:'Amarela', indigena:'Indígena', nao_declarada:'Não declarada' }
+            const tipoDeslig: Record<string,string> = { pedido_demissao:'Pedido de Demissão', demissao_sem_justa_causa:'Demissão s/ Justa Causa', demissao_justa_causa:'Demissão c/ Justa Causa', termino_contrato:'Término de Contrato', falecimento:'Falecimento', aposentadoria:'Aposentadoria', outros:'Outros' }
             const vtDados = (c.vt_dados ?? {}) as any
             const vtMod = vtDados.modalidade ?? (c.vale_transporte ? 'transporte' : 'nenhum')
             const vtLabel: Record<string,string> = { nenhum:'Não recebe', gasolina:'Aux. Gasolina', transporte:'Transporte Público' }
@@ -2132,12 +2167,16 @@ ${c.observacoes ? `<div class="sec"><div class="sec-title">Observações</div><t
                       <Campo label="Nascimento"     value={fmtDate(c.data_nascimento)} />
                       <Campo label="Gênero"         value={genero[c.genero ?? ''] ?? c.genero ?? ''} />
                       <Campo label="Estado Civil"   value={civil[c.estado_civil ?? ''] ?? c.estado_civil ?? ''} />
+                      <Campo label="Cor / Raça"     value={corRaca[(c as any).cor_raca ?? ''] ?? (c as any).cor_raca ?? ''} />
+                      <Campo label="Doc. Militar"   value={(c as any).doc_militar ?? ''} />
+                      <Campo label="Deficiência"    value={(c as any).deficiencia ? ((c as any).tipo_deficiencia || 'Sim') : 'Não'} />
                       <Campo label="Telefone"       value={c.telefone ?? ''} />
                       <Campo label="E-mail"         value={c.email ?? ''} />
                     </Secao>
 
                     {/* Contrato */}
                     <Secao titulo="📋 Contrato & Obra">
+                      <Campo label="Matrícula eSocial" value={(c as any).matricula_esocial ?? ''} />
                       <Campo label="Obra"            value={ob} />
                       <Campo label="Função"          value={fn} />
                       <Campo label="Tipo Contrato"   value={contr[c.tipo_contrato ?? ''] ?? c.tipo_contrato ?? ''} />
@@ -2145,7 +2184,17 @@ ${c.observacoes ? `<div class="sec"><div class="sec-title">Observações</div><t
                       <Campo label="Salário Base"    value={c.salario ? `R$ ${Number(c.salario).toLocaleString('pt-BR',{minimumFractionDigits:2})}` : ''} />
                       <Campo label="CTPS Nº"         value={c.ctps_numero ?? ''} />
                       <Campo label="Série CTPS"      value={c.ctps_serie ?? ''} />
-                      {c.status === 'inativo' && <Campo label="Desligamento" value={fmtDate(c.data_demissao ?? c.data_encerramento ?? '')} />}
+                      {c.status === 'inativo' && <>
+                        <Campo label="Desligamento"   value={fmtDate(c.data_demissao ?? c.data_encerramento ?? '')} />
+                        <Campo label="Tipo Deslig."   value={tipoDeslig[(c as any).tipo_desligamento ?? ''] ?? (c as any).tipo_desligamento ?? ''} />
+                        <Campo label="Aviso Prévio"   value={fmtDate((c as any).data_aviso_previo ?? '')} />
+                      </>}
+                    </Secao>
+
+                    {/* Filiação — nova seção */}
+                    <Secao titulo="👨‍👩‍👦 Filiação">
+                      <Campo label="Nome do Pai" value={(c as any).nome_pai ?? ''} />
+                      <Campo label="Nome da Mãe" value={(c as any).nome_mae ?? ''} />
                     </Secao>
 
                     {/* Endereço */}
@@ -2451,6 +2500,52 @@ ${c.observacoes ? `<div class="sec"><div class="sec-title">Observações</div><t
                     <Field label="Observações" span={2}>
                       <Textarea value={form.observacoes} onChange={e => set('observacoes', e.target.value)} rows={2} placeholder="Observações gerais…" />
                     </Field>
+                  </Grid>
+                </Sec>
+
+                {/* ── Dados Complementares (Ficha de Registro) ─────────── */}
+                <Sec title="📋 Dados Complementares">
+                  <Grid cols={2}>
+                    <Field label="Nome do Pai">
+                      <Input value={form.nome_pai} onChange={e => set('nome_pai', e.target.value)} placeholder="Nome completo do pai" />
+                    </Field>
+                    <Field label="Nome da Mãe">
+                      <Input value={form.nome_mae} onChange={e => set('nome_mae', e.target.value)} placeholder="Nome completo da mãe" />
+                    </Field>
+                    <Field label="Cor / Raça">
+                      <Select value={form.cor_raca} onValueChange={v => set('cor_raca', v)}>
+                        <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="branca">Branca</SelectItem>
+                          <SelectItem value="preta">Preta</SelectItem>
+                          <SelectItem value="parda">Parda</SelectItem>
+                          <SelectItem value="amarela">Amarela</SelectItem>
+                          <SelectItem value="indigena">Indígena</SelectItem>
+                          <SelectItem value="nao_declarada">Não declarada</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                    <Field label="Documento Militar">
+                      <Input value={form.doc_militar} onChange={e => set('doc_militar', e.target.value)} placeholder="Nº do documento" />
+                    </Field>
+                    <Field label="Matrícula eSocial">
+                      <Input value={form.matricula_esocial} onChange={e => set('matricula_esocial', e.target.value)} placeholder="Ex: 11" />
+                    </Field>
+                    <Field label="Deficiência">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, height: 36 }}>
+                        <button type="button"
+                          onClick={() => { set('deficiencia', !form.deficiencia); if (form.deficiencia) set('tipo_deficiencia', '') }}
+                          style={{ position: 'relative', display: 'inline-flex', width: 44, height: 24, borderRadius: 12, border: 'none', cursor: 'pointer', background: form.deficiencia ? '#dc2626' : 'rgba(0,0,0,0.15)', transition: 'background 150ms', flexShrink: 0 }}>
+                          <span style={{ position: 'absolute', top: 3, left: form.deficiencia ? 22 : 3, width: 18, height: 18, borderRadius: '50%', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.2)', transition: 'left 150ms' }} />
+                        </button>
+                        <span style={{ fontSize: 12, color: 'var(--muted-foreground)' }}>{form.deficiencia ? 'Sim' : 'Não'}</span>
+                      </div>
+                    </Field>
+                    {form.deficiencia && (
+                      <Field label="Tipo de Deficiência" span={2}>
+                        <Input value={form.tipo_deficiencia} onChange={e => set('tipo_deficiencia', e.target.value)} placeholder="Ex: Visual, Auditiva, Física…" />
+                      </Field>
+                    )}
                   </Grid>
                 </Sec>
 

@@ -91,6 +91,17 @@ export interface Colaborador {
   status: 'ativo' | 'inativo' | 'afastado' | 'ferias'
   observacoes: string | null
   foto_url: string | null              // foto de perfil do colaborador
+  // ── Campos da Ficha de Registro (contabilidade) ─────────────────────────
+  nome_pai: string | null              // filiação — pai
+  nome_mae: string | null              // filiação — mãe
+  cor_raca: string | null              // 'branca'|'preta'|'parda'|'amarela'|'indigena'|'nao_declarada'
+  deficiencia: boolean                 // possui deficiência?
+  tipo_deficiencia: string | null      // descrição quando deficiencia=true
+  doc_militar: string | null           // documento militar
+  matricula_esocial: string | null     // matrícula eSocial / Registro Social
+  tipo_desligamento: string | null     // tipo do desligamento na rescisão
+  data_aviso_previo: string | null     // data do aviso prévio (YYYY-MM-DD)
+  horario_trabalho: Record<string, unknown>[] | null  // discriminação de horário JSONB
   vinculo_anterior_id: string | null   // id do cadastro anterior (recontratação)
   motivo_encerramento: string | null   // motivo de encerramento deste vínculo
   data_encerramento: string | null     // data de encerramento deste vínculo
