@@ -1019,7 +1019,7 @@ export default function Colaboradores() {
     const matchS = filterStatus === 'todos' || c.status === filterStatus
     const matchF = filterFuncao === 'todas' || (c as any).funcao_id === filterFuncao
     const matchC = filterContrato === 'todos' || (c.tipo_contrato ?? '').toLowerCase() === filterContrato
-    return matchT && matchS && matchF && matchC
+    return matchS && matchF && matchC
   })
 
   // ── helpers form ──────────────────────────────────────────────────────────
