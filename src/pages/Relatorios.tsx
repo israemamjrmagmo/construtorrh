@@ -369,8 +369,9 @@ export default function Relatorios() {
 
       // ── 4. Faltas por Obra ───────────────────────────────────────────────
       else if (relatAtivo === 'faltas-obra') {
+        // horas = snap_horas_normais + snap_horas_extras (total trabalhado)
         const q = supabase.from('ponto_lancamentos')
-          .select(`obra_id, snap_faltas, snap_horas, obras(nome)`)
+          .select(`obra_id, snap_faltas, snap_horas_normais, snap_horas_extras, obras(nome)`)
           .eq('mes_referencia', mesRef)
         if (filtroObra !== 'todos') q.eq('obra_id', filtroObra)
         const { data } = await q
@@ -378,15 +379,20 @@ export default function Relatorios() {
         for (const d of data ?? []) {
           const o = (d as Record<string, unknown>).obras as Record<string, unknown> | null
           const id = String((d as Record<string, unknown>).obra_id ?? 'sem')
-          if (!map[id]) map[id] = { obra: o ? String(o.nome) : '—', faltas: 0, horas: 0, colaboradores: 0 }
+          if (!map[id]) map[id] = { obra: o ? String(o.nome) : '—', faltas: 0, horas: 0, horas_extras: 0, colaboradores: 0 }
           map[id].faltas = (map[id].faltas as number) + Number((d as Record<string, unknown>).snap_faltas ?? 0)
-          map[id].horas = (map[id].horas as number) + Number((d as Record<string, unknown>).snap_horas ?? 0)
+          map[id].horas = (map[id].horas as number) + Number((d as Record<string, unknown>).snap_horas_normais ?? 0)
+          map[id].horas_extras = (map[id].horas_extras as number) + Number((d as Record<string, unknown>).snap_horas_extras ?? 0)
           ;(map[id].colaboradores as number)++
         }
-        resultado = Object.values(map).map(r => ({
-          ...r,
-          pct_ausencia: r.horas ? (((r.faltas as number) * 8 / ((r.horas as number) + (r.faltas as number) * 8)) * 100).toFixed(1) : '0.0'
-        })).sort((a, b) => (b.faltas as number) - (a.faltas as number))
+        resultado = Object.values(map).map(r => {
+          const horasTotal = (r.horas as number) + (r.horas_extras as number)
+          return {
+            ...r,
+            horas_total: horasTotal,
+            pct_ausencia: horasTotal ? (((r.faltas as number) * 8 / (horasTotal + (r.faltas as number) * 8)) * 100).toFixed(1) : '0.0'
+          }
+        }).sort((a, b) => (b.faltas as number) - (a.faltas as number))
       }
 
       // ── 5. Acidentes por Obra ────────────────────────────────────────────
@@ -415,9 +421,9 @@ export default function Relatorios() {
       // ── 6. Ficha Financeira Individual ───────────────────────────────────
       else if (relatAtivo === 'ficha-financeira') {
         if (filtroColaborador === 'todos') { toast.warning('Selecione um colaborador.'); setLoading(false); return }
-        // snap_bruto→snap_valor_total; snap_vt→snap_desconto_vt; snap_ad→snap_desconto_adiant; snap_premio→snap_valor_premio
+        // inclui horas normais + extras na ficha
         const { data: pl } = await supabase.from('ponto_lancamentos')
-          .select('mes_referencia, snap_valor_total, snap_liquido, snap_inss, snap_ir, snap_desconto_vt, snap_desconto_adiant, snap_valor_premio')
+          .select('mes_referencia, snap_valor_total, snap_liquido, snap_inss, snap_ir, snap_desconto_vt, snap_desconto_adiant, snap_valor_premio, snap_horas_normais, snap_horas_extras, snap_faltas')
           .eq('colaborador_id', filtroColaborador)
           .gte('mes_referencia', mesRefIni).lte('mes_referencia', mesRefFim)
           .order('mes_referencia')
@@ -435,11 +441,11 @@ export default function Relatorios() {
           .gte('competencia', mesRefIni).lte('competencia', mesRefFim)
 
         const meses: Record<string, Record<string, unknown>> = {}
-        const mk = (m: string) => { if (!meses[m]) meses[m] = { mes: m, bruto: 0, liquido: 0, inss: 0, ir: 0, vt_desc: 0, ad_desc: 0, premio: 0, adiantamentos: 0, vt_empresa: 0 }; return meses[m] }
-        for (const p of pl ?? []) { const r = mk(p.mes_referencia); r.bruto = Number(p.snap_valor_total ?? 0); r.liquido = Number(p.snap_liquido ?? 0); r.inss = Number(p.snap_inss ?? 0); r.ir = Number(p.snap_ir ?? 0); r.vt_desc = Number(p.snap_desconto_vt ?? 0); r.ad_desc = Number(p.snap_desconto_adiant ?? 0); r.premio = Number(p.snap_valor_premio ?? 0) }
+        const mk = (m: string) => { if (!meses[m]) meses[m] = { mes: m, bruto: 0, liquido: 0, inss: 0, ir: 0, vt_desc: 0, ad_desc: 0, premio: 0, adiantamentos: 0, vt_empresa: 0, horas_normais: 0, horas_extras: 0, faltas: 0 }; return meses[m] }
+        for (const p of pl ?? []) { const r = mk(p.mes_referencia); r.bruto = Number(p.snap_valor_total ?? 0); r.liquido = Number(p.snap_liquido ?? 0); r.inss = Number(p.snap_inss ?? 0); r.ir = Number(p.snap_ir ?? 0); r.vt_desc = Number(p.snap_desconto_vt ?? 0); r.ad_desc = Number(p.snap_desconto_adiant ?? 0); r.premio = Number(p.snap_valor_premio ?? 0); r.horas_normais = Number(p.snap_horas_normais ?? 0); r.horas_extras = Number(p.snap_horas_extras ?? 0); r.faltas = Number(p.snap_faltas ?? 0) }
         for (const a of ad ?? []) { const r = mk(a.competencia); r.adiantamentos = (r.adiantamentos as number) + Number(a.valor ?? 0) }
         for (const v of vt ?? []) { const r = mk(v.competencia); r.vt_empresa = (r.vt_empresa as number) + Number(v.valor_empresa ?? 0) }
-        resultado = Object.values(meses).sort((a, b) => String(a.mes).localeCompare(String(b.mes)))
+        resultado = Object.values(meses).map(r => ({ ...r, horas_total: (r.horas_normais as number) + (r.horas_extras as number) })).sort((a, b) => String(a.mes).localeCompare(String(b.mes)))
       }
 
       // ── 7. Histórico de Ponto ─────────────────────────────────────────────
@@ -622,23 +628,28 @@ export default function Relatorios() {
 
       // ── 16. Meta vs Realizado ─────────────────────────────────────────────
       else if (relatAtivo === 'meta-realizado') {
-        // snap_horas→snap_horas_normais
+        // horas realizadas = normais + extras (total real trabalhado)
         const q = supabase.from('ponto_lancamentos')
-          .select('colaborador_id, snap_horas_normais, colaboradores(nome, salario, funcoes(nome)), obras(nome)')
+          .select('colaborador_id, snap_horas_normais, snap_horas_extras, snap_faltas, colaboradores(nome, salario, funcoes(nome)), obras(nome)')
           .eq('mes_referencia', mesRef)
         if (filtroObra !== 'todos') q.eq('obra_id', filtroObra)
         const { data } = await q
         resultado = (data ?? []).map(d => {
           const colab = (d as Record<string, unknown>).colaboradores as Record<string, unknown> | null
           const func = colab ? (colab.funcoes as Record<string, unknown> | null) : null
-          const horas = Number((d as Record<string, unknown>).snap_horas_normais ?? 0)
+          const horasNormais = Number((d as Record<string, unknown>).snap_horas_normais ?? 0)
+          const horasExtras = Number((d as Record<string, unknown>).snap_horas_extras ?? 0)
+          const horas = horasNormais + horasExtras
           const salario = Number(colab?.salario ?? 0)
           const metaHoras = 220
           return {
             colaborador: colab ? String(colab.nome) : '—',
             funcao: func ? String(func.nome) : '—',
             meta_horas: metaHoras,
+            horas_normais: horasNormais,
+            horas_extras: horasExtras,
             horas_realizadas: horas,
+            faltas: Number((d as Record<string, unknown>).snap_faltas ?? 0),
             diferenca: horas - metaHoras,
             pct_atingido: metaHoras > 0 ? ((horas / metaHoras) * 100).toFixed(1) : '0.0',
             custo_hora: salario > 0 && horas > 0 ? salario / horas : 0,
@@ -648,21 +659,24 @@ export default function Relatorios() {
 
       // ── 17. Evolução de Horas ─────────────────────────────────────────────
       else if (relatAtivo === 'evolucao-horas') {
-        // snap_horas→snap_horas_normais
+        // horas = normais + extras (total real trabalhado por mês)
         const q = supabase.from('ponto_lancamentos')
-          .select('mes_referencia, snap_horas_normais, snap_faltas, obra_id')
+          .select('mes_referencia, snap_horas_normais, snap_horas_extras, snap_faltas, obra_id')
           .gte('mes_referencia', mesRefIni).lte('mes_referencia', mesRefFim)
         if (filtroObra !== 'todos') q.eq('obra_id', filtroObra)
         const { data } = await q
         const map: Record<string, Record<string, unknown>> = {}
         for (const d of data ?? []) {
           const m = String((d as Record<string, unknown>).mes_referencia)
-          if (!map[m]) map[m] = { mes: m, horas: 0, faltas: 0, colaboradores: 0 }
-          map[m].horas = (map[m].horas as number) + Number((d as Record<string, unknown>).snap_horas_normais ?? 0)
+          if (!map[m]) map[m] = { mes: m, horas_normais: 0, horas_extras: 0, horas: 0, faltas: 0, colaboradores: 0 }
+          map[m].horas_normais = (map[m].horas_normais as number) + Number((d as Record<string, unknown>).snap_horas_normais ?? 0)
+          map[m].horas_extras = (map[m].horas_extras as number) + Number((d as Record<string, unknown>).snap_horas_extras ?? 0)
+          map[m].horas = (map[m].horas_normais as number) + (map[m].horas_extras as number)
           map[m].faltas = (map[m].faltas as number) + Number((d as Record<string, unknown>).snap_faltas ?? 0)
           map[m].colaboradores = (map[m].colaboradores as number) + 1
         }
-        resultado = Object.values(map).sort((a, b) => String(a.mes).localeCompare(String(b.mes)))
+        // Recalcular horas totais após acumular
+        resultado = Object.values(map).map(r => ({ ...r, horas: (r.horas_normais as number) + (r.horas_extras as number) })).sort((a, b) => String(a.mes).localeCompare(String(b.mes)))
       }
 
       // ── 18. Painel de Acidentes ───────────────────────────────────────────
@@ -736,16 +750,16 @@ export default function Relatorios() {
 
       // ── 21. Resumo de Folha ───────────────────────────────────────────────
       else if (relatAtivo === 'resumo-folha') {
-        // snap_bruto→snap_valor_total; snap_vt→snap_desconto_vt; snap_ad→snap_desconto_adiant; snap_horas→snap_horas_normais
+        // horas = normais + extras; snap_vt→snap_desconto_vt; snap_ad→snap_desconto_adiant
         const q = supabase.from('ponto_lancamentos')
-          .select('snap_valor_total, snap_liquido, snap_inss, snap_ir, snap_desconto_vt, snap_desconto_adiant, snap_horas_normais, snap_faltas, mes_referencia, obras(nome)')
+          .select('snap_valor_total, snap_liquido, snap_inss, snap_ir, snap_desconto_vt, snap_desconto_adiant, snap_horas_normais, snap_horas_extras, snap_faltas, mes_referencia, obras(nome)')
           .gte('mes_referencia', mesRefIni).lte('mes_referencia', mesRefFim)
         if (filtroObra !== 'todos') q.eq('obra_id', filtroObra)
         const { data } = await q
         const map: Record<string, Record<string, unknown>> = {}
         for (const d of data ?? []) {
           const m = String((d as Record<string, unknown>).mes_referencia)
-          if (!map[m]) map[m] = { mes: m, bruto: 0, liquido: 0, inss: 0, ir: 0, vt: 0, ad: 0, horas: 0, faltas: 0, colaboradores: 0 }
+          if (!map[m]) map[m] = { mes: m, bruto: 0, liquido: 0, inss: 0, ir: 0, vt: 0, ad: 0, horas: 0, horas_extras: 0, faltas: 0, colaboradores: 0 }
           map[m].bruto = (map[m].bruto as number) + Number((d as Record<string, unknown>).snap_valor_total ?? 0)
           map[m].liquido = (map[m].liquido as number) + Number((d as Record<string, unknown>).snap_liquido ?? 0)
           map[m].inss = (map[m].inss as number) + Number((d as Record<string, unknown>).snap_inss ?? 0)
@@ -753,10 +767,11 @@ export default function Relatorios() {
           map[m].vt = (map[m].vt as number) + Number((d as Record<string, unknown>).snap_desconto_vt ?? 0)
           map[m].ad = (map[m].ad as number) + Number((d as Record<string, unknown>).snap_desconto_adiant ?? 0)
           map[m].horas = (map[m].horas as number) + Number((d as Record<string, unknown>).snap_horas_normais ?? 0)
+          map[m].horas_extras = (map[m].horas_extras as number) + Number((d as Record<string, unknown>).snap_horas_extras ?? 0)
           map[m].faltas = (map[m].faltas as number) + Number((d as Record<string, unknown>).snap_faltas ?? 0)
           map[m].colaboradores = (map[m].colaboradores as number) + 1
         }
-        resultado = Object.values(map).sort((a, b) => String(a.mes).localeCompare(String(b.mes)))
+        resultado = Object.values(map).map(r => ({ ...r, horas_total: (r.horas as number) + (r.horas_extras as number) })).sort((a, b) => String(a.mes).localeCompare(String(b.mes)))
       }
 
       // ── 22. Provisões Acumuladas ──────────────────────────────────────────
@@ -782,10 +797,10 @@ export default function Relatorios() {
 
       // ── 23. Adiantamentos em Aberto ───────────────────────────────────────
       else if (relatAtivo === 'adiantamentos-aberto') {
-        // No banco não existe 'quitado' — excluir 'cancelado'; incluir 'pendente' e 'aprovado'
+        // inclui 'pago' pois são parcelas ainda em aberto no ciclo real do banco
         const q = supabase.from('adiantamentos')
           .select('competencia, tipo, valor, desconto_parcelas, desconto_parcela_atual, observacoes, colaboradores(nome, chapa, funcoes(nome))')
-          .in('status', ['pendente', 'aprovado'])
+          .in('status', ['pendente', 'aprovado', 'pago'])
           .order('competencia', { ascending: false })
         if (filtroColaborador !== 'todos') q.eq('colaborador_id', filtroColaborador)
         const { data } = await q
@@ -807,9 +822,9 @@ export default function Relatorios() {
 
       // ── 24. Custo Hora Médio ──────────────────────────────────────────────
       else if (relatAtivo === 'custo-hora') {
-        // snap_bruto→snap_valor_total; snap_horas→snap_horas_normais
+        // horas_total = normais + extras (base real para custo/hora)
         const q = supabase.from('ponto_lancamentos')
-          .select('snap_valor_total, snap_horas_normais, colaboradores(funcao_id, funcoes(nome)), obra_id, obras(nome)')
+          .select('snap_valor_total, snap_horas_normais, snap_horas_extras, colaboradores(funcao_id, funcoes(nome)), obra_id, obras(nome)')
           .eq('mes_referencia', mesRef)
         if (filtroObra !== 'todos') q.eq('obra_id', filtroObra)
         const { data } = await q
@@ -818,9 +833,12 @@ export default function Relatorios() {
           const colab = (d as Record<string, unknown>).colaboradores as Record<string, unknown> | null
           const func = colab ? (colab.funcoes as Record<string, unknown> | null) : null
           const nome = func ? String(func.nome) : '(Sem Função)'
-          if (!map[nome]) map[nome] = { funcao: nome, bruto_total: 0, horas_total: 0, colaboradores: 0 }
+          if (!map[nome]) map[nome] = { funcao: nome, bruto_total: 0, horas_total: 0, horas_extras: 0, colaboradores: 0 }
           map[nome].bruto_total = (map[nome].bruto_total as number) + Number((d as Record<string, unknown>).snap_valor_total ?? 0)
-          map[nome].horas_total = (map[nome].horas_total as number) + Number((d as Record<string, unknown>).snap_horas_normais ?? 0)
+          const normais = Number((d as Record<string, unknown>).snap_horas_normais ?? 0)
+          const extras = Number((d as Record<string, unknown>).snap_horas_extras ?? 0)
+          map[nome].horas_total = (map[nome].horas_total as number) + normais + extras
+          map[nome].horas_extras = (map[nome].horas_extras as number) + extras
           map[nome].colaboradores = (map[nome].colaboradores as number) + 1
         }
         resultado = Object.values(map).map(r => ({
@@ -1413,7 +1431,9 @@ export default function Relatorios() {
                       <th className="px-4 py-3 text-left">Obra</th>
                       <th className="px-4 py-3 text-center">Colaboradores</th>
                       <th className="px-4 py-3 text-center">Total Faltas</th>
-                      <th className="px-4 py-3 text-center">Horas Trabalhadas</th>
+                      <th className="px-4 py-3 text-center">Hs Normais</th>
+                      <th className="px-4 py-3 text-center">Hs Extras</th>
+                      <th className="px-4 py-3 text-center font-bold">Hs Totais</th>
                       <th className="px-4 py-3 text-center">% Ausência</th>
                     </tr></thead>
                     <tbody>
@@ -1422,7 +1442,9 @@ export default function Relatorios() {
                           <td className="px-4 py-2.5 font-medium">{String(r.obra)}</td>
                           <td className="px-4 py-2.5 text-center">{String(r.colaboradores)}</td>
                           <td className="px-4 py-2.5 text-center font-semibold text-red-600">{String(r.faltas)}</td>
-                          <td className="px-4 py-2.5 text-center">{fmtNum(r.horas as number)}h</td>
+                          <td className="px-4 py-2.5 text-center text-slate-500">{fmtNum(r.horas as number)}h</td>
+                          <td className="px-4 py-2.5 text-center text-green-600">{fmtNum(r.horas_extras as number)}h</td>
+                          <td className="px-4 py-2.5 text-center font-bold text-[#1e3a5f]">{fmtNum(r.horas_total as number)}h</td>
                           <td className="px-4 py-2.5 text-center">
                             <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${Number(r.pct_ausencia) > 10 ? 'bg-red-100 text-red-700' : Number(r.pct_ausencia) > 5 ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}>
                               {String(r.pct_ausencia)}%
@@ -1469,6 +1491,9 @@ export default function Relatorios() {
                   <table className="w-full text-sm">
                     <thead><tr className="bg-[#1e3a5f] text-white text-xs">
                       <th className="px-4 py-3 text-left">Mês</th>
+                      <th className="px-4 py-3 text-center">Hs Normais</th>
+                      <th className="px-4 py-3 text-center">Hs Extras</th>
+                      <th className="px-4 py-3 text-center">Faltas</th>
                       <th className="px-4 py-3 text-right">Bruto</th>
                       <th className="px-4 py-3 text-right">INSS</th>
                       <th className="px-4 py-3 text-right">IR</th>
@@ -1476,12 +1501,14 @@ export default function Relatorios() {
                       <th className="px-4 py-3 text-right">Desc. AD</th>
                       <th className="px-4 py-3 text-right">Prêmio</th>
                       <th className="px-4 py-3 text-right font-bold">Líquido</th>
-                      <th className="px-4 py-3 text-right">Adiantamentos</th>
                     </tr></thead>
                     <tbody>
                       {dados.map((r, i) => (
                         <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
                           <td className="px-4 py-2.5 font-medium">{fmtMes(r.mes as string)}</td>
+                          <td className="px-4 py-2.5 text-center text-slate-600">{fmtNum(r.horas_normais as number)}h</td>
+                          <td className="px-4 py-2.5 text-center text-green-600 font-semibold">{fmtNum(r.horas_extras as number)}h</td>
+                          <td className="px-4 py-2.5 text-center text-red-600">{String(r.faltas)}</td>
                           <td className="px-4 py-2.5 text-right">{fmtCur(r.bruto as number)}</td>
                           <td className="px-4 py-2.5 text-right text-red-600">{fmtCur(r.inss as number)}</td>
                           <td className="px-4 py-2.5 text-right text-red-600">{fmtCur(r.ir as number)}</td>
@@ -1489,13 +1516,15 @@ export default function Relatorios() {
                           <td className="px-4 py-2.5 text-right text-red-600">{fmtCur(r.ad_desc as number)}</td>
                           <td className="px-4 py-2.5 text-right text-green-600">{fmtCur(r.premio as number)}</td>
                           <td className="px-4 py-2.5 text-right font-bold text-[#1e3a5f]">{fmtCur(r.liquido as number)}</td>
-                          <td className="px-4 py-2.5 text-right text-amber-600">{fmtCur(r.adiantamentos as number)}</td>
                         </tr>
                       ))}
                     </tbody>
                     <tfoot>
                       <tr className="bg-[#e8f0fe] font-bold text-[#1e3a5f] text-xs">
                         <td className="px-4 py-2.5">TOTAL</td>
+                        <td className="px-4 py-2.5 text-center">{fmtNum(dados.reduce((s, r) => s + (r.horas_normais as number), 0))}h</td>
+                        <td className="px-4 py-2.5 text-center">{fmtNum(dados.reduce((s, r) => s + (r.horas_extras as number), 0))}h</td>
+                        <td className="px-4 py-2.5 text-center">{dados.reduce((s, r) => s + (r.faltas as number), 0)}</td>
                         <td className="px-4 py-2.5 text-right">{fmtCur(dados.reduce((s, r) => s + (r.bruto as number), 0))}</td>
                         <td className="px-4 py-2.5 text-right">{fmtCur(dados.reduce((s, r) => s + (r.inss as number), 0))}</td>
                         <td className="px-4 py-2.5 text-right">{fmtCur(dados.reduce((s, r) => s + (r.ir as number), 0))}</td>
@@ -1503,7 +1532,6 @@ export default function Relatorios() {
                         <td className="px-4 py-2.5 text-right">{fmtCur(dados.reduce((s, r) => s + (r.ad_desc as number), 0))}</td>
                         <td className="px-4 py-2.5 text-right">{fmtCur(dados.reduce((s, r) => s + (r.premio as number), 0))}</td>
                         <td className="px-4 py-2.5 text-right">{fmtCur(dados.reduce((s, r) => s + (r.liquido as number), 0))}</td>
-                        <td className="px-4 py-2.5 text-right">{fmtCur(dados.reduce((s, r) => s + (r.adiantamentos as number), 0))}</td>
                       </tr>
                     </tfoot>
                   </table>
@@ -1766,7 +1794,9 @@ export default function Relatorios() {
                       <th className="px-4 py-3 text-right">Desc. VT</th>
                       <th className="px-4 py-3 text-right">Desc. AD</th>
                       <th className="px-4 py-3 text-right font-bold">Líquido</th>
-                      <th className="px-4 py-3 text-right">Horas</th>
+                      <th className="px-4 py-3 text-right">Hs Normais</th>
+                      <th className="px-4 py-3 text-right">Hs Extras</th>
+                      <th className="px-4 py-3 text-right font-bold">Hs Totais</th>
                       <th className="px-4 py-3 text-right">Faltas</th>
                     </tr></thead>
                     <tbody>
@@ -1780,7 +1810,9 @@ export default function Relatorios() {
                           <td className="px-4 py-2 text-right text-red-500">{fmtCur(r.vt as number)}</td>
                           <td className="px-4 py-2 text-right text-red-500">{fmtCur(r.ad as number)}</td>
                           <td className="px-4 py-2 text-right font-bold text-[#1e3a5f]">{fmtCur(r.liquido as number)}</td>
-                          <td className="px-4 py-2 text-right">{fmtNum(r.horas as number)}h</td>
+                          <td className="px-4 py-2 text-right text-slate-500">{fmtNum(r.horas as number)}h</td>
+                          <td className="px-4 py-2 text-right text-green-600">{fmtNum(r.horas_extras as number)}h</td>
+                          <td className="px-4 py-2 text-right font-bold text-[#1e3a5f]">{fmtNum(r.horas_total as number)}h</td>
                           <td className="px-4 py-2 text-right text-red-500">{String(r.faltas)}</td>
                         </tr>
                       ))}
@@ -1796,6 +1828,8 @@ export default function Relatorios() {
                         <td className="px-4 py-2.5 text-right">{fmtCur(dados.reduce((s, r) => s + (r.ad as number), 0))}</td>
                         <td className="px-4 py-2.5 text-right">{fmtCur(dados.reduce((s, r) => s + (r.liquido as number), 0))}</td>
                         <td className="px-4 py-2.5 text-right">{fmtNum(dados.reduce((s, r) => s + (r.horas as number), 0))}h</td>
+                        <td className="px-4 py-2.5 text-right">{fmtNum(dados.reduce((s, r) => s + (r.horas_extras as number), 0))}h</td>
+                        <td className="px-4 py-2.5 text-right">{fmtNum(dados.reduce((s, r) => s + (r.horas_total as number), 0))}h</td>
                         <td className="px-4 py-2.5 text-right">{dados.reduce((s, r) => s + (r.faltas as number), 0)}</td>
                       </tr>
                     </tfoot>
@@ -1887,7 +1921,9 @@ export default function Relatorios() {
                     <thead><tr className="bg-[#1e3a5f] text-white text-xs">
                       <th className="px-4 py-3 text-left">Função</th>
                       <th className="px-4 py-3 text-center">Colaboradores</th>
-                      <th className="px-4 py-3 text-right">Total Horas</th>
+                      <th className="px-4 py-3 text-right">Hs Normais</th>
+                      <th className="px-4 py-3 text-right">Hs Extras</th>
+                      <th className="px-4 py-3 text-right font-bold">Total Horas</th>
                       <th className="px-4 py-3 text-right">Custo Total</th>
                       <th className="px-4 py-3 text-right font-bold">Custo/Hora</th>
                     </tr></thead>
@@ -1896,7 +1932,9 @@ export default function Relatorios() {
                         <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
                           <td className="px-4 py-2.5 font-medium">{String(r.funcao)}</td>
                           <td className="px-4 py-2.5 text-center">{String(r.colaboradores)}</td>
-                          <td className="px-4 py-2.5 text-right">{fmtNum(r.horas_total as number)}h</td>
+                          <td className="px-4 py-2.5 text-right text-slate-500">{fmtNum((r.horas_total as number) - (r.horas_extras as number))}h</td>
+                          <td className="px-4 py-2.5 text-right text-green-600">{fmtNum(r.horas_extras as number)}h</td>
+                          <td className="px-4 py-2.5 text-right font-bold text-[#1e3a5f]">{fmtNum(r.horas_total as number)}h</td>
                           <td className="px-4 py-2.5 text-right">{fmtCur(r.bruto_total as number)}</td>
                           <td className="px-4 py-2.5 text-right font-bold text-[#1e3a5f]">{fmtCur(r.custo_hora as number)}</td>
                         </tr>
@@ -2198,8 +2236,8 @@ export default function Relatorios() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="bg-[#1e3a5f] text-white text-xs">
-                        {relatAtivo === 'meta-realizado' && ['Colaborador', 'Função', 'Meta (h)', 'Realizado (h)', 'Diferença (h)', '% Atingido', 'Custo/Hora'].map(h => <th key={h} className="px-4 py-3 text-left">{h}</th>)}
-                        {relatAtivo === 'evolucao-horas' && ['Mês', 'Colaboradores', 'Total Horas', 'Total Faltas', 'Média Horas/Colab'].map(h => <th key={h} className="px-4 py-3 text-left">{h}</th>)}
+                        {relatAtivo === 'meta-realizado' && ['Colaborador', 'Função', 'Meta (h)', 'Hs Normais', 'Hs Extras', 'Total Realizado', 'Faltas', 'Diferença (h)', '% Atingido', 'Custo/Hora'].map(h => <th key={h} className="px-4 py-3 text-left">{h}</th>)}
+                        {relatAtivo === 'evolucao-horas' && ['Mês', 'Colaboradores', 'Hs Normais', 'Hs Extras', 'Total Horas', 'Faltas', 'Média Hs/Colab'].map(h => <th key={h} className="px-4 py-3 text-left">{h}</th>)}
                         {relatAtivo === 'producao-funcao' && ['Função', 'Categoria', 'Qtd Total', 'Lançamentos', 'Média por Lanç.'].map(h => <th key={h} className="px-4 py-3 text-left">{h}</th>)}
                         {relatAtivo === 'producao-playbook' && ['Atividade', 'Unidade', 'Categoria', 'Preço Unit.', 'Qtd Total', 'Lançamentos', 'Total'].map(h => <th key={h} className="px-4 py-3 text-left">{h}</th>)}
                       </tr>
@@ -2211,7 +2249,10 @@ export default function Relatorios() {
                             <td key="c" className="px-4 py-2.5 font-medium">{String(r.colaborador)}</td>,
                             <td key="f" className="px-4 py-2.5">{String(r.funcao)}</td>,
                             <td key="m" className="px-4 py-2.5 text-right">{String(r.meta_horas)}h</td>,
-                            <td key="re" className="px-4 py-2.5 text-right">{fmtNum(r.horas_realizadas as number)}h</td>,
+                            <td key="hn" className="px-4 py-2.5 text-right text-slate-500">{fmtNum(r.horas_normais as number)}h</td>,
+                            <td key="he" className="px-4 py-2.5 text-right text-green-600 font-semibold">{fmtNum(r.horas_extras as number)}h</td>,
+                            <td key="re" className="px-4 py-2.5 text-right font-bold text-[#1e3a5f]">{fmtNum(r.horas_realizadas as number)}h</td>,
+                            <td key="fa" className="px-4 py-2.5 text-right text-red-600">{String(r.faltas)}</td>,
                             <td key="d" className={`px-4 py-2.5 text-right font-semibold ${Number(r.diferenca) >= 0 ? 'text-green-600' : 'text-red-600'}`}>{Number(r.diferenca) >= 0 ? '+' : ''}{fmtNum(r.diferenca as number)}h</td>,
                             <td key="p" className="px-4 py-2.5 text-right">
                               <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${Number(r.pct_atingido) >= 95 ? 'bg-green-100 text-green-700' : Number(r.pct_atingido) >= 80 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>{String(r.pct_atingido)}%</span>
@@ -2221,7 +2262,9 @@ export default function Relatorios() {
                           {relatAtivo === 'evolucao-horas' && [
                             <td key="m" className="px-4 py-2.5 font-medium">{fmtMes(r.mes as string)}</td>,
                             <td key="c" className="px-4 py-2.5">{String(r.colaboradores)}</td>,
-                            <td key="h" className="px-4 py-2.5 text-right font-semibold text-[#1e3a5f]">{fmtNum(r.horas as number)}h</td>,
+                            <td key="hn" className="px-4 py-2.5 text-right text-slate-500">{fmtNum(r.horas_normais as number)}h</td>,
+                            <td key="he" className="px-4 py-2.5 text-right text-green-600 font-semibold">{fmtNum(r.horas_extras as number)}h</td>,
+                            <td key="h" className="px-4 py-2.5 text-right font-bold text-[#1e3a5f]">{fmtNum(r.horas as number)}h</td>,
                             <td key="f" className="px-4 py-2.5 text-right text-red-600 font-semibold">{String(r.faltas)}</td>,
                             <td key="avg" className="px-4 py-2.5 text-right">{r.colaboradores ? fmtNum((r.horas as number) / (r.colaboradores as number)) : '0.00'}h</td>,
                           ]}
