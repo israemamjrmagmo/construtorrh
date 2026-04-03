@@ -92,3 +92,9 @@ create index if not exists idx_portal_docs_obra          on portal_documentos  (
 -- ✅ portal_producao    → +arquivo_url, +arquivo_nome, +arquivo_tipo, +descricao
 -- ✅ 8 índices de performance adicionados
 -- =============================================================================
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 8. TABELA: colaboradores — foto de perfil
+-- ─────────────────────────────────────────────────────────────────────────────
+alter table colaboradores
+  add column if not exists foto_url  text;

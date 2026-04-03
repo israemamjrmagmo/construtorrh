@@ -959,6 +959,39 @@ export default function Colaboradores() {
   // ficha lateral (painel direito estilo Ponto)
   const [colabFicha, setColabFicha] = useState<ColaboradorRow | null>(null)
   const [gerandoPDF, setGerandoPDF] = useState(false)
+  // foto de perfil
+  const [fotoUrl, setFotoUrl]         = useState<string>('')
+  const [uploadingFoto, setUploadingFoto] = useState(false)
+  const fotoInputRef = useRef<HTMLInputElement>(null)
+
+  async function uploadFoto(file: File): Promise<string | null> {
+    if (file.size > 5 * 1024 * 1024) { toast.error('Foto muito grande — máx. 5 MB'); return null }
+    if (!file.type.startsWith('image/')) { toast.error('Selecione uma imagem (JPG, PNG, WebP)'); return null }
+    const ext  = file.name.split('.').pop()?.toLowerCase() ?? 'jpg'
+    const path = `fotos/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
+    const { error } = await supabase.storage.from('ocorrencias-documentos').upload(path, file, { upsert: true, contentType: file.type })
+    if (error) { toast.error('Erro no upload da foto: ' + error.message); return null }
+    const { data } = supabase.storage.from('ocorrencias-documentos').getPublicUrl(path)
+    return data.publicUrl
+  }
+
+  async function handleFotoChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]; if (!file) return
+    setUploadingFoto(true)
+    const url = await uploadFoto(file)
+    setUploadingFoto(false)
+    if (fotoInputRef.current) fotoInputRef.current.value = ''
+    if (url) setFotoUrl(url)
+  }
+
+  // Salva foto diretamente no banco para o colaborador selecionado
+  async function salvarFotoColab(colabId: string, url: string) {
+    const { error } = await supabase.from('colaboradores').update({ foto_url: url }).eq('id', colabId)
+    if (error) { toast.error('Erro ao salvar foto'); return }
+    toast.success('Foto salva!')
+    fetchData()
+    setColabFicha(prev => prev ? { ...prev, foto_url: url } as any : prev)
+  }
 
   // ── Gera PDF da Ficha de Registro do colaborador selecionado ──────────────
   async function gerarFichaRegistroPDF(c: ColaboradorRow) {
@@ -1009,6 +1042,15 @@ ${gerarCabecalhoHTML(emp, {
   subtitulo: `Chapa: ${c.chapa ?? '—'} · Status: ${c.status?.toUpperCase() ?? '—'}`,
   periodo: `Emitida em ${new Date().toLocaleDateString('pt-BR')}`,
 })}
+
+${(c as any).foto_url ? `
+<div style="display:flex;justify-content:flex-end;margin-bottom:10px">
+  <div style="text-align:center">
+    <img src="${(c as any).foto_url}" alt="Foto" style="width:80px;height:100px;object-fit:cover;border:2px solid #d1d5db;border-radius:4px;display:block"/>
+    <div style="font-size:9px;color:#6b7280;margin-top:3px">Foto do colaborador</div>
+  </div>
+</div>` : ''}
+
 <div class="sec">
   <div class="sec-title">Identificação</div>
   <table>
@@ -1854,9 +1896,9 @@ ${c.observacoes ? `<div class="sec"><div class="sec-title">Observações</div><t
 
   // ── render: abas da página ────────────────────────────────────────────────
   return (
-    <div className="page-root">
+    <div style={{ display:'flex', flexDirection:'column', height:'calc(100vh - 56px)', overflow:'hidden', background:'var(--background)' }}>
       {/* Tabs de página */}
-      <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--border)', marginBottom: 24 }}>
+      <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--border)', flexShrink: 0, background:'var(--background)', paddingLeft: 24 }}>
         {(['colaboradores', 'funcoes'] as const).map(t => (
           <button key={t} onClick={() => setPageTab(t)} style={{
             padding: '10px 20px', fontSize: 14, fontWeight: 600, border: 'none', background: 'none', cursor: 'pointer',
@@ -1873,7 +1915,7 @@ ${c.observacoes ? `<div class="sec"><div class="sec-title">Observações</div><t
       {pageTab === 'funcoes' && <FuncoesTab />}
 
       {/* ── ABA COLABORADORES — layout estilo Ponto ─────────────────────── */}
-      <div style={{ display: pageTab === 'colaboradores' ? 'flex' : 'none', minHeight: 'calc(100vh - 120px)', overflow: 'hidden' }}>
+      <div style={{ display: pageTab === 'colaboradores' ? 'flex' : 'none', flex: 1, overflow: 'hidden', minHeight: 0 }}>
 
         {/* ── PAINEL ESQUERDO — busca + filtros + lista ── */}
         <div style={{ width: colabFicha ? 300 : 360, flexShrink: 0, borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', overflow: 'hidden', transition: 'width .2s' }}>
@@ -2003,13 +2045,45 @@ ${c.observacoes ? `<div class="sec"><div class="sec-title">Observações</div><t
                 {/* ── Header ── */}
                 <div style={{ padding: '14px 18px 12px', background: '#1e3a5f', color: '#fff', flexShrink: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 10, color: '#93c5fd', fontWeight: 700, marginBottom: 2, letterSpacing: '0.05em' }}>{c.chapa ?? '—'}</div>
-                      <div style={{ fontSize: 17, fontWeight: 800, marginBottom: 6, lineHeight: 1.2 }}>{c.nome}</div>
-                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                        <span style={{ background: 'rgba(255,255,255,.15)', borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 600 }}>🏷️ {fn}</span>
-                        <span style={{ background: statusBg, color: statusColor, borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 700 }}>{c.status?.toUpperCase()}</span>
-                        <span style={{ background: 'rgba(255,255,255,.10)', borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 600 }}>{contr[c.tipo_contrato ?? ''] ?? c.tipo_contrato?.toUpperCase() ?? '—'}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 0 }}>
+
+                      {/* ── Avatar / Foto ── */}
+                      <div style={{ position: 'relative', flexShrink: 0 }}>
+                        <div style={{ width: 64, height: 64, borderRadius: 12, overflow: 'hidden', border: '2px solid rgba(255,255,255,.3)', background: 'rgba(255,255,255,.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          {(c as any).foto_url ? (
+                            <img src={(c as any).foto_url} alt="Foto" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          ) : (
+                            <span style={{ fontSize: 22, fontWeight: 800, color: 'rgba(255,255,255,.7)' }}>
+                              {c.nome.split(' ').map((n: string) => n[0]).slice(0,2).join('').toUpperCase()}
+                            </span>
+                          )}
+                        </div>
+                        {/* Botão trocar foto */}
+                        <button
+                          onClick={() => fotoInputRef.current?.click()}
+                          disabled={uploadingFoto}
+                          title="Trocar foto de perfil"
+                          style={{ position: 'absolute', bottom: -6, right: -6, width: 22, height: 22, borderRadius: '50%', background: '#0ea5e9', border: '2px solid #1e3a5f', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11 }}>
+                          {uploadingFoto ? '…' : '📷'}
+                        </button>
+                        <input ref={fotoInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={async (e) => {
+                          const file = e.target.files?.[0]; if (!file) return
+                          setUploadingFoto(true)
+                          const url = await uploadFoto(file)
+                          setUploadingFoto(false)
+                          if (fotoInputRef.current) fotoInputRef.current.value = ''
+                          if (url) { await salvarFotoColab(c.id, url) }
+                        }} />
+                      </div>
+
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 10, color: '#93c5fd', fontWeight: 700, marginBottom: 2, letterSpacing: '0.05em' }}>{c.chapa ?? '—'}</div>
+                        <div style={{ fontSize: 17, fontWeight: 800, marginBottom: 6, lineHeight: 1.2 }}>{c.nome}</div>
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                          <span style={{ background: 'rgba(255,255,255,.15)', borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 600 }}>🏷️ {fn}</span>
+                          <span style={{ background: statusBg, color: statusColor, borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 700 }}>{c.status?.toUpperCase()}</span>
+                          <span style={{ background: 'rgba(255,255,255,.10)', borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 600 }}>{contr[c.tipo_contrato ?? ''] ?? c.tipo_contrato?.toUpperCase() ?? '—'}</span>
+                        </div>
                       </div>
                     </div>
                     <button onClick={() => setColabFicha(null)} style={{ background: 'rgba(255,255,255,.15)', border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer', padding: '5px 10px', fontSize: 12, flexShrink: 0, whiteSpace: 'nowrap' }}>✕ Fechar</button>
