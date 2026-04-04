@@ -85,7 +85,7 @@ ${htmlBody}
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
 interface Obra { id: string; nome: string; codigo?: string; status?: string }
-interface Colaborador { id: string; nome: string; chapa?: string }
+interface Colaborador { id: string; nome: string; chapa?: string; cpf?: string; funcao?: string; obra_id?: string }
 interface Funcao { id: string; nome: string; categoria?: string }
 
 // ─── Menu de relatórios ───────────────────────────────────────────────────────
@@ -102,6 +102,7 @@ const GRUPOS: RelatGroup[] = [
       { id: 'producao-obra', label: 'Produtividade por Obra', icon: <BarChart3 size={14}/>, desc: 'Produção por item do playbook com custo/unidade' },
       { id: 'faltas-obra', label: 'Faltas por Obra', icon: <Clock size={14}/>, desc: 'Total de faltas e % de ausência por obra/mês' },
       { id: 'acidentes-obra', label: 'Acidentes por Obra', icon: <AlertTriangle size={14}/>, desc: 'Total de acidentes, gravidade e CAT emitida' },
+      { id: 'historico-ponto-obra', label: 'Espelho de Ponto por Obra', icon: <FileText size={14}/>, desc: 'Ponto detalhado de todos os colaboradores da obra' },
     ]
   },
   {
@@ -226,11 +227,11 @@ export default function Relatorios() {
   useEffect(() => {
     Promise.all([
       supabase.from('obras').select('id,nome,codigo,status').order('nome'),
-      supabase.from('colaboradores').select('id,nome,chapa').eq('status', 'ativo').order('nome'),
+      supabase.from('colaboradores').select('id,nome,chapa,cpf,obra_id,funcoes(nome)').eq('status', 'ativo').order('nome'),
       supabase.from('funcoes').select('id,nome,categoria').order('nome'),
     ]).then(([obrasRes, colabRes, funcRes]) => {
       setObras(obrasRes.data ?? [])
-      setColaboradores(colabRes.data ?? [])
+      setColaboradores((colabRes.data ?? []).map((c: any) => ({ id:c.id, nome:c.nome, chapa:c.chapa, cpf:c.cpf, obra_id:c.obra_id, funcao:c.funcoes?.nome ?? '' })))
       setFuncoes(funcRes.data ?? [])
     })
   }, [])
@@ -441,7 +442,7 @@ export default function Relatorios() {
         resultado = Object.values(meses).map(r => ({ ...r, horas_total: (r.horas_normais as number) + (r.horas_extras as number) })).sort((a, b) => String(a.mes).localeCompare(String(b.mes)))
       }
 
-      // ── 7. Histórico de Ponto ─────────────────────────────────────────────
+      // ── 7. Histórico de Ponto (individual) ───────────────────────────────
       else if (relatAtivo === 'historico-ponto') {
         if (filtroColaborador === 'todos') { toast.warning('Selecione um colaborador.'); setLoading(false); return }
         const { data } = await supabase.from('registro_ponto')
@@ -451,6 +452,36 @@ export default function Relatorios() {
           .lte('data', filtroDataFim)
           .order('data')
         resultado = (data ?? []) as Record<string, unknown>[]
+      }
+
+      // ── 7b. Espelho de Ponto por Obra ────────────────────────────────────
+      else if (relatAtivo === 'historico-ponto-obra') {
+        if (filtroObra === 'todos') { toast.warning('Selecione uma obra.'); setLoading(false); return }
+        // Busca todos os registros de ponto da obra no período
+        const { data } = await supabase.from('registro_ponto')
+          .select('data, presente, falta, hora_entrada, saida_almoco, retorno_almoco, hora_saida, horas_trabalhadas, horas_extras, justificativa, status, colaborador_id, colaboradores(nome, chapa, cpf, funcoes(nome))')
+          .eq('obra_id', filtroObra)
+          .gte('data', filtroDataIni)
+          .lte('data', filtroDataFim)
+          .order('colaborador_id').order('data')
+
+        // Agrupa por colaborador
+        const mapaColab: Record<string, { nome:string; chapa:string; cpf:string; funcao:string; dias: Record<string,unknown>[] }> = {}
+        for (const r of (data ?? []) as any[]) {
+          const cid = String(r.colaborador_id ?? '')
+          const c = r.colaboradores as any
+          if (!mapaColab[cid]) {
+            mapaColab[cid] = {
+              nome:   c?.nome   ?? '—',
+              chapa:  c?.chapa  ?? '—',
+              cpf:    c?.cpf    ?? '—',
+              funcao: c?.funcoes?.nome ?? '—',
+              dias:   [],
+            }
+          }
+          mapaColab[cid].dias.push(r as Record<string,unknown>)
+        }
+        resultado = Object.values(mapaColab).sort((a,b) => a.nome.localeCompare(b.nome)) as unknown as Record<string,unknown>[]
       }
 
       // ── 8. Produção Individual ────────────────────────────────────────────
@@ -1126,10 +1157,175 @@ export default function Relatorios() {
         dados.map(r => [fmtMes(r.mes as string), fmtCur(r.bruto as number), fmtCur(r.inss as number), fmtCur(r.ir as number), fmtCur(r.vt_desc as number), fmtCur(r.ad_desc as number), fmtCur(r.premio as number), fmtCur(r.liquido as number), fmtCur(r.adiantamentos as number)])
       )
     } else if (relatAtivo === 'historico-ponto') {
-      htmlBody = tabelaHTML(
-        ['Data', 'Entrada', 'Saída', 'Hs Trabalhadas', 'Hs Extras', 'Presente', 'Falta', 'Justificativa'],
-        dados.map(r => [fmtDate(r.data as string), String(r.hora_entrada ?? '—'), String(r.hora_saida ?? '—'), fmtNum(r.horas_trabalhadas as number), fmtNum(r.horas_extras as number), r.presente ? '✔' : '', r.falta ? '✘' : '', String(r.justificativa ?? '')])
-      )
+      // PDF Espelho de Ponto Individual — cabeçalho legal completo
+      const colabInfo = colaboradores.find(c => c.id === filtroColaborador)
+      const colabNomePonto = colabInfo?.nome ?? '—'
+      const colabChapaPonto = colabInfo?.chapa ?? '—'
+      const colabCpfPonto = colabInfo?.cpf ?? '—'
+      const colabFuncaoPonto = colabInfo?.funcao ?? '—'
+      const periodoFmt = `${filtroDataIni.split('-').reverse().join('/')} a ${filtroDataFim.split('-').reverse().join('/')}`
+      const totalHoras = dados.reduce((s,r) => s + (Number(r.horas_trabalhadas)||0), 0)
+      const totalExtras = dados.reduce((s,r) => s + (Number(r.horas_extras)||0), 0)
+      const totalFaltas = dados.filter(r => r.falta).length
+      const totalPresentes = dados.filter(r => r.presente).length
+      const linhasTabela = dados.map((r,i) => {
+        const bg = r.falta ? '#fff1f2' : i%2===0 ? '#fff' : '#f8fafc'
+        const corSt = r.falta ? '#dc2626' : '#15803d'
+        const stLabel = r.falta ? 'FALTA' : r.presente ? 'Presente' : '—'
+        return `<tr style="background:${bg}">
+          <td>${fmtDate(r.data as string)}</td>
+          <td style="text-align:center">${String(r.hora_entrada ?? '—')}</td>
+          <td style="text-align:center">${String(r.saida_almoco ?? '—')}</td>
+          <td style="text-align:center">${String(r.retorno_almoco ?? '—')}</td>
+          <td style="text-align:center">${String(r.hora_saida ?? '—')}</td>
+          <td style="text-align:center;font-weight:700">${fmtNum(r.horas_trabalhadas as number)}h</td>
+          <td style="text-align:center;color:#15803d;font-weight:700">${fmtNum(r.horas_extras as number)}h</td>
+          <td style="text-align:center;color:${corSt};font-weight:700">${stLabel}</td>
+          <td style="font-size:10px;color:#6b7280">${String(r.justificativa ?? '')}</td>
+        </tr>`
+      }).join('')
+      htmlBody = `
+        <div style="border:1px solid #e2e8f0;border-radius:8px;padding:14px 16px;margin-bottom:16px;background:#f8fafc">
+          <table style="width:100%;border-collapse:collapse;font-size:12px">
+            <tr>
+              <td style="padding:3px 8px;color:#374151"><strong>Colaborador:</strong> ${colabNomePonto}</td>
+              <td style="padding:3px 8px;color:#374151"><strong>Chapa:</strong> ${colabChapaPonto}</td>
+              <td style="padding:3px 8px;color:#374151"><strong>CPF:</strong> ${colabCpfPonto}</td>
+            </tr>
+            <tr>
+              <td style="padding:3px 8px;color:#374151"><strong>Função:</strong> ${colabFuncaoPonto}</td>
+              <td style="padding:3px 8px;color:#374151"><strong>Período:</strong> ${periodoFmt}</td>
+              <td style="padding:3px 8px;color:#374151"><strong>Gerado em:</strong> ${new Date().toLocaleString('pt-BR')}</td>
+            </tr>
+          </table>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">
+          <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:10px;text-align:center">
+            <div style="font-size:20px;font-weight:800;color:#15803d">${totalPresentes}</div>
+            <div style="font-size:10px;color:#6b7280;text-transform:uppercase">Presenças</div>
+          </div>
+          <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:10px;text-align:center">
+            <div style="font-size:20px;font-weight:800;color:#dc2626">${totalFaltas}</div>
+            <div style="font-size:10px;color:#6b7280;text-transform:uppercase">Faltas</div>
+          </div>
+          <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:10px;text-align:center">
+            <div style="font-size:20px;font-weight:800;color:#1d4ed8">${fmtNum(totalHoras)}h</div>
+            <div style="font-size:10px;color:#6b7280;text-transform:uppercase">Hs Trabalhadas</div>
+          </div>
+          <div style="background:#f0fdf4;border:1px solid #a7f3d0;border-radius:6px;padding:10px;text-align:center">
+            <div style="font-size:20px;font-weight:800;color:#059669">${fmtNum(totalExtras)}h</div>
+            <div style="font-size:10px;color:#6b7280;text-transform:uppercase">Hs Extras</div>
+          </div>
+        </div>
+        <table style="width:100%;border-collapse:collapse;font-size:11px">
+          <thead><tr style="background:#1e3a5f;color:#fff">
+            <th style="padding:7px 8px;text-align:left">Data</th>
+            <th style="padding:7px 8px;text-align:center">Entrada</th>
+            <th style="padding:7px 8px;text-align:center">Saída Almoço</th>
+            <th style="padding:7px 8px;text-align:center">Retorno</th>
+            <th style="padding:7px 8px;text-align:center">Saída</th>
+            <th style="padding:7px 8px;text-align:center">Hs Trab.</th>
+            <th style="padding:7px 8px;text-align:center">Hs Extra</th>
+            <th style="padding:7px 8px;text-align:center">Status</th>
+            <th style="padding:7px 8px;text-align:left">Justificativa</th>
+          </tr></thead>
+          <tbody>${linhasTabela}</tbody>
+          <tfoot><tr style="background:#e8f0fe;font-weight:800;color:#1e3a5f">
+            <td colspan="5" style="padding:7px 8px">TOTAIS — ${dados.length} dias</td>
+            <td style="padding:7px 8px;text-align:center">${fmtNum(totalHoras)}h</td>
+            <td style="padding:7px 8px;text-align:center;color:#059669">${fmtNum(totalExtras)}h</td>
+            <td style="padding:7px 8px;text-align:center;color:#dc2626">${totalFaltas} falta(s)</td>
+            <td></td>
+          </tfoot>
+        </table>
+        <div style="margin-top:40px;display:grid;grid-template-columns:1fr 1fr;gap:30px">
+          <div style="text-align:center">
+            <div style="border-top:1px solid #374151;padding-top:6px;font-size:11px">${colabNomePonto} — Colaborador</div>
+          </div>
+          <div style="text-align:center">
+            <div style="border-top:1px solid #374151;padding-top:6px;font-size:11px">Responsável RH / Carimbo</div>
+          </div>
+        </div>`
+
+    } else if (relatAtivo === 'historico-ponto-obra') {
+      // PDF Espelho de Ponto por Obra — 1 bloco por colaborador
+      const obraNomePdf = obras.find(o => o.id === filtroObra)?.nome ?? '—'
+      const periodoFmtObra = `${filtroDataIni.split('-').reverse().join('/')} a ${filtroDataFim.split('-').reverse().join('/')}`
+      const blocosColabs = dados.map((c: any) => {
+        const dias = (c.dias ?? []) as Record<string,unknown>[]
+        const thObra = dias.reduce((s,r) => s + (Number(r.horas_trabalhadas)||0), 0)
+        const teObra = dias.reduce((s,r) => s + (Number(r.horas_extras)||0), 0)
+        const tfObra = dias.filter(r => r.falta).length
+        const tpObra = dias.filter(r => r.presente).length
+        const linhas = dias.map((r,i) => {
+          const bg = r.falta ? '#fff1f2' : i%2===0 ? '#fff' : '#f8fafc'
+          const corSt = r.falta ? '#dc2626' : '#15803d'
+          const stLabel = r.falta ? 'FALTA' : r.presente ? 'Presente' : '—'
+          return `<tr style="background:${bg}">
+            <td>${fmtDate(r.data as string)}</td>
+            <td style="text-align:center">${String(r.hora_entrada ?? '—')}</td>
+            <td style="text-align:center">${String(r.saida_almoco ?? '—')}</td>
+            <td style="text-align:center">${String(r.retorno_almoco ?? '—')}</td>
+            <td style="text-align:center">${String(r.hora_saida ?? '—')}</td>
+            <td style="text-align:center;font-weight:700">${fmtNum(r.horas_trabalhadas as number)}h</td>
+            <td style="text-align:center;color:#15803d;font-weight:700">${fmtNum(r.horas_extras as number)}h</td>
+            <td style="text-align:center;color:${corSt};font-weight:700">${stLabel}</td>
+            <td style="font-size:10px;color:#6b7280">${String(r.justificativa ?? '')}</td>
+          </tr>`
+        }).join('')
+        return `<div style="break-inside:avoid;margin-bottom:32px">
+          <div style="background:#1e3a5f;color:#fff;border-radius:6px 6px 0 0;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+            <div>
+              <div style="font-weight:800;font-size:14px">${c.nome}</div>
+              <div style="display:flex;gap:8px;margin-top:4px;flex-wrap:wrap;font-size:10px">
+                <span style="background:rgba(255,255,255,0.18);border-radius:4px;padding:1px 7px">Chapa: ${c.chapa}</span>
+                <span style="background:rgba(255,255,255,0.18);border-radius:4px;padding:1px 7px">CPF: ${c.cpf}</span>
+                <span style="background:rgba(255,255,255,0.18);border-radius:4px;padding:1px 7px">⚙️ ${c.funcao}</span>
+              </div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;font-size:10px;font-weight:700">
+              <span style="background:#dcfce7;color:#15803d;border-radius:4px;padding:3px 8px">✓ ${tpObra} pres.</span>
+              <span style="background:#fee2e2;color:#dc2626;border-radius:4px;padding:3px 8px">✗ ${tfObra} falta(s)</span>
+              <span style="background:#dbeafe;color:#1d4ed8;border-radius:4px;padding:3px 8px">${fmtNum(thObra)}h trab.</span>
+              ${teObra > 0 ? `<span style="background:#d1fae5;color:#059669;border-radius:4px;padding:3px 8px">+${fmtNum(teObra)}h extra</span>` : ''}
+            </div>
+          </div>
+          <table style="width:100%;border-collapse:collapse;font-size:11px">
+            <thead><tr style="background:#f1f5f9">
+              <th style="padding:5px 8px;text-align:left;border-bottom:2px solid #e2e8f0">Data</th>
+              <th style="padding:5px 8px;text-align:center;border-bottom:2px solid #e2e8f0">Entrada</th>
+              <th style="padding:5px 8px;text-align:center;border-bottom:2px solid #e2e8f0">Saída Alm.</th>
+              <th style="padding:5px 8px;text-align:center;border-bottom:2px solid #e2e8f0">Retorno</th>
+              <th style="padding:5px 8px;text-align:center;border-bottom:2px solid #e2e8f0">Saída</th>
+              <th style="padding:5px 8px;text-align:center;border-bottom:2px solid #e2e8f0">Hs Trab.</th>
+              <th style="padding:5px 8px;text-align:center;border-bottom:2px solid #e2e8f0">Hs Extra</th>
+              <th style="padding:5px 8px;text-align:center;border-bottom:2px solid #e2e8f0">Status</th>
+              <th style="padding:5px 8px;text-align:left;border-bottom:2px solid #e2e8f0">Justificativa</th>
+            </tr></thead>
+            <tbody>${linhas}</tbody>
+            <tfoot><tr style="background:#e8f0fe;font-weight:800;color:#1e3a5f">
+              <td colspan="5" style="padding:5px 8px">TOTAIS — ${dias.length} dias</td>
+              <td style="padding:5px 8px;text-align:center">${fmtNum(thObra)}h</td>
+              <td style="padding:5px 8px;text-align:center;color:#059669">${fmtNum(teObra)}h</td>
+              <td style="padding:5px 8px;text-align:center;color:#dc2626">${tfObra} falta(s)</td>
+              <td></td>
+            </tfoot>
+          </table>
+          <div style="margin-top:24px;display:grid;grid-template-columns:1fr 1fr;gap:24px">
+            <div style="text-align:center"><div style="border-top:1px solid #374151;padding-top:5px;font-size:10px">${c.nome} — Assinatura</div></div>
+            <div style="text-align:center"><div style="border-top:1px solid #374151;padding-top:5px;font-size:10px">Responsável RH / Carimbo</div></div>
+          </div>
+        </div>`
+      }).join('<div style="page-break-after:always"></div>')
+
+      htmlBody = `
+        <div style="border:1px solid #e2e8f0;border-radius:8px;padding:12px 16px;margin-bottom:16px;background:#f0f9ff">
+          <strong style="font-size:13px">Obra:</strong> ${obraNomePdf} &nbsp;|&nbsp;
+          <strong>Período:</strong> ${periodoFmtObra} &nbsp;|&nbsp;
+          <strong>Colaboradores:</strong> ${dados.length}
+        </div>
+        ${blocosColabs}`
+
     } else if (relatAtivo === 'ranking-producao') {
       htmlBody = kpiHTML([
         { val: String(dados.length), lbl: 'Colaboradores' },
@@ -1213,6 +1409,7 @@ export default function Relatorios() {
   const itemAtivo = GRUPOS.flatMap(g => g.items).find(i => i.id === relatAtivo)
 
   const isColabRequired = ['ficha-financeira', 'historico-ponto', 'producao-individual', 'ocorrencias-colab', 'custo-colab'].includes(relatAtivo)
+  const isObraRequired  = ['historico-ponto-obra'].includes(relatAtivo)
   // Todos os relatórios com filtro temporal usam o seletor de datas (exceto epis-vencidos e contratos-vencendo)
   const usaFiltroDatas = !['headcount-obra', 'headcount-funcao', 'epis-vencidos', 'contratos-vencendo', 'playbook-atividades'].includes(relatAtivo)
 
@@ -1304,12 +1501,12 @@ export default function Relatorios() {
           <FilterRow>
 
             {/* Filtro: Obra */}
-            {['headcount-obra','custo-obra','producao-obra','faltas-obra','acidentes-obra','producao-playbook','ranking-producao','evolucao-horas','painel-acidentes','resumo-folha','meta-realizado','custo-hora','playbook-atividades'].includes(relatAtivo) && (
-              <FieldWrap label="Obra">
+            {(['headcount-obra','custo-obra','producao-obra','faltas-obra','acidentes-obra','producao-playbook','ranking-producao','evolucao-horas','painel-acidentes','resumo-folha','meta-realizado','custo-hora','playbook-atividades','historico-ponto-obra'].includes(relatAtivo)) && (
+              <FieldWrap label={`Obra${isObraRequired ? ' *' : ''}`}>
                 <Select value={filtroObra} onValueChange={setFiltroObra}>
                   <SelectTrigger className="w-52 h-8 text-xs"><SelectValue placeholder="Todas as obras" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="todos">Todas as obras</SelectItem>
+                    {!isObraRequired && <SelectItem value="todos">Todas as obras</SelectItem>}
                     {obras.map(o => <SelectItem key={o.id} value={o.id}>{o.nome}</SelectItem>)}
                   </SelectContent>
                 </Select>
@@ -1707,6 +1904,82 @@ export default function Relatorios() {
                       </tr>
                     </tfoot>
                   </table>
+                </div>
+              )}
+
+              {/* ── Tabela: Espelho de Ponto por Obra ── */}
+              {relatAtivo === 'historico-ponto-obra' && (
+                <div>
+                  {(dados as any[]).map((c: any, ci: number) => {
+                    const dias = (c.dias ?? []) as Record<string,unknown>[]
+                    const thTotal = dias.reduce((s,r) => s + (Number(r.horas_trabalhadas)||0), 0)
+                    const teTotal = dias.reduce((s,r) => s + (Number(r.horas_extras)||0), 0)
+                    const tfTotal = dias.filter(r => r.falta).length
+                    return (
+                      <div key={ci} className="mb-6 border border-slate-200 rounded-xl overflow-hidden">
+                        {/* Header do colaborador */}
+                        <div className="bg-[#1e3a5f] text-white px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <div className="font-bold text-sm">{c.nome}</div>
+                            <div className="flex gap-2 mt-1 flex-wrap text-[11px]">
+                              <span className="bg-white/20 rounded px-2 py-0.5">Chapa: {c.chapa}</span>
+                              <span className="bg-white/20 rounded px-2 py-0.5">CPF: {c.cpf}</span>
+                              <span className="bg-white/20 rounded px-2 py-0.5">⚙️ {c.funcao}</span>
+                            </div>
+                          </div>
+                          <div className="flex gap-2 flex-wrap text-[11px] font-bold">
+                            <span className="bg-green-100 text-green-700 rounded px-2 py-1">✓ {dias.filter(r=>r.presente).length} pres.</span>
+                            <span className="bg-red-100 text-red-700 rounded px-2 py-1">✗ {tfTotal} falta(s)</span>
+                            <span className="bg-blue-100 text-blue-700 rounded px-2 py-1">{fmtNum(thTotal)}h trab.</span>
+                            {teTotal > 0 && <span className="bg-emerald-100 text-emerald-700 rounded px-2 py-1">+{fmtNum(teTotal)}h extra</span>}
+                          </div>
+                        </div>
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-xs">
+                            <thead><tr className="bg-slate-100 text-slate-600">
+                              <th className="px-3 py-2 text-left">Data</th>
+                              <th className="px-3 py-2 text-center">Entrada</th>
+                              <th className="px-3 py-2 text-center">S. Almoço</th>
+                              <th className="px-3 py-2 text-center">Retorno</th>
+                              <th className="px-3 py-2 text-center">Saída</th>
+                              <th className="px-3 py-2 text-center">Hs Trab.</th>
+                              <th className="px-3 py-2 text-center">Hs Extra</th>
+                              <th className="px-3 py-2 text-center">Status</th>
+                              <th className="px-3 py-2 text-left">Justificativa</th>
+                            </tr></thead>
+                            <tbody>
+                              {dias.map((r, di) => (
+                                <tr key={di} className={r.falta ? 'bg-red-50' : di%2===0 ? 'bg-white' : 'bg-slate-50'}>
+                                  <td className="px-3 py-1.5 font-medium">{fmtDate(r.data as string)}</td>
+                                  <td className="px-3 py-1.5 text-center text-slate-600">{String(r.hora_entrada ?? '—')}</td>
+                                  <td className="px-3 py-1.5 text-center text-slate-600">{String(r.saida_almoco ?? '—')}</td>
+                                  <td className="px-3 py-1.5 text-center text-slate-600">{String(r.retorno_almoco ?? '—')}</td>
+                                  <td className="px-3 py-1.5 text-center text-slate-600">{String(r.hora_saida ?? '—')}</td>
+                                  <td className="px-3 py-1.5 text-center font-semibold">{fmtNum(r.horas_trabalhadas as number)}h</td>
+                                  <td className="px-3 py-1.5 text-center text-green-600 font-semibold">{fmtNum(r.horas_extras as number)}h</td>
+                                  <td className="px-3 py-1.5 text-center">
+                                    {r.falta
+                                      ? <span className="bg-red-100 text-red-700 text-[10px] px-1.5 py-0.5 rounded-full">FALTA</span>
+                                      : <span className="bg-green-100 text-green-700 text-[10px] px-1.5 py-0.5 rounded-full">Presente</span>}
+                                  </td>
+                                  <td className="px-3 py-1.5 text-slate-400">{String(r.justificativa ?? '')}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                            <tfoot>
+                              <tr className="bg-[#e8f0fe] font-bold text-[#1e3a5f] text-xs">
+                                <td className="px-3 py-2" colSpan={5}>TOTAIS — {dias.length} dias</td>
+                                <td className="px-3 py-2 text-center">{fmtNum(thTotal)}h</td>
+                                <td className="px-3 py-2 text-center text-green-700">{fmtNum(teTotal)}h</td>
+                                <td className="px-3 py-2 text-center text-red-600">{tfTotal} falta(s)</td>
+                                <td></td>
+                              </tr>
+                            </tfoot>
+                          </table>
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
               )}
 
