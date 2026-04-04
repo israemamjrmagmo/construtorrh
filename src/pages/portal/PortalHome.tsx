@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react'
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { getPortalSession } from '@/hooks/usePortalAuth'
@@ -6,25 +6,33 @@ import PortalLayout from './PortalLayout'
 import {
   ClipboardList, AlertTriangle, UserPlus, ShieldCheck,
   HardHat, BookOpen, FolderOpen, FileImage, MessageSquare,
-  ChevronRight, Building2,
+  Building2,
 } from 'lucide-react'
 
 interface ObraInfo { id: string; nome: string; codigo?: string }
 
 export default function PortalHome() {
-  const nav     = useNavigate()
-  const session = getPortalSession()
+  const nav = useNavigate()
+
+  // ⚠️  useMemo garante referência estável — evita re-render / piscar
+  const session = useMemo(() => getPortalSession(), [])
+
   const [obras,      setObras]      = useState<ObraInfo[]>([])
   const [contadores, setContadores] = useState<Record<string, { ponto: number; ocorr: number }>>({})
   const [loading,    setLoading]    = useState(true)
-  const hoje = new Date().toISOString().slice(0, 10)
+
+  // Congela "hoje" para não mudar referência a cada render
+  const hoje = useRef(new Date().toISOString().slice(0, 10)).current
+
+  // IDs estáveis (string serializada como dep do callback)
+  const obrasIdsKey = useMemo(() => (session?.obras_ids ?? []).join(','), [session])
 
   const fetchData = useCallback(async () => {
     if (!session) { nav('/portal'); return }
-    setLoading(true)
     const ids = session.obras_ids
     if (!ids || ids.length === 0) { setLoading(false); return }
 
+    setLoading(true)
     const [{ data: obsData }, { data: pontosHoje }, { data: ocorrHoje }] = await Promise.all([
       supabase.from('obras').select('id,nome,codigo').in('id', ids).order('nome'),
       supabase.from('portal_ponto_diario').select('obra_id').in('obra_id', ids).eq('data', hoje),
@@ -39,8 +47,10 @@ export default function PortalHome() {
     ocorrHoje?.forEach( (r: any) => { if (cnt[r.obra_id]) cnt[r.obra_id].ocorr++ })
     setContadores(cnt)
     setLoading(false)
-  }, [session, hoje, nav])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [obrasIdsKey])   // só re-cria se as obras mudarem
 
+  // Roda apenas uma vez (obrasIdsKey não muda entre renders normais)
   useEffect(() => { fetchData() }, [fetchData])
 
   if (!session) return null
@@ -126,7 +136,11 @@ export default function PortalHome() {
                   background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12,
                   padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10,
                 }}>
-                  <div style={{ width: 36, height: 36, borderRadius: 10, background: 'linear-gradient(135deg,#1e3a5f,#1d4ed8)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <div style={{
+                    width: 36, height: 36, borderRadius: 10,
+                    background: 'linear-gradient(135deg,#1e3a5f,#1d4ed8)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                  }}>
                     <Building2 size={16} color="#fff" />
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -156,7 +170,7 @@ export default function PortalHome() {
         </div>
       )}
 
-      {/* ── Ações rápidas ── */}
+      {/* ── Menu rápido ── */}
       <div style={{ padding: '4px 16px 32px' }}>
         <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: '#9ca3af', marginBottom: 10 }}>
           Menu Rápido
