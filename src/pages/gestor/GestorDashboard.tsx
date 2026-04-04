@@ -48,8 +48,7 @@ export default function GestorDashboard() {
   const [ultimoClima,  setUltimoClima]  = useState<any>(null)
   const [atestados,    setAtestados]    = useState(0)
   const [acidentes,    setAcidentes]    = useState(0)
-  const [porFuncao,    setPorFuncao]    = useState<{ fn: string; qtd: number }[]>([])
-  const [porTipo,      setPorTipo]      = useState<{ tipo: string; qtd: number }[]>([])
+
 
   // ── Fetch tudo ──────────────────────────────────────────────────────────────
   const fetchTudo = useCallback(async () => {
@@ -155,18 +154,7 @@ export default function GestorDashboard() {
       setAtestados((atests as any)?.length ?? 0)
       setAcidentes((acids as any)?.length ?? 0)
 
-      // Por função — todos os ativos
-      const fnMap = new Map<string, number>()
-      ativosArr.forEach(c => {
-        const fn = (c.funcoes as any)?.nome ?? 'Sem função'
-        fnMap.set(fn, (fnMap.get(fn) ?? 0) + 1)
-      })
-      setPorFuncao(Array.from(fnMap.entries()).map(([fn, qtd]) => ({ fn, qtd })).sort((a, b) => b.qtd - a.qtd).slice(0, 8))
 
-      // Por tipo
-      const tpMap = new Map<string, number>()
-      ativosArr.forEach(c => { const t = c.tipo_contrato ?? 'clt'; tpMap.set(t, (tpMap.get(t) ?? 0) + 1) })
-      setPorTipo(Array.from(tpMap.entries()).map(([tipo, qtd]) => ({ tipo, qtd })))
 
     } finally {
       setLoading(false)
@@ -200,6 +188,22 @@ export default function GestorDashboard() {
   const producaoFiltrada = useMemo(() =>
     obras.reduce((s, o) => s + o.producao_total, 0),
   [obras])
+
+  // ── Equipe por função e tipo — REATIVAS ao filtro de obra ─────────────────
+  const porFuncao = useMemo(() => {
+    const m = new Map<string, number>()
+    ativos.forEach(c => {
+      const fn = (c.funcoes as any)?.nome ?? 'Sem função'
+      m.set(fn, (m.get(fn) ?? 0) + 1)
+    })
+    return Array.from(m.entries()).map(([fn, qtd]) => ({ fn, qtd })).sort((a, b) => b.qtd - a.qtd).slice(0, 8)
+  }, [ativos])
+
+  const porTipo = useMemo(() => {
+    const m = new Map<string, number>()
+    ativos.forEach(c => { const t = c.tipo_contrato ?? 'clt'; m.set(t, (m.get(t) ?? 0) + 1) })
+    return Array.from(m.entries()).map(([tipo, qtd]) => ({ tipo, qtd }))
+  }, [ativos])
 
   // ── Loading ──────────────────────────────────────────────────────────────────
   if (loading) {
@@ -376,7 +380,8 @@ export default function GestorDashboard() {
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
             {porFuncao.map((f, i) => {
-              const pct   = todosAtivos.length > 0 ? Math.round((f.qtd / todosAtivos.length) * 100) : 0
+              const total = ativos.length   // já filtrado pela obra selecionada
+              const pct   = total > 0 ? Math.round((f.qtd / total) * 100) : 0
               const cores = ['#2563eb','#16a34a','#b45309','#7c3aed','#0891b2','#dc2626','#059669','#c2410c']
               const cor   = cores[i % cores.length]
               return (
