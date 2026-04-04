@@ -77,9 +77,9 @@ export default function GestorLayout({ children }: GestorLayoutProps) {
     const hoje = new Date().toISOString().slice(0, 10)
     const [{ count: acidentes }, { count: atestados }] = await Promise.all([
       supabase.from('acidentes').select('id', { count: 'exact', head: true })
-        .gte('data_acidente', hoje),
+        .gte('data_ocorrencia', hoje),
       supabase.from('atestados').select('id', { count: 'exact', head: true })
-        .eq('status', 'pendente'),
+        .gte('data', hoje),
     ])
     setAlertas((acidentes ?? 0) + (atestados ?? 0))
   }, [])

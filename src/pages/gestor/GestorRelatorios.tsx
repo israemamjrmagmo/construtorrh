@@ -18,7 +18,7 @@ export default function GestorRelatorios() {
     try {
       if (tipo === 'presenca') {
         const { data } = await supabase.from('portal_ponto_diario')
-          .select('data, status, obra_id, colaborador_id, horas_trabalhadas, obras(nome), colaboradores(nome, chapa, funcoes(nome))')
+          .select('data, status, obra_id, colaborador_id, horas_extra, obras(nome), colaboradores(nome, chapa, funcoes(nome))')
           .gte('data', dtIni).lte('data', dtFim)
           .order('data', { ascending: false })
         setDados(data ?? [])
@@ -30,15 +30,15 @@ export default function GestorRelatorios() {
         setDados(data ?? [])
       } else if (tipo === 'atestados') {
         const { data } = await supabase.from('atestados')
-          .select('data_inicio, data_fim, status, dias_afastamento, cid, colaboradores(nome, chapa, obras(nome))')
-          .gte('data_inicio', dtIni).lte('data_inicio', dtFim)
-          .order('data_inicio', { ascending: false })
+          .select('data, tipo, dias_afastamento, com_afastamento, cid, colaboradores(nome, chapa, obras(nome))')
+          .gte('data', dtIni).lte('data', dtFim)
+          .order('data', { ascending: false })
         setDados(data ?? [])
       } else if (tipo === 'acidentes') {
         const { data } = await supabase.from('acidentes')
-          .select('data_acidente, gravidade, tipo_acidente, dias_afastamento, cat_emitida, colaboradores(nome, obras(nome))')
-          .gte('data_acidente', dtIni).lte('data_acidente', dtFim)
-          .order('data_acidente', { ascending: false })
+          .select('data_ocorrencia, gravidade, tipo, cat_emitida, colaboradores(nome, obras(nome))')
+          .gte('data_ocorrencia', dtIni).lte('data_ocorrencia', dtFim)
+          .order('data_ocorrencia', { ascending: false })
         setDados(data ?? [])
       } else if (tipo === 'clima') {
         const { data } = await supabase.from('obra_clima')
@@ -62,7 +62,7 @@ export default function GestorRelatorios() {
       dados.forEach((r: any) => rows.push([
         r.data, r.colaboradores?.nome ?? '—', r.colaboradores?.chapa ?? '—',
         r.colaboradores?.funcoes?.nome ?? '—', r.obras?.nome ?? '—',
-        r.status, r.horas_trabalhadas ?? ''
+        r.status, r.horas_extra ?? ''
       ]))
     } else if (tipo === 'producao') {
       rows.push(['Data', 'Colaborador', 'Obra', 'Serviço', 'Qtd', 'Unidade'])
@@ -71,16 +71,16 @@ export default function GestorRelatorios() {
         r.servico_descricao ?? '—', r.quantidade, r.unidade
       ]))
     } else if (tipo === 'atestados') {
-      rows.push(['Data Início', 'Data Fim', 'Colaborador', 'Obra', 'Dias', 'CID', 'Status'])
+      rows.push(['Data', 'Tipo', 'Colaborador', 'Obra', 'Dias Afastamento', 'Com Afastamento', 'CID'])
       dados.forEach((r: any) => rows.push([
-        r.data_inicio, r.data_fim ?? '', r.colaboradores?.nome ?? '—',
-        r.colaboradores?.obras?.nome ?? '—', r.dias_afastamento ?? '', r.cid ?? '', r.status
+        r.data, r.tipo ?? '—', r.colaboradores?.nome ?? '—',
+        r.colaboradores?.obras?.nome ?? '—', r.dias_afastamento ?? '', r.com_afastamento ? 'Sim' : 'Não', r.cid ?? ''
       ]))
     } else if (tipo === 'acidentes') {
-      rows.push(['Data', 'Colaborador', 'Obra', 'Tipo', 'Gravidade', 'Dias Afastamento', 'CAT'])
+      rows.push(['Data', 'Colaborador', 'Obra', 'Tipo', 'Gravidade', 'CAT'])
       dados.forEach((r: any) => rows.push([
-        r.data_acidente, r.colaboradores?.nome ?? '—', r.colaboradores?.obras?.nome ?? '—',
-        r.tipo_acidente ?? '—', r.gravidade, r.dias_afastamento ?? '', r.cat_emitida ? 'Sim' : 'Não'
+        r.data_ocorrencia, r.colaboradores?.nome ?? '—', r.colaboradores?.obras?.nome ?? '—',
+        r.tipo ?? '—', r.gravidade, r.cat_emitida ? 'Sim' : 'Não'
       ]))
     } else {
       rows.push(['Data', 'Obra', 'Condição', 'Choveu', 'Precipitação mm', 'Temp Máx', 'Temp Mín', 'Vento km/h', 'Impacto'])
@@ -179,7 +179,7 @@ export default function GestorRelatorios() {
                         color: r.status === 'presente' ? '#16a34a' : r.status === 'falta' ? '#dc2626' : '#b45309',
                       }}>{r.status}</span>
                     </td>
-                    <td style={{ padding: '8px 12px', textAlign: 'center', color: '#374151' }}>{r.horas_trabalhadas ?? '—'}</td>
+                    <td style={{ padding: '8px 12px', textAlign: 'center', color: '#374151' }}>{r.horas_extra ?? '—'}</td>
                   </tr>
                 ))}</tbody>
               </table>
@@ -201,6 +201,60 @@ export default function GestorRelatorios() {
                     <td style={{ padding: '8px 12px', color: '#64748b' }}>{r.unidade}</td>
                   </tr>
                 ))}</tbody>
+              </table>
+            )}
+            {tipo === 'atestados' && (
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead><tr style={{ background: '#f8fafc' }}>
+                  {['Data', 'Tipo', 'Colaborador', 'Chapa', 'Obra', 'Dias Afastam.', 'Afastamento', 'CID'].map(h => (
+                    <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 700, color: '#374151', borderBottom: '1px solid #e2e8f0' }}>{h}</th>
+                  ))}
+                </tr></thead>
+                <tbody>{dados.slice(0, 100).map((r: any, i) => (
+                  <tr key={i} style={{ borderTop: '1px solid #f1f5f9', background: i % 2 === 0 ? '#fff' : '#fafafa' }}>
+                    <td style={{ padding: '8px 12px', color: '#64748b' }}>{new Date(r.data + 'T12:00').toLocaleDateString('pt-BR')}</td>
+                    <td style={{ padding: '8px 12px' }}>
+                      <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700, background: '#f5f3ff', color: '#7c3aed' }}>{r.tipo ?? '—'}</span>
+                    </td>
+                    <td style={{ padding: '8px 12px', fontWeight: 600 }}>{r.colaboradores?.nome ?? '—'}</td>
+                    <td style={{ padding: '8px 12px', color: '#64748b', fontFamily: 'monospace' }}>{r.colaboradores?.chapa ?? '—'}</td>
+                    <td style={{ padding: '8px 12px' }}>{r.colaboradores?.obras?.nome ?? '—'}</td>
+                    <td style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 800, color: (r.dias_afastamento ?? 0) >= 3 ? '#dc2626' : '#374151' }}>
+                      {r.dias_afastamento ? `${r.dias_afastamento}d` : '—'}
+                    </td>
+                    <td style={{ padding: '8px 12px', textAlign: 'center', fontSize: 14 }}>{r.com_afastamento ? '✅' : '—'}</td>
+                    <td style={{ padding: '8px 12px' }}>
+                      {r.cid ? <span style={{ background: '#f1f5f9', borderRadius: 5, padding: '2px 7px', fontSize: 11, fontFamily: 'monospace', fontWeight: 700 }}>{r.cid}</span> : <span style={{ color: '#94a3b8' }}>—</span>}
+                    </td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            )}
+            {tipo === 'acidentes' && (
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead><tr style={{ background: '#f8fafc' }}>
+                  {['Data', 'Colaborador', 'Obra', 'Tipo', 'Gravidade', 'CAT Emitida'].map(h => (
+                    <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 700, color: '#374151', borderBottom: '1px solid #e2e8f0' }}>{h}</th>
+                  ))}
+                </tr></thead>
+                <tbody>{dados.slice(0, 100).map((r: any, i) => {
+                  const gravBg: Record<string,string> = { leve:'#fef3c7', moderado:'#fff7ed', grave:'#fee2e2', fatal:'#fca5a5' }
+                  const gravCor: Record<string,string> = { leve:'#b45309', moderado:'#ea580c', grave:'#dc2626', fatal:'#7f1d1d' }
+                  return (
+                    <tr key={i} style={{ borderTop: '1px solid #f1f5f9', background: i % 2 === 0 ? '#fff' : '#fafafa' }}>
+                      <td style={{ padding: '8px 12px', color: '#64748b' }}>{new Date(r.data_ocorrencia + 'T12:00').toLocaleDateString('pt-BR')}</td>
+                      <td style={{ padding: '8px 12px', fontWeight: 600 }}>{r.colaboradores?.nome ?? '—'}</td>
+                      <td style={{ padding: '8px 12px' }}>{r.colaboradores?.obras?.nome ?? '—'}</td>
+                      <td style={{ padding: '8px 12px' }}>{r.tipo ?? '—'}</td>
+                      <td style={{ padding: '8px 12px' }}>
+                        <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700, background: gravBg[r.gravidade] ?? '#f3f4f6', color: gravCor[r.gravidade] ?? '#6b7280' }}>
+                          {r.gravidade ?? '—'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '8px 12px', textAlign: 'center', fontSize: 14 }}>{r.cat_emitida ? '✅' : '❌'}</td>
+                    </tr>
+                  )
+                })}</tbody>
               </table>
             )}
             {tipo === 'clima' && (

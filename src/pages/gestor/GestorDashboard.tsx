@@ -101,10 +101,10 @@ export default function GestorDashboard() {
           .order('nome'),
         supabase.from('atestados')
           .select('id')
-          .eq('status', 'pendente'),
+          .gte('data', mesInicio),
         supabase.from('acidentes')
           .select('id')
-          .gte('data_acidente', mesInicio),
+          .gte('data_ocorrencia', mesInicio),
         supabase.from('obra_clima')
           .select('*')
           .gte('data', mesInicio)

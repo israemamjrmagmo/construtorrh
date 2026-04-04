@@ -6,7 +6,7 @@ import PortalLayout from './PortalLayout'
 import {
   ClipboardList, AlertTriangle, UserPlus, ShieldCheck,
   HardHat, BookOpen, FolderOpen, FileImage, MessageSquare,
-  Building2,
+  Building2, Clock,
 } from 'lucide-react'
 
 interface ObraInfo { id: string; nome: string; codigo?: string }
@@ -104,6 +104,11 @@ export default function PortalHome() {
       icon: <MessageSquare size={24} />, label: 'Mensagens',
       sub: 'Avisos do RH', to: '/portal/mensagens',
       cor: '#7c3aed', bg: '#f5f3ff', border: '#ddd6fe',
+    },
+    {
+      icon: <Clock size={24} />, label: 'Lançamentos',
+      sub: 'Ponto mensal', to: '/portal/lancamentos',
+      cor: '#ea580c', bg: '#fff7ed', border: '#fed7aa',
     },
   ]
 

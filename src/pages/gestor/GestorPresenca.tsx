@@ -12,7 +12,7 @@ interface ColabRow {
 
 interface PontoRow {
   colaborador_id: string; data: string; status: StatusPonto
-  horas_trabalhadas?: number; observacoes?: string; obra_id: string
+  horas_extra?: number; observacoes?: string; obra_id: string
 }
 
 const STATUS_CONFIG: Record<string, { label: string; cor: string; bg: string; emoji: string }> = {
@@ -72,7 +72,7 @@ export default function GestorPresenca() {
           .select('id, nome, chapa, tipo_contrato, obra_id, funcoes(nome), obras(nome, id)')
           .eq('status', 'ativo'),
         supabase.from('portal_ponto_diario')
-          .select('colaborador_id, data, status, horas_trabalhadas, observacoes, obra_id')
+          .select('colaborador_id, data, status, horas_extra, observacoes, obra_id')
           .gte('data', dataInicio)
           .lte('data', dataFim),
         supabase.from('obras').select('id, nome').neq('status', 'concluida').order('nome'),
@@ -328,7 +328,7 @@ export default function GestorPresenca() {
                             </span>
                           </td>
                           <td style={{ padding: '8px 12px', textAlign: 'center', color: '#64748b' }}>
-                            {pontosMap.get(c.id)?.get(data)?.horas_trabalhadas ?? '—'}h
+                            {pontosMap.get(c.id)?.get(data)?.horas_extra ?? '—'}h
                           </td>
                         </>
                       ) : diasRange.map(d => {

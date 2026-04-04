@@ -2178,7 +2178,7 @@ export default function Ponto() {
                                     <button
                                       onClick={()=>!lancBloq&&toggleFeriadoRemunerado(lanc.id,idx)}
                                       title={d.feriado_remunerado?'Feriado remunerado ativo (clique para desativar)':'Marcar como feriado remunerado (paga jornada normal)'}
-                                      style={{border:'none',background:'none',cursor:lancBloq?'not-allowed':'pointer',padding:'1px 3px',borderRadius:3,
+                                      style={{border:'none',cursor:lancBloq?'not-allowed':'pointer',padding:'1px 3px',borderRadius:3,
                                         background:d.feriado_remunerado?'#fef3c7':'transparent',
                                         color:d.feriado_remunerado?'#92400e':'#d1d5db',
                                         fontSize:11,fontWeight:700,opacity:lancBloq?0.5:1,marginLeft:2}}
