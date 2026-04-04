@@ -1301,6 +1301,7 @@ function TabRelatorio({ obras, colabs }: { obras: Obra[]; colabs: Colab[] }) {
   interface DiaRel {
     id?: string; data:string; status:string; he:number; hf:number; obs:string
     sincronizado:boolean; lancamento_portal:boolean; editavel:boolean; obra?:string
+    servico?:string
   }
   interface ColabRel  { nome:string; chapa:string; funcao:string; obra:string; dias:DiaRel[]; presentes:number; faltas:number; he:number; hf:number }
   interface ResultadoRel { periodo:string; registros:ColabRel[] }
@@ -1323,7 +1324,7 @@ function TabRelatorio({ obras, colabs }: { obras: Obra[]; colabs: Colab[] }) {
     // ── 1. Busca portal_ponto_diario ───────────────────────────────────────
     let qPortal = supabase
       .from('portal_ponto_diario')
-      .select('id,colaborador_id,obra_id,data,status,horas_extra,horas_falta,observacoes,sincronizado_em,colaboradores(nome,chapa,funcoes(nome)),obras(nome)')
+      .select('id,colaborador_id,obra_id,data,status,horas_extra,horas_falta,observacoes,sincronizado_em,servico_descricao,colaboradores(nome,chapa,funcoes(nome)),obras(nome)')
       .gte('data', inicio).lte('data', fim)
       .order('colaborador_id').order('data')
     if ((modo === 'colaborador'||modo==='lancamento') && colabId) qPortal = qPortal.eq('colaborador_id', colabId)
@@ -1370,7 +1371,7 @@ function TabRelatorio({ obras, colabs }: { obras: Obra[]; colabs: Colab[] }) {
         r.status==='presente'?'Presente':r.status==='atestado'?'Atestado':
         r.status==='feriado'?'Feriado':r.status==='falta_justificada'?'Falta Justif.':
         r.status==='producao'?'Produção': r.status??'—'
-      reg.dias.push({ id:r.id, data:r.data, status:statusLabel, he:heMin, hf:hfMin, obs:r.observacoes??'', sincronizado:!!r.sincronizado_em, lancamento_portal:true, editavel:false, obra:oLabel })
+      reg.dias.push({ id:r.id, data:r.data, status:statusLabel, he:heMin, hf:hfMin, obs:r.observacoes??'', sincronizado:!!r.sincronizado_em, lancamento_portal:true, editavel:false, obra:oLabel, servico:r.servico_descricao??'' })
       if (presente) reg.presentes++
       if (falta)    reg.faltas++
       reg.he += heMin; reg.hf += hfMin
@@ -1452,6 +1453,7 @@ function TabRelatorio({ obras, colabs }: { obras: Obra[]; colabs: Colab[] }) {
           <td style="padding:5px 8px;border-bottom:1px solid #e2e8f0;font-size:11px">${dtFmt}</td>
           ${isLanc ? `<td style="padding:5px 8px;border-bottom:1px solid #e2e8f0;font-size:11px">${(()=>{const obrasU=[...new Set(c.dias.map((x:any)=>x.obra||''))];const idx=obrasU.indexOf(d.obra||'');const pals=[{bg:'#eff6ff',fg:'#1d4ed8'},{bg:'#f0fdf4',fg:'#15803d'},{bg:'#faf5ff',fg:'#7c3aed'},{bg:'#fff7ed',fg:'#c2410c'},{bg:'#fef2f2',fg:'#b91c1c'},{bg:'#f0fdfa',fg:'#0f766e'}];const p=pals[idx%pals.length];return '<span style="background:'+p.bg+';color:'+p.fg+';font-weight:700;border-radius:4px;padding:1px 6px">'+( d.obra||'—')+'</span>'})()}</td>` : ''}
           <td style="padding:5px 8px;border-bottom:1px solid #e2e8f0;font-size:11px;font-weight:700;color:${corSt}">${d.status}</td>
+          <td style="padding:5px 8px;border-bottom:1px solid #e2e8f0;font-size:11px">${d.servico ? `<span style="background:#f0fdf4;color:#15803d;border-radius:4px;padding:1px 6px;font-weight:700">📋 ${d.servico}</span>` : '—'}</td>
           <td style="padding:5px 8px;border-bottom:1px solid #e2e8f0;font-size:11px;color:#15803d">${d.he?`+${minToHM(d.he)}`:''}</td>
           <td style="padding:5px 8px;border-bottom:1px solid #e2e8f0;font-size:11px;color:#dc2626">${d.hf?`-${minToHM(d.hf)}`:''}</td>
           <td style="padding:5px 8px;border-bottom:1px solid #e2e8f0;font-size:10px;color:#6b7280">${d.obs||'—'}</td>
@@ -1477,7 +1479,7 @@ function TabRelatorio({ obras, colabs }: { obras: Obra[]; colabs: Colab[] }) {
         </div>
         <table>
           <thead><tr>
-            <th>Data</th>${isLanc ? '<th>Obra</th>' : ''}<th>Status</th><th>H.Extra</th><th>H.Falta</th><th>Observação</th><th>Origem</th><th>Sincronizado</th>
+            <th>Data</th>${isLanc ? '<th>Obra</th>' : ''}<th>Status</th><th>Serviço</th><th>H.Extra</th><th>H.Falta</th><th>Observação</th><th>Origem</th><th>Sincronizado</th>
           </tr></thead>
           <tbody>${tabDias}</tbody>
           <tfoot><tr style="background:#f1f5f9;font-weight:700">
@@ -1768,7 +1770,7 @@ function TabRelatorio({ obras, colabs }: { obras: Obra[]; colabs: Colab[] }) {
                 <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
                   <thead>
                     <tr style={{ background:'var(--muted)' }}>
-                      {(modo==='lancamento'?['Data','Obra','Status','H.Extra','H.Falta','Observação','Origem','Sincronizado','Ações']:['Data','Status','H.Extra','H.Falta','Observação','Origem','Sincronizado','Ações']).map(h=>(
+                      {(modo==='lancamento'?['Data','Obra','Status','Serviço','H.Extra','H.Falta','Observação','Origem','Sincronizado','Ações']:['Data','Status','Serviço','H.Extra','H.Falta','Observação','Origem','Sincronizado','Ações']).map(h=>(
                         <th key={h} style={{ padding:'7px 10px', textAlign:'left', fontWeight:700, fontSize:11, color:'var(--muted-foreground)', borderBottom:'2px solid var(--border)', whiteSpace:'nowrap' }}>{h}</th>
                       ))}
                     </tr>
@@ -1797,6 +1799,13 @@ function TabRelatorio({ obras, colabs }: { obras: Obra[]; colabs: Colab[] }) {
                             </td>
                           })()}
                           <td style={{ padding:'6px 10px', fontWeight:700, color:corSt, whiteSpace:'nowrap' }}>{d.status}</td>
+                          <td style={{ padding:'4px 8px', maxWidth:160, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                            {d.servico
+                              ? <span style={{ background:'#f0fdf4', color:'#15803d', borderRadius:5, padding:'2px 7px', fontSize:11, fontWeight:700, display:'inline-flex', alignItems:'center', gap:4 }}
+                                  title={d.servico}>📋 {d.servico}</span>
+                              : <span style={{ color:'var(--muted-foreground)', fontSize:11 }}>—</span>
+                            }
+                          </td>
                           <td style={{ padding:'6px 10px', color:'#15803d', fontWeight:600 }}>{d.he?`+${minToHM(d.he)}`:'—'}</td>
                           <td style={{ padding:'6px 10px', color:'#dc2626', fontWeight:600 }}>{d.hf?`-${minToHM(d.hf)}`:'—'}</td>
                           <td style={{ padding:'6px 10px', fontSize:11, color:'var(--muted-foreground)', maxWidth:180, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{d.obs||'—'}</td>
