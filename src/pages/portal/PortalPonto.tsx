@@ -3,7 +3,10 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { getPortalSession } from '@/hooks/usePortalAuth'
 import PortalLayout from './PortalLayout'
-import { ChevronLeft, ChevronRight, Check, X, Clock, Minus, Plus, Save, Loader2, FileText, UserPlus, BarChart2, Trash2 } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Check, X, Clock, Minus, Plus, Save, Loader2, FileText, UserPlus, BarChart2, Trash2, BookOpen, Search } from 'lucide-react'
+
+// Tipo para item do playbook
+interface PlaybookItem { id: string; descricao: string; unidade: string; categoria?: string | null }
 
 // ── Tipos ────────────────────────────────────────────────────────────────────
 type StatusPonto = 'presente' | 'falta' | 'meio_periodo' | 'falta_justificada' | 'producao'
@@ -13,6 +16,8 @@ interface PontoRow {
   id?: string; colaborador_id: string; data: string; status: StatusPonto
   horas_trabalhadas?: number; horas_extra?: number; horas_falta?: number; observacoes?: string
   obra_id?: string
+  playbook_item_id?: string | null
+  servico_descricao?: string | null
 }
 
 const STATUS_CONFIG: Record<StatusPonto, { label: string; cor: string; bg: string; icon: React.ReactNode }> = {
@@ -71,9 +76,14 @@ export default function PortalPonto() {
   const [savingRel,   setSavingRel]   = useState(false)
 
   // tela de conferência antes de salvar
-  interface ConfPonto { colabId:string; nome:string; chapa?:string; funcao?:string; status:StatusPonto; he:number; hf:number; obs:string }
+  interface ConfPonto { colabId:string; nome:string; chapa?:string; funcao?:string; status:StatusPonto; he:number; hf:number; obs:string; playbookItemId:string; playbookDesc:string }
   const [pendConf, setPendConf]   = useState<ConfPonto | null>(null)
   const [confSaving, setConfSaving] = useState(false)
+
+  // Playbook da obra (carregado lazy ao abrir o modal)
+  const [playbookItens, setPlaybookItens] = useState<PlaybookItem[]>([])
+  const [playbookLoading, setPlaybookLoading] = useState(false)
+  const [playbookBusca, setPlaybookBusca] = useState('')
 
   // ── Conflito de obra ───────────────────────────────────────────────────────
   // Guarda: colabId → obra_id já lançada no dia (de OUTRA obra)
@@ -185,15 +195,44 @@ export default function PortalPonto() {
     setExcluindo(false)
   }
 
+  // ── Carrega playbook da obra (lazy, 1x por obraId) ────────────────────────
+  const fetchPlaybook = useCallback(async (oid: string) => {
+    if (!oid || playbookItens.length > 0) return   // já carregado
+    setPlaybookLoading(true)
+    // itens da obra específica
+    const { data: esp } = await supabase
+      .from('playbook_itens')
+      .select('id,descricao,unidade,categoria')
+      .eq('obra_id', oid).eq('ativo', true)
+      .order('categoria', { nullsFirst: false }).order('descricao')
+    // itens globais
+    const { data: glob } = await supabase
+      .from('playbook_itens')
+      .select('id,descricao,unidade,categoria')
+      .is('obra_id', null).eq('ativo', true)
+      .order('categoria', { nullsFirst: false }).order('descricao')
+    const espArr  = (esp  ?? []) as PlaybookItem[]
+    const globArr = (glob ?? []) as PlaybookItem[]
+    const espIdx  = new Set(espArr.map(i => i.descricao.trim().toLowerCase()))
+    const merged  = [...espArr, ...globArr.filter(i => !espIdx.has(i.descricao.trim().toLowerCase()))]
+    merged.sort((a, b) => (a.categoria ?? 'Geral').localeCompare(b.categoria ?? 'Geral') || a.descricao.localeCompare(b.descricao))
+    setPlaybookItens(merged)
+    setPlaybookLoading(false)
+  }, [playbookItens.length])
+
   // tela de conferência: usuário clica no status → abre conferência → confirma → salva
   function abrirConferencia(c: ColabRow, status: StatusPonto) {
     const atual = pontos[c.id]
+    setPlaybookBusca('')
+    fetchPlaybook(obraId)
     setPendConf({
       colabId: c.id, nome: c.nome, chapa: c.chapa, funcao: c.funcao,
       status,
-      he: atual?.horas_extra  ?? 0,
-      hf: atual?.horas_falta  ?? 0,
-      obs: atual?.observacoes ?? '',
+      he: atual?.horas_extra       ?? 0,
+      hf: atual?.horas_falta       ?? 0,
+      obs: atual?.observacoes      ?? '',
+      playbookItemId: atual?.playbook_item_id ?? '',
+      playbookDesc:   atual?.servico_descricao ?? '',
     })
   }
 
@@ -201,10 +240,12 @@ export default function PortalPonto() {
     if (!pendConf) return
     setConfSaving(true)
     await salvarPonto(pendConf.colabId, {
-      status:      pendConf.status,
-      horas_extra: pendConf.he,
-      horas_falta: pendConf.hf,
-      observacoes: pendConf.obs,
+      status:             pendConf.status,
+      horas_extra:        pendConf.he,
+      horas_falta:        pendConf.hf,
+      observacoes:        pendConf.obs,
+      playbook_item_id:   pendConf.playbookItemId  || null,
+      servico_descricao:  pendConf.playbookDesc    || null,
     })
     setConfSaving(false)
     setPendConf(null)
@@ -680,8 +721,13 @@ export default function PortalPonto() {
                   </div>
                 )}
 
-                {p && !isEdit && (p.horas_extra || p.horas_falta || p.observacoes) && (
+                {p && !isEdit && (p.horas_extra || p.horas_falta || p.observacoes || p.servico_descricao) && (
                   <div style={{ padding:'0 14px 12px', display:'flex', gap:6, flexWrap:'wrap' }}>
+                    {p.servico_descricao && (
+                      <span style={{ fontSize:11, background:'#f0fdf4', color:'#15803d', borderRadius:6, padding:'2px 8px', fontWeight:700, display:'flex', alignItems:'center', gap:4, border:'1px solid #bbf7d0' }}>
+                        <BookOpen size={10}/> {p.servico_descricao}
+                      </span>
+                    )}
                     {!!p.horas_extra && <span style={{ fontSize:11, background:'#dbeafe', color:'#1d4ed8', borderRadius:6, padding:'2px 8px', fontWeight:600 }}>+{p.horas_extra}h extra</span>}
                     {!!p.horas_falta && <span style={{ fontSize:11, background:'#fee2e2', color:'#dc2626', borderRadius:6, padding:'2px 8px', fontWeight:600 }}>-{p.horas_falta}h falta</span>}
                     {p.observacoes && <span style={{ fontSize:11, color:'#6b7280', fontStyle:'italic' }}>{p.observacoes}</span>}
@@ -1259,6 +1305,105 @@ export default function PortalPonto() {
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+
+            {/* ── Seletor de serviço do Playbook ── */}
+            {(pendConf.status === 'presente' || pendConf.status === 'producao' || pendConf.status === 'meio_periodo') && (
+              <div style={{ marginBottom:14 }}>
+                <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:8 }}>
+                  <BookOpen size={13} color="#059669"/>
+                  <label style={{ fontSize:11, fontWeight:700, color:'#374151', textTransform:'uppercase', letterSpacing:'0.05em' }}>
+                    Serviço do dia <span style={{ color:'#94a3b8', fontWeight:400, textTransform:'none' }}>(opcional)</span>
+                  </label>
+                </div>
+
+                {/* Selecionado atual */}
+                {pendConf.playbookItemId && (
+                  <div style={{ display:'flex', alignItems:'center', gap:8, background:'#f0fdf4', border:'2px solid #34d399', borderRadius:10, padding:'8px 12px', marginBottom:8 }}>
+                    <BookOpen size={14} color="#059669"/>
+                    <span style={{ flex:1, fontSize:13, fontWeight:700, color:'#15803d' }}>{pendConf.playbookDesc}</span>
+                    <button onClick={() => setPendConf(p => p ? { ...p, playbookItemId:'', playbookDesc:'' } : p)}
+                      style={{ background:'none', border:'none', cursor:'pointer', color:'#dc2626', fontSize:16, lineHeight:1, padding:'0 2px' }}>✕</button>
+                  </div>
+                )}
+
+                {/* Campo de busca */}
+                <div style={{ position:'relative', marginBottom:6 }}>
+                  <Search size={13} style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', color:'#9ca3af', pointerEvents:'none' }}/>
+                  <input
+                    type="text"
+                    placeholder={playbookLoading ? 'Carregando serviços…' : 'Buscar serviço do playbook…'}
+                    value={playbookBusca}
+                    onChange={e => setPlaybookBusca(e.target.value)}
+                    disabled={playbookLoading}
+                    style={{ width:'100%', height:38, border:'1.5px solid #e2e8f0', borderRadius:9, padding:'0 32px 0 30px', fontSize:12, background:'#fafafa', boxSizing:'border-box', outline:'none' }}
+                  />
+                  {playbookBusca && (
+                    <button onClick={() => setPlaybookBusca('')} style={{ position:'absolute', right:8, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', cursor:'pointer', color:'#9ca3af', fontSize:14, padding:'0 2px' }}>✕</button>
+                  )}
+                </div>
+
+                {/* Lista de itens */}
+                {!playbookLoading && (
+                  <div style={{ maxHeight:180, overflowY:'auto', border:'1.5px solid #e2e8f0', borderRadius:10, background:'#fff' }}>
+                    {(() => {
+                      const q = playbookBusca.trim().toLowerCase()
+                      const filtrados = playbookItens.filter(i =>
+                        !q ||
+                        i.descricao.toLowerCase().includes(q) ||
+                        (i.categoria ?? '').toLowerCase().includes(q)
+                      )
+                      if (filtrados.length === 0) return (
+                        <div style={{ padding:'16px', textAlign:'center', color:'#9ca3af', fontSize:12 }}>
+                          {q ? `Nenhum serviço encontrado para "${playbookBusca}"` : 'Nenhum serviço cadastrado'}
+                        </div>
+                      )
+                      let lastCat = ''
+                      return filtrados.map(item => {
+                        const catLabel = item.categoria?.trim() || 'Geral'
+                        const catHeader = catLabel !== lastCat ? (lastCat = catLabel, (
+                          <div key={`cat-${catLabel}`} style={{ padding:'5px 12px 3px', fontSize:9, fontWeight:800, color:'#6b7280', textTransform:'uppercase', letterSpacing:'0.07em', background:'#f8fafc', borderBottom:'1px solid #f1f5f9' }}>
+                            {catLabel}
+                          </div>
+                        )) : null
+                        const isSel = pendConf.playbookItemId === item.id
+                        return (
+                          <React.Fragment key={item.id}>
+                            {catHeader}
+                            <div
+                              onClick={() => {
+                                setPendConf(p => p ? { ...p, playbookItemId: isSel ? '' : item.id, playbookDesc: isSel ? '' : item.descricao } : p)
+                                if (!isSel) setPlaybookBusca('')
+                              }}
+                              style={{
+                                padding:'9px 14px', display:'flex', alignItems:'center', justifyContent:'space-between',
+                                cursor:'pointer', borderBottom:'1px solid #f1f5f9',
+                                background: isSel ? '#f0fdf4' : '#fff',
+                                borderLeft: isSel ? '3px solid #34d399' : '3px solid transparent',
+                                transition:'all 0.12s',
+                              }}
+                            >
+                              <div style={{ flex:1 }}>
+                                <div style={{ fontSize:12, fontWeight: isSel ? 700 : 500, color: isSel ? '#15803d' : '#1e293b' }}>
+                                  {item.descricao}
+                                </div>
+                                <div style={{ fontSize:10, color:'#94a3b8', marginTop:1 }}>{item.unidade}</div>
+                              </div>
+                              {isSel && <Check size={14} color="#059669"/>}
+                            </div>
+                          </React.Fragment>
+                        )
+                      })
+                    })()}
+                  </div>
+                )}
+
+                {playbookLoading && (
+                  <div style={{ padding:'12px', textAlign:'center', color:'#94a3b8', fontSize:12, display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
+                    <Loader2 size={13} style={{ animation:'spin 1s linear infinite' }}/> Carregando playbook…
+                  </div>
+                )}
               </div>
             )}
 

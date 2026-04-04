@@ -366,6 +366,8 @@ export default function Ponto() {
     id:string; colaborador_id:string; colab_nome:string; data:string; obra_id:string
     status:string; horas_extra:number; horas_falta:number; observacoes:string|null
     sincronizado_em:string|null
+    servico_descricao:string|null
+    playbook_item_id:string|null
   }[]>([])
   const [loadingPortal, setLoadingPortal]           = useState(false)
   const [importandoPortal, setImportandoPortal]     = useState<Set<string>>(new Set())
@@ -482,7 +484,7 @@ export default function Ponto() {
     setLoadingPortal(true)
     const q = supabase
       .from('portal_ponto_diario')
-      .select('id,colaborador_id,data,status,horas_extra,horas_falta,observacoes,sincronizado_em,colaboradores(nome),obra_id')
+      .select('id,colaborador_id,data,status,horas_extra,horas_falta,observacoes,sincronizado_em,colaboradores(nome),obra_id,servico_descricao,playbook_item_id')
       .gte('data', inicio)
       .lte('data', fim)
       .order('obra_id').order('data')
@@ -493,6 +495,8 @@ export default function Ponto() {
       data: r.data, status: r.status, horas_extra: r.horas_extra ?? 0,
       horas_falta: r.horas_falta ?? 0, observacoes: r.observacoes ?? null,
       sincronizado_em: r.sincronizado_em, obra_id: r.obra_id,
+      servico_descricao: r.servico_descricao ?? null,
+      playbook_item_id:  r.playbook_item_id  ?? null,
     })))
     setLoadingPortal(false)
   }
@@ -2676,7 +2680,7 @@ export default function Ponto() {
                       </div>
                       <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
                         <thead><tr style={{background:'var(--muted)'}}>
-                          {['Data','Colaborador','Status','H+','H−','Obs','Situação',''].map(h=>(
+                          {['Data','Colaborador','Status','Serviço','H+','H−','Obs','Situação',''].map(h=>(
                             <th key={h} style={{...TH,textAlign:'left',padding:'7px 8px'}}>{h}</th>
                           ))}
                         </tr></thead>
@@ -2697,6 +2701,12 @@ export default function Ponto() {
                                 <td style={{padding:'6px 8px',fontFamily:'monospace',fontWeight:700,fontSize:12}}>{d}/{m}</td>
                                 <td style={{padding:'6px 8px',fontWeight:600,maxWidth:140,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.colab_nome}</td>
                                 <td style={{padding:'6px 8px'}}><span style={{background:sc.bg,color:sc.cor,borderRadius:4,padding:'1px 5px',fontSize:10,fontWeight:700}}>{sc.label}</span></td>
+                                <td style={{padding:'6px 8px',maxWidth:130,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                                  {r.servico_descricao
+                                    ? <span style={{background:'#f0fdf4',color:'#15803d',borderRadius:4,padding:'1px 6px',fontSize:10,fontWeight:700,display:'inline-flex',alignItems:'center',gap:3}}
+                                        title={r.servico_descricao}>📋 {r.servico_descricao}</span>
+                                    : <span style={{color:'var(--muted-foreground)',fontSize:10}}>—</span>}
+                                </td>
                                 <td style={{padding:'6px 8px',textAlign:'center',color:'#1d4ed8',fontWeight:700,fontSize:12}}>{r.horas_extra>0?`+${r.horas_extra}h`:'—'}</td>
                                 <td style={{padding:'6px 8px',textAlign:'center',color:'#dc2626',fontWeight:700,fontSize:12}}>{r.horas_falta>0?`-${r.horas_falta}h`:'—'}</td>
                                 <td style={{padding:'6px 8px',fontSize:10,color:'var(--muted-foreground)',maxWidth:100,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={r.observacoes??''}>{r.observacoes||'—'}</td>
