@@ -62,7 +62,7 @@ export default function CestaBasica() {
 
   // ── Carrega obras ──────────────────────────────────────────────────────────
   useEffect(() => {
-    supabase.from('obras').select('id,nome,codigo').eq('ativo', true).order('nome')
+    supabase.from('obras').select('id,nome,codigo').neq('status', 'concluida').order('nome')
       .then(({ data }) => setObras(data ?? []))
   }, [])
 

@@ -108,6 +108,7 @@ export default function Premios() {
   const [competencia,        setCompetencia]        = useState(new Date().toISOString().slice(0, 7))
   const [filtroColaborador,  setFiltroColaborador]  = useState('')
   const [filtroTipo,         setFiltroTipo]         = useState('todos')
+  const [filtroObra,         setFiltroObra]         = useState('todas')
   const [abaStatus,          setAbaStatus]          = useState<'pendente'|'aprovado'|'pago'|'cancelado'>('pendente')
 
   const [modalOpen, setModalOpen] = useState(false)
@@ -169,12 +170,12 @@ export default function Premios() {
 
   // ─── filtros com aba ───────────────────────────────────────────────────────
   const filtered = useMemo(() => rows.filter(r => {
-    const statusRow = r.status ?? 'pendente'
-    const matchAba  = statusRow === abaStatus
-    const matchCol  = filtroColaborador ? r.colaboradores?.nome.toLowerCase().includes(filtroColaborador.toLowerCase()) : true
-    const matchTipo = filtroTipo !== 'todos' ? r.tipo === filtroTipo : true
-    return matchAba && matchCol && matchTipo
-  }), [rows, abaStatus, filtroColaborador, filtroTipo])
+    const matchAba   = r.status === abaStatus
+    const matchColab = filtroColaborador ? r.colaboradores?.nome?.toLowerCase().includes(filtroColaborador.toLowerCase()) : true
+    const matchTipo  = filtroTipo !== 'todos' ? r.tipo === filtroTipo : true
+    const matchObra  = filtroObra !== 'todas' ? r.obra_id === filtroObra : true
+    return matchAba && matchColab && matchTipo && matchObra
+  }), [rows, abaStatus, filtroColaborador, filtroTipo, filtroObra])
 
   const totalFiltrado = filtered.reduce((s, r) => s + (r.valor ?? 0), 0)
 
@@ -368,8 +369,15 @@ export default function Premios() {
             {TIPO_OPTIONS.map(t => <SelectItem key={t} value={t}>{TIPO_EMOJI[t]} {t}</SelectItem>)}
           </SelectContent>
         </Select>
-        {(filtroColaborador || filtroTipo !== 'todos') && (
-          <button onClick={() => { setFiltroColaborador(''); setFiltroTipo('todos') }}
+        <Select value={filtroObra} onValueChange={setFiltroObra}>
+          <SelectTrigger className="w-44 h-9"><SelectValue placeholder="Todas as obras" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="todas">Todas as obras</SelectItem>
+            {obras.map(o => <SelectItem key={o.id} value={o.id}>{o.nome}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        {(filtroColaborador || filtroTipo !== 'todos' || filtroObra !== 'todas') && (
+          <button onClick={() => { setFiltroColaborador(''); setFiltroTipo('todos'); setFiltroObra('todas') }}
             style={{ height: 36, padding: '0 12px', fontSize: 12, border: '1.5px solid var(--border)', borderRadius: 6, background: 'transparent', cursor: 'pointer', color: 'var(--muted-foreground)' }}>
             ✕ Limpar
           </button>

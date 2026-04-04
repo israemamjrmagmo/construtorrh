@@ -106,7 +106,6 @@ export default function Pagamentos() {
   const [filtroColaborador, setFiltroColaborador] = useState('')
   const [filtroTipo, setFiltroTipo] = useState('todos')
   const [filtroStatus, setFiltroStatus] = useState('todos')
-  const [filtroObraId, setFiltroObraId]     = useState('todos')
 
   // modal
   const [modalOpen, setModalOpen] = useState(false)

@@ -1880,7 +1880,7 @@ export default function Solicitacoes() {
 
   const fetchBase = useCallback(async () => {
     const [o, f, c] = await Promise.all([
-      supabase.from('obras').select('id,nome').eq('ativo',true).order('nome'),
+      supabase.from('obras').select('id,nome').neq('status','concluida').order('nome'),
       supabase.from('funcoes').select('id,nome').eq('ativo',true).order('nome'),
       supabase.from('colaboradores').select('id,nome,chapa,cpf').eq('status','ativo').order('nome'),
     ])

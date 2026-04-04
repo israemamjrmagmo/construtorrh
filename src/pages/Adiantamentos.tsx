@@ -122,6 +122,7 @@ export default function Adiantamentos() {
   const [competencia,   setCompetencia]   = useState(new Date().toISOString().slice(0, 7))
   const [filtroNome,    setFiltroNome]    = useState('')
   const [filtroTipo,    setFiltroTipo]    = useState('todos')
+  const [filtroObra,    setFiltroObra]    = useState('todas')
   const [abaStatus,     setAbaStatus]     = useState<'pendente'|'aprovado'|'pago'|'cancelado'>('pendente')
 
   // modal
@@ -192,8 +193,9 @@ export default function Adiantamentos() {
     const matchAba    = r.status === abaStatus
     const matchNome   = filtroNome ? r.colaboradores?.nome.toLowerCase().includes(filtroNome.toLowerCase()) : true
     const matchTipo   = filtroTipo !== 'todos' ? r.tipo === filtroTipo : true
-    return matchAba && matchNome && matchTipo
-  }), [rows, abaStatus, filtroNome, filtroTipo])
+    const matchObra   = filtroObra !== 'todas' ? r.obra_id === filtroObra : true
+    return matchAba && matchNome && matchTipo && matchObra
+  }), [rows, abaStatus, filtroNome, filtroTipo, filtroObra])
 
   // ─── cards resumo (totais globais do mês) ─────────────────────────────────
   const totalPend  = rows.filter(r => r.status === 'pendente').reduce((s, r) => s + r.valor, 0)
@@ -411,8 +413,15 @@ export default function Adiantamentos() {
             {TIPOS.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
           </SelectContent>
         </Select>
-        {(filtroNome || filtroTipo !== 'todos') && (
-          <button onClick={() => { setFiltroNome(''); setFiltroTipo('todos') }}
+        <Select value={filtroObra} onValueChange={setFiltroObra}>
+          <SelectTrigger className="w-44 h-9"><SelectValue placeholder="Todas as obras" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="todas">Todas as obras</SelectItem>
+            {obras.map(o => <SelectItem key={o.id} value={o.id}>{o.nome}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        {(filtroNome || filtroTipo !== 'todos' || filtroObra !== 'todas') && (
+          <button onClick={() => { setFiltroNome(''); setFiltroTipo('todos'); setFiltroObra('todas') }}
             style={{ height: 36, padding: '0 12px', fontSize: 12, border: '1.5px solid var(--border)', borderRadius: 6, background: 'transparent', cursor: 'pointer', color: 'var(--muted-foreground)' }}>
             ✕ Limpar
           </button>
