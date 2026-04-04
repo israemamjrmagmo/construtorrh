@@ -11,25 +11,34 @@ export default function GestorRelatorios() {
   // default: mês anterior (onde há dados) até hoje
   const mesAntIni = (() => { const d = new Date(); d.setMonth(d.getMonth()-1); return d.toISOString().slice(0,8)+'01' })()
 
-  const [loading, setLoading] = useState(false)
-  const [dtIni,   setDtIni]   = useState(mesAntIni)
-  const [dtFim,   setDtFim]   = useState(hoje)
-  const [tipo,    setTipo]    = useState<'presenca'|'producao'|'atestados'|'acidentes'|'clima'>('producao')
-  const [dados,   setDados]   = useState<any[]>([])
+  const [loading,     setLoading]     = useState(false)
+  const [dtIni,        setDtIni]        = useState(mesAntIni)
+  const [dtFim,        setDtFim]        = useState(hoje)
+  const [tipo,         setTipo]         = useState<'presenca'|'producao'|'atestados'|'acidentes'|'clima'>('producao')
+  const [dados,        setDados]        = useState<any[]>([])
+  const [obras,        setObras]        = useState<{id:string;nome:string}[]>([])
+  const [obraFiltro,   setObraFiltro]   = useState('todas')
+
+  // Carrega obras 1x
+  useEffect(() => {
+    supabase.from('obras').select('id,nome').neq('status','concluida').order('nome')
+      .then(({data:o}) => setObras(o??[]))
+  }, [])
 
   const fetchRelatorio = useCallback(async () => {
     setLoading(true); setDados([])
     try {
       if (tipo === 'presenca') {
-        const { data } = await supabase.from('portal_ponto_diario')
+        let q = supabase.from('portal_ponto_diario')
           .select('data, status, obra_id, colaborador_id, horas_extra, obras(nome), colaboradores(nome, chapa, funcoes(nome))')
           .gte('data', dtIni).lte('data', dtFim)
           .order('data', { ascending: false })
+        if (obraFiltro !== 'todas') q = q.eq('obra_id', obraFiltro)
+        const { data } = await q
         setDados(data ?? [])
 
       } else if (tipo === 'producao') {
-        // ponto_producao usa mes_referencia (YYYY-MM), não date — converter
-        const { data } = await supabase.from('ponto_producao')
+        let q = supabase.from('ponto_producao')
           .select(`
             id, mes_referencia, obra_id, colaborador_id, quantidade, valor_total,
             playbook_itens!playbook_item_id(descricao, unidade),
@@ -39,31 +48,41 @@ export default function GestorRelatorios() {
           .gte('mes_referencia', toMes(dtIni))
           .lte('mes_referencia', toMes(dtFim))
           .order('mes_referencia', { ascending: false })
+        if (obraFiltro !== 'todas') q = q.eq('obra_id', obraFiltro)
+        const { data } = await q
         setDados(data ?? [])
 
       } else if (tipo === 'atestados') {
-        const { data } = await supabase.from('atestados')
-          .select('data, tipo, dias_afastamento, com_afastamento, cid, colaboradores(nome, chapa, obras(nome))')
+        // atestados vinculam-se via colaborador → obra (colaboradores.obra_id)
+        // se filtro de obra ativo, filtramos pelo join
+        let q = supabase.from('atestados')
+          .select('data, tipo, dias_afastamento, com_afastamento, cid, colaboradores!inner(nome, chapa, obra_id, obras(nome))')
           .gte('data', dtIni).lte('data', dtFim)
           .order('data', { ascending: false })
+        if (obraFiltro !== 'todas') q = (q as any).eq('colaboradores.obra_id', obraFiltro)
+        const { data } = await q
         setDados(data ?? [])
 
       } else if (tipo === 'acidentes') {
-        const { data } = await supabase.from('acidentes')
-          .select('data_ocorrencia, gravidade, tipo, cat_emitida, colaboradores(nome, obras(nome))')
+        let q = supabase.from('acidentes')
+          .select('data_ocorrencia, gravidade, tipo, cat_emitida, obra_id, colaboradores(nome, obras(nome))')
           .gte('data_ocorrencia', dtIni).lte('data_ocorrencia', dtFim)
           .order('data_ocorrencia', { ascending: false })
+        if (obraFiltro !== 'todas') q = q.eq('obra_id', obraFiltro)
+        const { data } = await q
         setDados(data ?? [])
 
       } else if (tipo === 'clima') {
-        const { data } = await supabase.from('obra_clima')
-          .select('data, condicao, choveu, precipitacao_mm, temperatura_max, temperatura_min, vento_kmh, impacto_obra, obras(nome)')
+        let q = supabase.from('obra_clima')
+          .select('data, condicao, choveu, precipitacao_mm, temperatura_max, temperatura_min, vento_kmh, impacto_obra, obra_id, obras(nome)')
           .gte('data', dtIni).lte('data', dtFim)
           .order('data', { ascending: false })
+        if (obraFiltro !== 'todas') q = q.eq('obra_id', obraFiltro)
+        const { data } = await q
         setDados(data ?? [])
       }
     } finally { setLoading(false) }
-  }, [tipo, dtIni, dtFim])
+  }, [tipo, dtIni, dtFim, obraFiltro])
 
   useEffect(() => { fetchRelatorio() }, [fetchRelatorio])
 
@@ -170,10 +189,24 @@ export default function GestorRelatorios() {
         <span style={{ color:'#94a3b8' }}>até</span>
         <input type="date" value={dtFim} onChange={e => setDtFim(e.target.value)}
           style={{ border:'1px solid #e2e8f0', borderRadius:8, padding:'5px 8px', fontSize:13 }}/>
+
+        {/* Filtro Obra — em TODAS as abas */}
+        <select value={obraFiltro} onChange={e => setObraFiltro(e.target.value)}
+          style={{ border:`1.5px solid ${obraFiltro!=='todas'?'#2563eb':'#e2e8f0'}`, borderRadius:8, padding:'5px 10px', fontSize:13, background: obraFiltro!=='todas'?'#eff6ff':'#fff', color: obraFiltro!=='todas'?'#2563eb':'#374151', fontWeight: obraFiltro!=='todas'?700:400, minWidth:160 }}>
+          <option value="todas">🏗️ Todas as obras</option>
+          {obras.map(o => <option key={o.id} value={o.id}>{o.nome}</option>)}
+        </select>
+
         {tipo === 'producao' && (
           <span style={{ fontSize:11, color:'#64748b', background:'#fffbeb', border:'1px solid #fde68a', borderRadius:6, padding:'4px 10px' }}>
             📅 Produção filtra por <strong>mês</strong>: {toMes(dtIni)} → {toMes(dtFim)}
           </span>
+        )}
+        {obraFiltro !== 'todas' && (
+          <button onClick={() => setObraFiltro('todas')}
+            style={{ fontSize:11, padding:'4px 10px', borderRadius:6, border:'1px solid #fecaca', background:'#fef2f2', color:'#dc2626', fontWeight:700, cursor:'pointer' }}>
+            ✕ Limpar obra
+          </button>
         )}
         <span style={{ fontSize:12, color:'#94a3b8', marginLeft:'auto' }}>{dados.length} registro(s)</span>
       </div>
