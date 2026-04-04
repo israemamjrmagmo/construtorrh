@@ -1627,7 +1627,7 @@ ${c.observacoes ? `<div class="sec"><div class="sec-title">Observações</div><t
   const handleSave = async () => {
     if (!form.nome.trim()) { toast.error('Nome é obrigatório'); setSection('pessoal'); return }
     if (!form.funcao_id)   { toast.error('Selecione a função'); setSection('funcao'); return }
-    if (!form.chapa)       { toast.error('Chapa não gerada — selecione a função'); setSection('funcao'); return }
+    if (!form.chapa && !editId) { toast.error('Chapa não gerada — selecione a função'); setSection('funcao'); return }
     if (!editId && form.status === 'inativo') { toast.error('Novo colaborador não pode ser criado como Inativo'); setSection('status'); return }
 
     // Trava: não pode mudar função ou contrato se tiver ponto lançado
@@ -1674,6 +1674,7 @@ ${c.observacoes ? `<div class="sec"><div class="sec-title">Observações</div><t
       tipo_conta: form.tipo_conta || null,
       pix_chave: form.pix_chave || null,
       vale_transporte: form.vt_modalidade !== 'nenhum',
+      salario: form.salario ? parseFloat(form.salario) : null,
       status: form.status as Colaborador['status'],
       observacoes: form.observacoes || null,
     }

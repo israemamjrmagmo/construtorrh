@@ -47,6 +47,7 @@ const PAGE_TITLES: Record<string, { label: string; icon: React.ElementType; colo
   '/usuarios':          { label: 'Usuários',            icon: UserCog,         color: '#0ea5e9' },
   '/portal-admin':      { label: 'Portal da Obra',      icon: Smartphone,      color: '#10b981' },
   '/configuracoes':     { label: 'Configurações',       icon: Settings,        color: '#64748b' },
+  '/gestor':            { label: 'Portal do Gestor',    icon: BarChart3,       color: '#f59e0b' },
 }
 
 // ─── Grupos de navegação ─────────────────────────────────────────────────────
@@ -145,6 +146,7 @@ const NAV_GROUPS = [
     items: [
       { to: '/usuarios',      label: 'Usuários',       icon: UserCog,   color: '#38bdf8', adminOnly: true },
       { to: '/portal-admin',  label: 'Portal da Obra', icon: Smartphone,color: '#34d399', adminOnly: true },
+      { to: '/gestor',        label: 'Portal do Gestor', icon: BarChart3, color: '#f59e0b' },
       { to: '/configuracoes', label: 'Configurações',  icon: Settings,  color: '#94a3b8' },
     ],
   },

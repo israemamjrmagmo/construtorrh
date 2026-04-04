@@ -4,7 +4,7 @@ import {
   ClipboardList, AlertTriangle, Home, LogOut,
   HardHat, ShieldCheck, FileImage,
   BookOpen, MessageSquare, FolderOpen,
-  WifiOff, Building2, Clock, Menu, X, UserPlus,
+  WifiOff, Building2, Clock, Menu, X, UserPlus, CloudRain,
 } from 'lucide-react'
 import { clearPortalSession, getPortalSession } from '@/hooks/usePortalAuth'
 
@@ -21,6 +21,7 @@ const ROUTE_LABELS: Record<string, string> = {
   '/portal/playbook':    'Playbook',
   '/portal/mensagens':   'Mensagens',
   '/portal/projetos':    'Projetos',
+  '/portal/clima':       'Clima / Chuva',
 }
 
 // ── Menu de navegação ────────────────────────────────────────────────────────
@@ -35,6 +36,7 @@ const navItems = [
   { to: '/portal/mensagens',    icon: MessageSquare, label: 'Mensagens',  color: '#a78bfa', bg: '#f5f3ff' },
   { to: '/portal/playbook',     icon: BookOpen,      label: 'Playbook',   color: '#34d399', bg: '#f0fdf4' },
   { to: '/portal/projetos',     icon: FolderOpen,    label: 'Projetos',   color: '#94a3b8', bg: '#f8fafc' },
+  { to: '/portal/clima',        icon: CloudRain,     label: 'Clima',      color: '#0ea5e9', bg: '#f0f9ff' },
 ]
 
 // ── Relógio isolado — só ele re-renderiza a cada 30s ─────────────────────────
