@@ -362,7 +362,8 @@ export default function Relatorios() {
         // colaboradores = IDs únicos por obra
         const q = supabase.from('ponto_lancamentos')
           .select(`colaborador_id, obra_id, snap_faltas, snap_horas_normais, snap_horas_extras, obras(nome)`)
-          .eq('mes_referencia', mesRef)
+          .gte('mes_referencia', mesRefIni)
+          .lte('mes_referencia', mesRefFim)
         if (filtroObra !== 'todos') q.eq('obra_id', filtroObra)
         const { data } = await q
         const map: Record<string, Record<string, unknown>> = {}
@@ -539,7 +540,8 @@ export default function Relatorios() {
         // contar colabs_ids únicos por função (um colab em 2 obras = 2 lançamentos, mas 1 colab)
         const { data } = await supabase.from('ponto_lancamentos')
           .select('colaborador_id, snap_valor_total, snap_liquido, colaboradores(funcao_id, funcoes(nome))')
-          .eq('mes_referencia', mesRef)
+          .gte('mes_referencia', mesRefIni)
+          .lte('mes_referencia', mesRefFim)
         const map: Record<string, Record<string, unknown>> = {}
         const mapColabs: Record<string, Set<string>> = {}
         for (const d of data ?? []) {
@@ -926,7 +928,8 @@ export default function Relatorios() {
         // contar colabs únicos por função (colab em 2 obras = 2 lançamentos, mas 1 colab)
         const q = supabase.from('ponto_lancamentos')
           .select('colaborador_id, snap_valor_total, snap_horas_normais, snap_horas_extras, colaboradores(funcao_id, funcoes(nome)), obra_id')
-          .eq('mes_referencia', mesRef)
+          .gte('mes_referencia', mesRefIni)
+          .lte('mes_referencia', mesRefFim)
         if (filtroObra !== 'todos') q.eq('obra_id', filtroObra)
         const { data } = await q
         const map: Record<string, Record<string, unknown>> = {}
@@ -1364,6 +1367,20 @@ export default function Relatorios() {
                   </div>
                 </FieldWrap>
               </>
+            )}
+
+            {/* ⚠️ Aviso: relatórios baseados em ponto_lancamentos têm granularidade mensal */}
+            {usaFiltroDatas && mesRefIni === mesRefFim &&
+              filtroDataIni.substring(8) !== '01' &&
+              ['custo-funcao','faltas-obra','custo-hora','custo-obra','ficha-financeira','custo-colab'].includes(relatAtivo) && (
+              <div style={{ gridColumn:'1/-1', display:'flex', alignItems:'flex-start', gap:8, background:'#fffbeb', border:'1px solid #fde68a', borderRadius:8, padding:'8px 12px', fontSize:12, color:'#92400e', marginTop:4 }}>
+                <span style={{ fontSize:16, flexShrink:0 }}>⚠️</span>
+                <span>
+                  <strong>Atenção:</strong> Este relatório usa lançamentos fechados por mês (<code>mes_referencia</code>).
+                  O filtro de <strong>dia inicial diferente de 01/{mesRefIni.substring(5)}</strong> será ignorado — o sistema sempre considera o mês completo <strong>{mesRefIni}</strong>.
+                  Para comparar quinzenas ou períodos parciais, selecione meses diferentes (ex.: Mar × Abr).
+                </span>
+              </div>
             )}
 
             {/* Filtro: Dias para vencimento */}
