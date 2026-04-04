@@ -29,53 +29,41 @@ export default function GestorProducao() {
   const fetchData = useCallback(async () => {
     setLoading(true)
     try {
-      // Buscar via ponto_lancamentos (tem mes_referencia) → join em ponto_producao
-      const { data: lancs } = await supabase
-        .from('ponto_lancamentos')
+      // Mesma query exata do relatório "Produtividade por Obra" que funciona
+      const q = supabase.from('ponto_producao')
         .select(`
-          id,
-          mes_referencia,
-          obra_id,
-          colaborador_id,
+          id, mes_referencia, obra_id, colaborador_id,
+          quantidade, valor_unit, valor_total,
+          playbook_itens!playbook_item_id(descricao, unidade),
           obras(nome),
-          colaboradores(nome, tipo_contrato, funcoes(nome)),
-          ponto_producao(
-            id, quantidade, valor_unit, valor_total,
-            playbook_itens!playbook_item_id(descricao, unidade)
-          )
+          colaboradores(nome, tipo_contrato, funcoes(nome))
         `)
         .gte('mes_referencia', mesIni)
         .lte('mes_referencia', mesFim)
-        .not('ponto_producao', 'is', null)
+      if (obraFiltro !== 'todas') q.eq('obra_id', obraFiltro)
 
-      const { data: obrasData } = await supabase
-        .from('obras').select('id, nome').neq('status', 'concluida').order('nome')
+      const [{ data: pp }, { data: obrasData }] = await Promise.all([
+        q,
+        supabase.from('obras').select('id, nome').neq('status', 'concluida').order('nome'),
+      ])
 
       setObras(obrasData ?? [])
 
-      // Achatar: cada linha de ponto_producao vira uma ProducaoRow
-      const flat: ProducaoRow[] = []
-      for (const l of lancs ?? []) {
-        const la = l as any
-        const prods: any[] = la.ponto_producao ?? []
-        for (const p of prods) {
-          flat.push({
-            id: p.id,
-            mes_referencia: la.mes_referencia ?? '',
-            obra_id: la.obra_id,
-            obra_nome: la.obras?.nome ?? '—',
-            colaborador_id: la.colaborador_id,
-            colaborador_nome: la.colaboradores?.nome ?? '—',
-            funcao: la.colaboradores?.funcoes?.nome ?? '—',
-            servico: p.playbook_itens?.descricao ?? '—',
-            quantidade: p.quantidade ?? 0,
-            unidade: p.playbook_itens?.unidade ?? 'un',
-            tipo_contrato: la.colaboradores?.tipo_contrato ?? 'clt',
-            valor_unit: p.valor_unit ?? 0,
-            valor_total: p.valor_total ?? 0,
-          })
-        }
-      }
+      const flat: ProducaoRow[] = (pp ?? []).map((r: any) => ({
+        id: r.id,
+        mes_referencia: r.mes_referencia ?? '',
+        obra_id: r.obra_id,
+        obra_nome: r.obras?.nome ?? '—',
+        colaborador_id: r.colaborador_id ?? r.id,
+        colaborador_nome: r.colaboradores?.nome ?? '—',
+        funcao: r.colaboradores?.funcoes?.nome ?? '—',
+        servico: r.playbook_itens?.descricao ?? '—',
+        quantidade: r.quantidade ?? 0,
+        unidade: r.playbook_itens?.unidade ?? 'un',
+        tipo_contrato: r.colaboradores?.tipo_contrato ?? 'clt',
+        valor_unit: r.valor_unit ?? 0,
+        valor_total: r.valor_total ?? 0,
+      }))
       setRows(flat)
     } finally {
       setLoading(false)
