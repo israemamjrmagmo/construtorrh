@@ -923,7 +923,7 @@ export default function Colaboradores() {
   const [obras, setObras]   = useState<Obra[]>([])
   const [loading, setLoading] = useState(true)
   const [busca, setBusca] = useState('')
-  const [filterStatus, setFilterStatus] = useState('todos')
+  const [filterStatus, setFilterStatus] = useState('ativo')
   const [filterFuncao, setFilterFuncao] = useState('todas')
   const [filterContrato, setFilterContrato] = useState('todos')
 
