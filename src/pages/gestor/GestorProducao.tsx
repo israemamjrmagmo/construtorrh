@@ -4,7 +4,9 @@ import GestorLayout from './GestorLayout'
 import { BarChart3, Loader2 } from 'lucide-react'
 
 interface ProducaoRow {
-  id: string; data: string; obra_id: string; obra_nome: string
+  id: string
+  mes_referencia: string
+  obra_id: string; obra_nome: string
   colaborador_id: string; colaborador_nome: string; funcao: string
   servico: string; quantidade: number; unidade: string
   tipo_contrato: string; valor_unit: number; valor_total: number
@@ -12,108 +14,75 @@ interface ProducaoRow {
 
 export default function GestorProducao() {
   const hoje = new Date().toISOString().slice(0, 10)
-  const mesInicio = hoje.slice(0, 8) + '01'
+  const mesAtual = hoje.slice(0, 7)                // YYYY-MM
+  const mesInicio = hoje.slice(0, 8) + '01'        // YYYY-MM-01
 
-  const [loading, setLoading] = useState(true)
-  const [rows, setRows] = useState<ProducaoRow[]>([])
-  const [obras, setObras] = useState<{ id: string; nome: string }[]>([])
+  const [loading, setLoading]     = useState(true)
+  const [rows, setRows]           = useState<ProducaoRow[]>([])
+  const [obras, setObras]         = useState<{ id: string; nome: string }[]>([])
   const [obraFiltro, setObraFiltro] = useState('todas')
-  const [dtIni, setDtIni] = useState(mesInicio)
-  const [dtFim, setDtFim] = useState(hoje)
-  const [agrupar, setAgrupar] = useState<'servico' | 'colaborador' | 'obra' | 'funcao'>('servico')
-  const [fonte, setFonte] = useState<'lancamentos' | 'portal'>('lancamentos')
+  const [mesIni, setMesIni]       = useState(mesAtual)   // YYYY-MM
+  const [mesFim, setMesFim]       = useState(mesAtual)   // YYYY-MM
+  const [agrupar, setAgrupar]     = useState<'servico' | 'colaborador' | 'obra'>('servico')
+
+  // ── helpers de período ──────────────────────────────────────────────────────
+  function setMesRange(ini: string, fim: string) { setMesIni(ini); setMesFim(fim) }
+  const mesLabel = (ym: string) => {
+    const [y, m] = ym.split('-')
+    return `${m}/${y}`
+  }
 
   const fetchData = useCallback(async () => {
     setLoading(true)
     try {
-      let combinado: ProducaoRow[] = []
+      // ponto_producao filtrado por mes_referencia (via join a ponto_lancamentos)
+      // mes_referencia é do ponto_lancamentos — usamos o join reverso via lancamento_id
+      const q = supabase
+        .from('ponto_producao')
+        .select(`
+          id,
+          obra_id,
+          colaborador_id,
+          quantidade,
+          valor_unit,
+          valor_total,
+          playbook_itens!playbook_item_id(descricao, unidade),
+          obras(nome),
+          colaboradores(nome, tipo_contrato, funcoes(nome)),
+          ponto_lancamentos!lancamento_id(mes_referencia)
+        `)
+        .gte('ponto_lancamentos.mes_referencia', mesIni)
+        .lte('ponto_lancamentos.mes_referencia', mesFim)
+        .order('obra_id')
 
-      // ── Fonte 1: ponto_producao (vinculado a ponto_lancamentos – folha fechada) ──
-      if (fonte === 'lancamentos' || fonte === 'portal') {
-        const { data: pp } = await supabase
-          .from('ponto_producao')
-          .select(`
-            id, data, obra_id, colaborador_id, quantidade, valor_unit, valor_total,
-            playbook_item_id, observacoes,
-            obras(nome),
-            colaboradores(nome, tipo_contrato, funcoes(nome)),
-            playbook_itens(descricao, unidade),
-            playbook_atividades:playbook_item_id(descricao, unidade)
-          `)
-          .gte('data', dtIni)
-          .lte('data', dtFim)
-          .order('data', { ascending: false })
-
-        for (const r of pp ?? []) {
-          const ra = r as any
-          const descricao = ra.playbook_itens?.descricao
-            ?? ra.playbook_atividades?.descricao
-            ?? 'Produção'
-          const unidade = ra.playbook_itens?.unidade
-            ?? ra.playbook_atividades?.unidade
-            ?? 'un'
-          combinado.push({
-            id: ra.id,
-            data: ra.data,
-            obra_id: ra.obra_id,
-            obra_nome: ra.obras?.nome ?? '—',
-            colaborador_id: ra.colaborador_id,
-            colaborador_nome: ra.colaboradores?.nome ?? '—',
-            funcao: ra.colaboradores?.funcoes?.nome ?? '—',
-            servico: descricao,
-            quantidade: ra.quantidade ?? 0,
-            unidade,
-            tipo_contrato: ra.colaboradores?.tipo_contrato ?? 'clt',
-            valor_unit: ra.valor_unit ?? 0,
-            valor_total: ra.valor_total ?? 0,
-          })
-        }
-      }
-
-      // ── Fonte 2: portal_producao (lançamentos diretos pelo portal) ──
-      if (fonte === 'portal' || fonte === 'lancamentos') {
-        const { data: pp2 } = await supabase
-          .from('portal_producao')
-          .select(`
-            id, data, obra_id, colaborador_id, quantidade, unidade, servico_descricao,
-            obras(nome),
-            colaboradores(nome, tipo_contrato, funcoes(nome))
-          `)
-          .gte('data', dtIni)
-          .lte('data', dtFim)
-          .not('quantidade', 'is', null)
-          .order('data', { ascending: false })
-
-        for (const r of pp2 ?? []) {
-          const ra = r as any
-          if (!ra.quantidade) continue
-          combinado.push({
-            id: 'pp2_' + ra.id,
-            data: ra.data,
-            obra_id: ra.obra_id,
-            obra_nome: ra.obras?.nome ?? '—',
-            colaborador_id: ra.colaborador_id,
-            colaborador_nome: ra.colaboradores?.nome ?? '—',
-            funcao: ra.colaboradores?.funcoes?.nome ?? '—',
-            servico: ra.servico_descricao ?? '—',
-            quantidade: ra.quantidade ?? 0,
-            unidade: ra.unidade ?? 'un',
-            tipo_contrato: ra.colaboradores?.tipo_contrato ?? 'clt',
-            valor_unit: 0,
-            valor_total: 0,
-          })
-        }
-      }
-
-      const [{ data: obrasData }] = await Promise.all([
+      const [{ data: pp }, { data: obrasData }] = await Promise.all([
+        q,
         supabase.from('obras').select('id, nome').neq('status', 'concluida').order('nome'),
       ])
+
       setObras(obrasData ?? [])
+
+      const combinado: ProducaoRow[] = (pp ?? []).map((r: any) => ({
+        id: r.id,
+        mes_referencia: r.ponto_lancamentos?.mes_referencia ?? '',
+        obra_id: r.obra_id,
+        obra_nome: r.obras?.nome ?? '—',
+        colaborador_id: r.colaborador_id,
+        colaborador_nome: r.colaboradores?.nome ?? '—',
+        funcao: r.colaboradores?.funcoes?.nome ?? '—',
+        servico: r.playbook_itens?.descricao ?? '—',
+        quantidade: r.quantidade ?? 0,
+        unidade: r.playbook_itens?.unidade ?? 'un',
+        tipo_contrato: r.colaboradores?.tipo_contrato ?? 'clt',
+        valor_unit: r.valor_unit ?? 0,
+        valor_total: r.valor_total ?? 0,
+      }))
+
       setRows(combinado)
     } finally {
       setLoading(false)
     }
-  }, [dtIni, dtFim, fonte])
+  }, [mesIni, mesFim])
 
   useEffect(() => { fetchData() }, [fetchData])
 
@@ -125,13 +94,10 @@ export default function GestorProducao() {
   const totaisPorServico = useMemo(() => {
     const m = new Map<string, { qtd: number; unidade: string; obras: Set<string>; cols: Set<string>; valor: number }>()
     rowsFiltrados.forEach(r => {
-      const key = r.servico
-      if (!m.has(key)) m.set(key, { qtd: 0, unidade: r.unidade, obras: new Set(), cols: new Set(), valor: 0 })
-      const v = m.get(key)!
-      v.qtd += r.quantidade
-      v.valor += r.valor_total
-      v.obras.add(r.obra_nome)
-      v.cols.add(r.colaborador_nome)
+      if (!m.has(r.servico)) m.set(r.servico, { qtd: 0, unidade: r.unidade, obras: new Set(), cols: new Set(), valor: 0 })
+      const v = m.get(r.servico)!
+      v.qtd += r.quantidade; v.valor += r.valor_total
+      v.obras.add(r.obra_nome); v.cols.add(r.colaborador_nome)
     })
     return Array.from(m.entries())
       .map(([srv, v]) => ({ servico: srv, qtd: v.qtd, unidade: v.unidade, obras: v.obras.size, colaboradores: v.cols.size, valor: v.valor }))
@@ -143,9 +109,7 @@ export default function GestorProducao() {
     rowsFiltrados.forEach(r => {
       if (!m.has(r.colaborador_id)) m.set(r.colaborador_id, { nome: r.colaborador_nome, funcao: r.funcao, qtd: 0, tipo: r.tipo_contrato, servicos: new Set(), valor: 0 })
       const v = m.get(r.colaborador_id)!
-      v.qtd += r.quantidade
-      v.valor += r.valor_total
-      v.servicos.add(r.servico)
+      v.qtd += r.quantidade; v.valor += r.valor_total; v.servicos.add(r.servico)
     })
     return Array.from(m.values()).sort((a, b) => b.qtd - a.qtd)
   }, [rowsFiltrados])
@@ -155,21 +119,28 @@ export default function GestorProducao() {
     rowsFiltrados.forEach(r => {
       if (!m.has(r.obra_id)) m.set(r.obra_id, { nome: r.obra_nome, qtd: 0, cols: new Set(), valor: 0 })
       const v = m.get(r.obra_id)!
-      v.qtd += r.quantidade
-      v.valor += r.valor_total
-      v.cols.add(r.colaborador_id)
+      v.qtd += r.quantidade; v.valor += r.valor_total; v.cols.add(r.colaborador_id)
     })
     return Array.from(m.values()).sort((a, b) => b.qtd - a.qtd)
   }, [rowsFiltrados])
 
   const fmtBRL = (v: number) => v > 0 ? v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '—'
-
   const totalGeral = rowsFiltrados.reduce((s, r) => s + r.quantidade, 0)
   const totalValor = rowsFiltrados.reduce((s, r) => s + r.valor_total, 0)
   const maxQtd = Math.max(...totaisPorServico.map(s => s.qtd), 1)
 
+  // ── Atalhos de período ──────────────────────────────────────────────────────
+  const atalhos = [
+    { l: 'Mês atual', f: () => setMesRange(mesAtual, mesAtual) },
+    { l: 'Mês ant.', f: () => { const d = new Date(); d.setMonth(d.getMonth() - 1); const ym = d.toISOString().slice(0,7); setMesRange(ym, ym) } },
+    { l: '3 Meses', f: () => { const d = new Date(); d.setMonth(d.getMonth() - 2); setMesRange(d.toISOString().slice(0,7), mesAtual) } },
+    { l: '6 Meses', f: () => { const d = new Date(); d.setMonth(d.getMonth() - 5); setMesRange(d.toISOString().slice(0,7), mesAtual) } },
+    { l: 'Ano', f: () => setMesRange(`${new Date().getFullYear()}-01`, mesAtual) },
+  ]
+
   return (
     <GestorLayout>
+      {/* Header */}
       <div style={{ marginBottom: 20 }}>
         <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0, color: '#0f172a', display: 'flex', alignItems: 'center', gap: 8 }}>
           <BarChart3 size={22} color="#b45309" /> Controle de Produção
@@ -177,17 +148,17 @@ export default function GestorProducao() {
         <p style={{ color: '#64748b', fontSize: 13, margin: '4px 0 0' }}>Metragens e serviços produzidos por obra e colaborador</p>
       </div>
 
-      {/* KPI Total */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12, marginBottom: 20 }}>
+      {/* KPIs */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(175px, 1fr))', gap: 12, marginBottom: 20 }}>
         <div style={{ background: 'linear-gradient(135deg, #b45309, #92400e)', borderRadius: 14, padding: 18, color: '#fff' }}>
           <div style={{ fontSize: 11, opacity: 0.75, fontWeight: 600 }}>TOTAL PRODUZIDO</div>
-          <div style={{ fontSize: 32, fontWeight: 800, marginTop: 4 }}>{totalGeral.toLocaleString('pt-BR')}</div>
+          <div style={{ fontSize: 30, fontWeight: 800, marginTop: 4 }}>{totalGeral.toLocaleString('pt-BR')}</div>
           <div style={{ fontSize: 11, opacity: 0.7, marginTop: 2 }}>unidades / m²</div>
         </div>
         {totalValor > 0 && (
           <div style={{ background: 'linear-gradient(135deg, #15803d, #166534)', borderRadius: 14, padding: 18, color: '#fff' }}>
             <div style={{ fontSize: 11, opacity: 0.75, fontWeight: 600 }}>VALOR TOTAL</div>
-            <div style={{ fontSize: 22, fontWeight: 800, marginTop: 4 }}>{fmtBRL(totalValor)}</div>
+            <div style={{ fontSize: 20, fontWeight: 800, marginTop: 4 }}>{fmtBRL(totalValor)}</div>
             <div style={{ fontSize: 11, opacity: 0.7, marginTop: 2 }}>baseado em preços</div>
           </div>
         )}
@@ -210,43 +181,50 @@ export default function GestorProducao() {
 
       {/* Filtros */}
       <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', padding: '12px 16px', marginBottom: 16, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+        {/* Seletor mês */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <label style={{ fontSize: 12, fontWeight: 600, color: '#64748b' }}>De</label>
-          <input type="date" value={dtIni} onChange={e => setDtIni(e.target.value)}
+          <input type="month" value={mesIni} onChange={e => setMesIni(e.target.value)}
             style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: '5px 8px', fontSize: 13 }} />
           <label style={{ fontSize: 12, fontWeight: 600, color: '#64748b' }}>até</label>
-          <input type="date" value={dtFim} onChange={e => setDtFim(e.target.value)}
+          <input type="month" value={mesFim} onChange={e => setMesFim(e.target.value)}
             style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: '5px 8px', fontSize: 13 }} />
         </div>
-        {/* Atalhos de período */}
+        {/* Atalhos */}
         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-          {[
-            { l: 'Hoje', f: () => { setDtIni(hoje); setDtFim(hoje) } },
-            { l: 'Semana', f: () => { const d = new Date(); const ini = new Date(d); ini.setDate(d.getDate() - d.getDay() + 1); setDtIni(ini.toISOString().split('T')[0]); setDtFim(hoje) } },
-            { l: 'Mês', f: () => { setDtIni(mesInicio); setDtFim(hoje) } },
-            { l: '3 Meses', f: () => { const d = new Date(); d.setMonth(d.getMonth() - 2); setDtIni(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`); setDtFim(hoje) } },
-          ].map(b => (
+          {atalhos.map(b => (
             <button key={b.l} onClick={b.f}
               style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #e2e8f0', background: '#f8fafc', fontSize: 11, fontWeight: 600, cursor: 'pointer', color: '#475569' }}>
               {b.l}
             </button>
           ))}
         </div>
+        {/* Filtro obra */}
         <select value={obraFiltro} onChange={e => setObraFiltro(e.target.value)}
           style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: '6px 10px', fontSize: 13, background: '#fff' }}>
           <option value="todas">🏗️ Todas as obras</option>
           {obras.map(o => <option key={o.id} value={o.id}>{o.nome}</option>)}
         </select>
+        {/* Agrupamento */}
         <div style={{ display: 'flex', border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'hidden', marginLeft: 'auto' }}>
-          {(['servico', 'colaborador', 'obra', 'funcao'] as const).map(g => (
+          {(['servico', 'colaborador', 'obra'] as const).map(g => (
             <button key={g} onClick={() => setAgrupar(g)} style={{
               padding: '6px 12px', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: 11,
               background: agrupar === g ? '#b45309' : '#fff', color: agrupar === g ? '#fff' : '#64748b',
             }}>
-              {g === 'servico' ? '📦 Serviço' : g === 'colaborador' ? '👤 Colaborador' : g === 'obra' ? '🏗️ Obra' : '🏷️ Função'}
+              {g === 'servico' ? '📦 Serviço' : g === 'colaborador' ? '👤 Colaborador' : '🏗️ Obra'}
             </button>
           ))}
         </div>
+      </div>
+
+      {/* Período selecionado */}
+      <div style={{ marginBottom: 12, fontSize: 12, color: '#64748b', display: 'flex', gap: 6, alignItems: 'center' }}>
+        <span>📅 Período:</span>
+        <strong style={{ color: '#374151' }}>
+          {mesIni === mesFim ? mesLabel(mesIni) : `${mesLabel(mesIni)} → ${mesLabel(mesFim)}`}
+        </strong>
+        {rowsFiltrados.length > 0 && <span style={{ background: '#f1f5f9', borderRadius: 10, padding: '1px 8px', fontWeight: 600 }}>{rowsFiltrados.length} lançamentos</span>}
       </div>
 
       {loading ? (
@@ -257,23 +235,26 @@ export default function GestorProducao() {
         <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', padding: 48, textAlign: 'center', color: '#94a3b8' }}>
           <div style={{ fontSize: 40, marginBottom: 8 }}>📦</div>
           <div style={{ fontWeight: 700, fontSize: 15 }}>Nenhuma produção no período</div>
-          <div style={{ fontSize: 13, marginTop: 4 }}>Verifique o intervalo de datas ou selecione outra obra.</div>
+          <div style={{ fontSize: 13, marginTop: 4 }}>Selecione um período diferente ou verifique se há produções lançadas na folha.</div>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-          {/* Gráfico por Serviço */}
+          {/* ── Por Serviço ── */}
           {agrupar === 'servico' && (
-            <div style={{ gridColumn: '1 / -1', background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', padding: 18 }}>
-              <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 14, color: '#0f172a' }}>📦 Produção por Serviço</div>
+            <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', padding: 18 }}>
+              <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 14, color: '#0f172a', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>📦 Produção por Serviço</span>
+                {totalValor > 0 && <span style={{ fontSize: 13, fontWeight: 700, color: '#15803d' }}>Total: {fmtBRL(totalValor)}</span>}
+              </div>
               {totaisPorServico.map(s => (
                 <div key={s.servico} style={{ marginBottom: 12 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>{s.servico}</span>
-                    <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, gap: 8 }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: '#374151', flex: 1, minWidth: 0 }}>{s.servico}</span>
+                    <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexShrink: 0 }}>
                       <span style={{ fontSize: 10, color: '#94a3b8' }}>{s.obras} obra(s) · {s.colaboradores} col.</span>
                       {s.valor > 0 && <span style={{ fontSize: 11, color: '#15803d', fontWeight: 600 }}>{fmtBRL(s.valor)}</span>}
-                      <span style={{ fontWeight: 800, fontSize: 14, color: '#b45309' }}>{s.qtd.toLocaleString('pt-BR')} {s.unidade}</span>
+                      <span style={{ fontWeight: 800, fontSize: 14, color: '#b45309' }}>{s.qtd.toLocaleString('pt-BR')} <span style={{ fontSize: 11, fontWeight: 500 }}>{s.unidade}</span></span>
                     </div>
                   </div>
                   <div style={{ height: 8, background: '#f1f5f9', borderRadius: 4, overflow: 'hidden' }}>
@@ -284,10 +265,13 @@ export default function GestorProducao() {
             </div>
           )}
 
-          {/* Por Colaborador */}
+          {/* ── Por Colaborador ── */}
           {agrupar === 'colaborador' && (
-            <div style={{ gridColumn: '1 / -1', background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', overflow: 'hidden' }}>
-              <div style={{ padding: '14px 18px', fontWeight: 800, fontSize: 15, color: '#0f172a', borderBottom: '1px solid #e2e8f0' }}>👤 Produção por Colaborador</div>
+            <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+              <div style={{ padding: '14px 18px', fontWeight: 800, fontSize: 15, color: '#0f172a', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between' }}>
+                <span>👤 Produção por Colaborador</span>
+                {totalValor > 0 && <span style={{ fontSize: 13, fontWeight: 700, color: '#15803d' }}>Total: {fmtBRL(totalValor)}</span>}
+              </div>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                 <thead>
                   <tr style={{ background: '#f8fafc' }}>
@@ -295,13 +279,11 @@ export default function GestorProducao() {
                     <th style={{ padding: '8px 14px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Função</th>
                     <th style={{ padding: '8px 14px', textAlign: 'center', fontWeight: 700, color: '#374151' }}>Serviços</th>
                     <th style={{ padding: '8px 14px', textAlign: 'right', fontWeight: 700, color: '#374151' }}>Total Produzido</th>
-                    <th style={{ padding: '8px 14px', textAlign: 'right', fontWeight: 700, color: '#374151' }}>Valor</th>
+                    {totalValor > 0 && <th style={{ padding: '8px 14px', textAlign: 'right', fontWeight: 700, color: '#374151' }}>Valor</th>}
                   </tr>
                 </thead>
                 <tbody>
-                  {totaisPorColaborador.length === 0 ? (
-                    <tr><td colSpan={5} style={{ textAlign: 'center', padding: 24, color: '#94a3b8' }}>Nenhum dado</td></tr>
-                  ) : totaisPorColaborador.map((c, i) => (
+                  {totaisPorColaborador.map((c, i) => (
                     <tr key={c.nome} style={{ borderTop: '1px solid #f1f5f9', background: i % 2 === 0 ? '#fff' : '#fafafa' }}>
                       <td style={{ padding: '10px 14px', fontWeight: 600 }}>
                         <div>{c.nome}</div>
@@ -310,7 +292,7 @@ export default function GestorProducao() {
                       <td style={{ padding: '10px 14px', color: '#64748b' }}>{c.funcao}</td>
                       <td style={{ padding: '10px 14px', textAlign: 'center', color: '#7c3aed', fontWeight: 700 }}>{c.servicos.size}</td>
                       <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 800, color: '#b45309', fontSize: 14 }}>{c.qtd.toLocaleString('pt-BR')}</td>
-                      <td style={{ padding: '10px 14px', textAlign: 'right', color: '#15803d', fontWeight: 600, fontSize: 12 }}>{fmtBRL(c.valor)}</td>
+                      {totalValor > 0 && <td style={{ padding: '10px 14px', textAlign: 'right', color: '#15803d', fontWeight: 600 }}>{fmtBRL(c.valor)}</td>}
                     </tr>
                   ))}
                 </tbody>
@@ -318,10 +300,13 @@ export default function GestorProducao() {
             </div>
           )}
 
-          {/* Por Obra */}
+          {/* ── Por Obra ── */}
           {agrupar === 'obra' && (
-            <div style={{ gridColumn: '1 / -1', background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', padding: 18 }}>
-              <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 14, color: '#0f172a' }}>🏗️ Produção por Obra</div>
+            <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', padding: 18 }}>
+              <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 14, color: '#0f172a', display: 'flex', justifyContent: 'space-between' }}>
+                <span>🏗️ Produção por Obra</span>
+                {totalValor > 0 && <span style={{ fontSize: 13, fontWeight: 700, color: '#15803d' }}>Total: {fmtBRL(totalValor)}</span>}
+              </div>
               {totaisPorObra.map((o, i) => {
                 const pct = totalGeral > 0 ? (o.qtd / totalGeral) * 100 : 0
                 const colors = ['#2563eb', '#16a34a', '#b45309', '#7c3aed', '#0891b2']
@@ -345,16 +330,17 @@ export default function GestorProducao() {
             </div>
           )}
 
-          {/* Tabela detalhada */}
-          <div style={{ gridColumn: '1 / -1', background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', overflow: 'hidden' }}>
-            <div style={{ padding: '14px 18px', fontWeight: 800, fontSize: 15, color: '#0f172a', borderBottom: '1px solid #e2e8f0' }}>
-              📋 Lançamentos Detalhados
+          {/* ── Tabela detalhada ── */}
+          <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+            <div style={{ padding: '14px 18px', fontWeight: 800, fontSize: 15, color: '#0f172a', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between' }}>
+              <span>📋 Lançamentos Detalhados</span>
+              {totalValor > 0 && <span style={{ fontSize: 13, fontWeight: 700, color: '#15803d' }}>Total: {fmtBRL(totalValor)}</span>}
             </div>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                 <thead>
                   <tr style={{ background: '#f8fafc' }}>
-                    <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Data</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Mês</th>
                     <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Obra</th>
                     <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Colaborador</th>
                     <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>Serviço</th>
@@ -363,25 +349,25 @@ export default function GestorProducao() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rowsFiltrados.slice(0, 100).map((r, i) => (
+                  {rowsFiltrados.slice(0, 150).map((r, i) => (
                     <tr key={r.id} style={{ borderTop: '1px solid #f1f5f9', background: i % 2 === 0 ? '#fff' : '#fafafa' }}>
-                      <td style={{ padding: '8px 12px', color: '#64748b' }}>{new Date(r.data + 'T12:00').toLocaleDateString('pt-BR')}</td>
+                      <td style={{ padding: '8px 12px', color: '#64748b' }}>{r.mes_referencia ? mesLabel(r.mes_referencia) : '—'}</td>
                       <td style={{ padding: '8px 12px', fontWeight: 600 }}>{r.obra_nome}</td>
                       <td style={{ padding: '8px 12px' }}>
                         <div>{r.colaborador_nome}</div>
                         <div style={{ fontSize: 10, color: '#94a3b8' }}>{r.funcao}</div>
                       </td>
                       <td style={{ padding: '8px 12px', color: '#374151' }}>{r.servico}</td>
-                      <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 800, color: '#b45309' }}>{r.quantidade} {r.unidade}</td>
+                      <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 800, color: '#b45309' }}>{r.quantidade} <span style={{ fontSize: 10, fontWeight: 400 }}>{r.unidade}</span></td>
                       <td style={{ padding: '8px 12px', textAlign: 'right', color: '#15803d' }}>{fmtBRL(r.valor_total)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-            {rowsFiltrados.length > 100 && (
+            {rowsFiltrados.length > 150 && (
               <div style={{ padding: '10px 16px', borderTop: '1px solid #e2e8f0', fontSize: 11, color: '#94a3b8', textAlign: 'center' }}>
-                Exibindo 100 de {rowsFiltrados.length} lançamentos
+                Exibindo 150 de {rowsFiltrados.length} lançamentos
               </div>
             )}
           </div>
