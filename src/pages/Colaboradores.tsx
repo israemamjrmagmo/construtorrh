@@ -1782,7 +1782,17 @@ ${c.observacoes ? `<div class="sec"><div class="sec-title">Observações</div><t
     toast.success(editId ? 'Colaborador atualizado!' : 'Colaborador criado!')
     setModalOpen(false)
     setInlineEditing(false)
-    fetchData()
+    // Recarrega dados e atualiza a ficha exibida com os dados novos
+    const savedId = editId ?? colaboradorId
+    await fetchData()
+    if (savedId) {
+      const { data: updated } = await supabase
+        .from('colaboradores')
+        .select('*, funcoes(id,nome,sigla,valor_hora_clt,valor_hora_autonomo,contratos_valores), obras(id,nome,codigo)')
+        .eq('id', savedId)
+        .single()
+      if (updated) setColabFicha(updated as any)
+    }
   }
 
   // ── recontratação ─────────────────────────────────────────────────────────
@@ -2222,7 +2232,7 @@ ${c.observacoes ? `<div class="sec"><div class="sec-title">Observações</div><t
                   {/* Salvar + Cancelar */}
                   <button onClick={handleSave} disabled={saving || gerando}
                     style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 14px', borderRadius: 7, border: 'none', background: saving ? '#94a3b8' : 'hsl(var(--primary))', color: '#fff', fontWeight: 700, fontSize: 12, cursor: saving ? 'not-allowed' : 'pointer' }}>
-                    {saving ? <><Loader2 size={12} className="animate-spin" /> Salvando…</> : '💾 Salvar'}
+                    {saving ? <><Loader2 size={12} className="animate-spin" /> Salvando…</> : 'Salvar'}
                   </button>
                   <button onClick={() => { setInlineEditing(false); setEditId(null) }} disabled={saving}
                     style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--background)', color: 'var(--foreground)', fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>

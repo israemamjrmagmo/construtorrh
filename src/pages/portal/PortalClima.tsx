@@ -34,7 +34,8 @@ interface FormClima {
 interface ClimaRow {
   id: string; data: string; condicao: string; choveu: boolean
   precipitacao_mm?: number | null; temperatura_max?: number | null
-  vento_kmh?: number | null; impacto_obra: string; observacoes?: string | null
+  temperatura_min?: number | null; vento_kmh?: number | null
+  umidade_pct?: number | null; impacto_obra: string; observacoes?: string | null
 }
 
 export default function PortalClima() {
@@ -50,6 +51,14 @@ export default function PortalClima() {
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [step, setStep] = useState<'form' | 'sucesso'>('form')
+  const [editandoId, setEditandoId] = useState<string | null>(null)
+  const [modalEditar, setModalEditar] = useState(false)
+  const [formEditar, setFormEditar] = useState<FormClima & { id?: string }>({
+    obra_id: '', data: hoje, choveu: false,
+    precipitacao_mm: '', temperatura_max: '', temperatura_min: '',
+    vento_kmh: '', umidade_pct: '', condicao: 'ensolarado', impacto_obra: 'nenhum', observacoes: '',
+  })
+  const [savingEdit, setSavingEdit] = useState(false)
 
   const [form, setForm] = useState<FormClima>({
     obra_id: obraId, data: hoje, choveu: false,
@@ -79,7 +88,7 @@ export default function PortalClima() {
   async function fetchHistorico() {
     setLoading(true)
     const { data } = await supabase.from('obra_clima')
-      .select('id, data, condicao, choveu, precipitacao_mm, temperatura_max, vento_kmh, impacto_obra, observacoes')
+      .select('id, data, condicao, choveu, precipitacao_mm, temperatura_max, temperatura_min, vento_kmh, umidade_pct, impacto_obra, observacoes')
       .eq('obra_id', obraId)
       .gte('data', mesInicio)
       .order('data', { ascending: false })
@@ -121,6 +130,51 @@ export default function PortalClima() {
   function novoRegistro() {
     setForm({ obra_id: obraId, data: hoje, choveu: false, precipitacao_mm: '', temperatura_max: '', temperatura_min: '', vento_kmh: '', umidade_pct: '', condicao: 'ensolarado', impacto_obra: 'nenhum', observacoes: '' })
     setStep('form')
+  }
+
+  function abrirEditar(r: ClimaRow) {
+    setEditandoId(r.id)
+    setFormEditar({
+      id: r.id,
+      obra_id: obraId,
+      data: r.data,
+      choveu: r.choveu,
+      precipitacao_mm: r.precipitacao_mm != null ? String(r.precipitacao_mm) : '',
+      temperatura_max: r.temperatura_max != null ? String(r.temperatura_max) : '',
+      temperatura_min: r.temperatura_min != null ? String(r.temperatura_min) : '',
+      vento_kmh: r.vento_kmh != null ? String(r.vento_kmh) : '',
+      umidade_pct: r.umidade_pct != null ? String(r.umidade_pct) : '',
+      condicao: r.condicao,
+      impacto_obra: r.impacto_obra,
+      observacoes: r.observacoes ?? '',
+    })
+    setModalEditar(true)
+  }
+
+  const setFE = (k: keyof FormClima, v: any) => setFormEditar(p => ({ ...p, [k]: v }))
+
+  async function handleSalvarEditar() {
+    if (!editandoId) return
+    setSavingEdit(true)
+    try {
+      const payload = {
+        choveu: formEditar.choveu,
+        precipitacao_mm: formEditar.precipitacao_mm ? parseFloat(formEditar.precipitacao_mm) : null,
+        temperatura_max: formEditar.temperatura_max ? parseFloat(formEditar.temperatura_max) : null,
+        temperatura_min: formEditar.temperatura_min ? parseFloat(formEditar.temperatura_min) : null,
+        vento_kmh: formEditar.vento_kmh ? parseFloat(formEditar.vento_kmh) : null,
+        umidade_pct: formEditar.umidade_pct ? parseFloat(formEditar.umidade_pct) : null,
+        condicao: formEditar.condicao,
+        impacto_obra: formEditar.impacto_obra,
+        observacoes: formEditar.observacoes || null,
+      }
+      const { error } = await supabase.from('obra_clima').update(payload).eq('id', editandoId)
+      if (error) { toast.error('Erro: ' + error.message); return }
+      toast.success('Registro atualizado!')
+      setModalEditar(false); setEditandoId(null); fetchHistorico()
+    } finally {
+      setSavingEdit(false)
+    }
   }
 
   const diasChuva = historico.filter(r => r.choveu).length
@@ -314,10 +368,98 @@ export default function PortalClima() {
                 <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 5, background: ic.bg, color: ic.cor, flexShrink: 0 }}>
                   {ic.label}
                 </span>
+                <button onClick={() => abrirEditar(r)}
+                  style={{ background: 'none', border: '1px solid #e2e8f0', borderRadius: 7, padding: '4px 10px', fontSize: 11, cursor: 'pointer', color: '#64748b', flexShrink: 0 }}>
+                  ✏️ Editar
+                </button>
               </div>
             )
           })}
         </div>
+
+        {/* Modal Editar Registro Climático */}
+        {modalEditar && (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+            <div style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 480, maxHeight: '90vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
+              <div style={{ padding: '14px 18px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontWeight: 800, fontSize: 15 }}>✏️ Editar Registro Climático</span>
+                <button onClick={() => setModalEditar(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: '#64748b' }}>✕</button>
+              </div>
+              <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>
+                  📅 Data: {new Date(formEditar.data + 'T12:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })}
+                </div>
+                {/* Condição */}
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 6 }}>🌤️ Condição Climática</label>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(90px, 1fr))', gap: 5 }}>
+                    {Object.entries(CONDICAO_CFG).map(([k, v]) => (
+                      <button key={k} onClick={() => { setFE('condicao', k); setFE('choveu', k.includes('chuva') || k === 'garoa' || k === 'tempestade') }}
+                        style={{ padding: '6px 4px', borderRadius: 8, border: `2px solid ${formEditar.condicao === k ? '#0ea5e9' : '#e2e8f0'}`, background: formEditar.condicao === k ? '#e0f7ff' : '#fff', fontWeight: 600, fontSize: 10, cursor: 'pointer', textAlign: 'center' }}>
+                        <div style={{ fontSize: 18 }}>{v.emoji}</div>
+                        <div style={{ color: formEditar.condicao === k ? '#0369a1' : '#64748b' }}>{v.label}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {/* Toggle choveu */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: formEditar.choveu ? '#eff6ff' : '#f8fafc', borderRadius: 10, border: `1px solid ${formEditar.choveu ? '#bfdbfe' : '#e2e8f0'}` }}>
+                  <button type="button" onClick={() => setFE('choveu', !formEditar.choveu)}
+                    style={{ position: 'relative', display: 'inline-flex', width: 44, height: 24, borderRadius: 12, border: 'none', cursor: 'pointer', background: formEditar.choveu ? '#0ea5e9' : 'rgba(0,0,0,0.15)', flexShrink: 0 }}>
+                    <span style={{ position: 'absolute', top: 3, left: formEditar.choveu ? 22 : 3, width: 18, height: 18, borderRadius: '50%', background: '#fff', transition: 'left 150ms' }} />
+                  </button>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: formEditar.choveu ? '#0369a1' : '#374151' }}>
+                    {formEditar.choveu ? '🌧️ Choveu' : '☀️ Não choveu'}
+                  </span>
+                </div>
+                {/* Medições */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  {formEditar.choveu && (
+                    <div style={{ gridColumn: '1 / -1' }}>
+                      <label style={{ fontSize: 11, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 3 }}>💧 Precipitação (mm)</label>
+                      <input type="number" step="0.1" value={formEditar.precipitacao_mm} onChange={e => setFE('precipitacao_mm', e.target.value)}
+                        style={{ width: '100%', border: '1px solid #e2e8f0', borderRadius: 8, padding: '7px 10px', fontSize: 13, boxSizing: 'border-box' }} placeholder="0" />
+                    </div>
+                  )}
+                  {[{ k: 'temperatura_max', l: '🌡️ Temp. Máx. (°C)' }, { k: 'temperatura_min', l: '❄️ Temp. Mín. (°C)' }, { k: 'vento_kmh', l: '💨 Vento (km/h)' }, { k: 'umidade_pct', l: '💦 Umidade (%)' }].map(f => (
+                    <div key={f.k}>
+                      <label style={{ fontSize: 11, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 3 }}>{f.l}</label>
+                      <input type="number" step="0.1" value={(formEditar as any)[f.k]} onChange={e => setFE(f.k as any, e.target.value)}
+                        style={{ width: '100%', border: '1px solid #e2e8f0', borderRadius: 8, padding: '7px 10px', fontSize: 13, boxSizing: 'border-box' }} placeholder="—" />
+                    </div>
+                  ))}
+                </div>
+                {/* Impacto */}
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 6 }}>🏗️ Impacto na Obra</label>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {Object.entries(IMPACTO_CFG).map(([k, v]) => (
+                      <button key={k} onClick={() => setFE('impacto_obra', k)}
+                        style={{ padding: '6px 10px', borderRadius: 8, border: `2px solid ${formEditar.impacto_obra === k ? v.cor : '#e2e8f0'}`, background: formEditar.impacto_obra === k ? v.bg : '#fff', color: formEditar.impacto_obra === k ? v.cor : '#64748b', fontWeight: 600, fontSize: 11, cursor: 'pointer' }}>
+                        {v.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {/* Observações */}
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 3 }}>📝 Observações</label>
+                  <textarea value={formEditar.observacoes} onChange={e => setFE('observacoes', e.target.value)} rows={2}
+                    style={{ width: '100%', border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 10px', fontSize: 13, boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit' }} />
+                </div>
+              </div>
+              <div style={{ padding: '10px 16px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                <button onClick={() => setModalEditar(false)} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer', fontWeight: 600, color: '#64748b' }}>
+                  Cancelar
+                </button>
+                <button onClick={handleSalvarEditar} disabled={savingEdit}
+                  style={{ padding: '8px 20px', borderRadius: 8, border: 'none', background: savingEdit ? '#94a3b8' : '#0369a1', color: '#fff', fontWeight: 700, cursor: savingEdit ? 'not-allowed' : 'pointer' }}>
+                  {savingEdit ? 'Salvando…' : '💾 Atualizar'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </PortalLayout>
   )

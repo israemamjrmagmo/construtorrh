@@ -670,6 +670,14 @@ export default function Pagamentos() {
         const totalPago    = vlFolhaPaga + vlAvPago
         const qtdPago      = qtdFolhaPaga + qtdAvPago
 
+        // Totais GERAL (todos os status=pago, sem filtro de mês)
+        const qtdFolhaPagaTotal = lancsPendentes.filter((l:any)=>l.status==='pago').length
+        const vlFolhaPagaTotal  = lancsPendentes.filter((l:any)=>l.status==='pago').reduce((s:number,l:any)=>s+(l.snap_liquido??0),0)
+        const qtdAvPagoTotal    = rows.filter(r=>r.status==='pago').length
+        const vlAvPagoTotal     = rows.filter(r=>r.status==='pago').reduce((s:any,r:any)=>s+(r.valor_liquido??r.valor_bruto??0),0)
+        const totalPagoGeral    = vlFolhaPagaTotal + vlAvPagoTotal
+        const qtdPagoGeral      = qtdFolhaPagaTotal + qtdAvPagoTotal
+
         return (
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12, marginBottom:20 }}>
           {/* EM ABERTO */}
@@ -698,15 +706,22 @@ export default function Pagamentos() {
           <div style={{ background:'#f0fdf4', border:'2px solid #bbf7d0', borderRadius:12, padding:'14px 18px' }}>
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
               <span style={{ fontSize:12, fontWeight:800, color:'#15803d', textTransform:'uppercase', letterSpacing:'0.05em' }}>✅ Realizados</span>
-              <span style={{ background:'#15803d', color:'#fff', borderRadius:20, padding:'2px 10px', fontSize:11, fontWeight:700 }}>{qtdPago} pagos</span>
+              <span style={{ background:'#15803d', color:'#fff', borderRadius:20, padding:'2px 10px', fontSize:11, fontWeight:700 }}>{qtdPagoGeral} pagos</span>
             </div>
-            <div style={{ fontSize:22, fontWeight:800, color:'#15803d', marginBottom:8 }}>{formatCurrency(totalPago)}</div>
-            <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
-              <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, color:'#166534' }}>
-                <span>📑 Folha de ponto</span><strong>{qtdFolhaPaga} · {formatCurrency(vlFolhaPaga)}</strong>
-              </div>
-              <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, color:'#166534' }}>
-                <span>📋 Avulsos pagos</span><strong>{qtdAvPago} · {formatCurrency(vlAvPago)}</strong>
+            <div style={{ fontSize:22, fontWeight:800, color:'#15803d', marginBottom:4 }}>{formatCurrency(totalPagoGeral)}</div>
+            <div style={{ fontSize:11, color:'#166534', marginBottom:8 }}>Total histórico (todos os períodos)</div>
+            <div style={{ borderTop:'1px solid #bbf7d0', paddingTop:8 }}>
+              <div style={{ fontSize:11, color:'#166534', fontWeight:600, marginBottom:4 }}>Mês {filtroMesLanc}:</div>
+              <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+                <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, color:'#166534' }}>
+                  <span>📑 Folha de ponto</span><strong>{qtdFolhaPaga} · {formatCurrency(vlFolhaPaga)}</strong>
+                </div>
+                <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, color:'#166534' }}>
+                  <span>📋 Avulsos pagos</span><strong>{qtdAvPago} · {formatCurrency(vlAvPago)}</strong>
+                </div>
+                <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, color:'#166534', fontWeight:700, borderTop:'1px solid #bbf7d0', paddingTop:4 }}>
+                  <span>Subtotal do mês</span><strong>{formatCurrency(totalPago)}</strong>
+                </div>
               </div>
             </div>
           </div>
@@ -714,15 +729,15 @@ export default function Pagamentos() {
           <div style={{ background:'#f5f3ff', border:'2px solid #ddd6fe', borderRadius:12, padding:'14px 18px' }}>
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
               <span style={{ fontSize:12, fontWeight:800, color:'#7c3aed', textTransform:'uppercase', letterSpacing:'0.05em' }}>📊 Total Geral</span>
-              <span style={{ background:'#7c3aed', color:'#fff', borderRadius:20, padding:'2px 10px', fontSize:11, fontWeight:700 }}>{qtdAberto+qtdPago} lançamentos</span>
+              <span style={{ background:'#7c3aed', color:'#fff', borderRadius:20, padding:'2px 10px', fontSize:11, fontWeight:700 }}>{qtdAberto+qtdPagoGeral} lançamentos</span>
             </div>
-            <div style={{ fontSize:22, fontWeight:800, color:'#7c3aed', marginBottom:8 }}>{formatCurrency(totalAberto + totalPago)}</div>
+            <div style={{ fontSize:22, fontWeight:800, color:'#7c3aed', marginBottom:8 }}>{formatCurrency(totalAberto + totalPagoGeral)}</div>
             <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
               <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, color:'#5b21b6' }}>
                 <span>⏳ Em Aberto</span><strong>{formatCurrency(totalAberto)}</strong>
               </div>
               <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, color:'#5b21b6' }}>
-                <span>✅ Realizado</span><strong>{formatCurrency(totalPago)}</strong>
+                <span>✅ Realizado (total)</span><strong>{formatCurrency(totalPagoGeral)}</strong>
               </div>
             </div>
           </div>

@@ -110,6 +110,9 @@ export default function Playbooks() {
   const [modalCopiar, setModalCopiar]     = useState(false)
   const [obraOrigem, setObraOrigem]       = useState('')
   const [copiando, setCopiando]           = useState(false)
+  const [modalAddAtividade, setModalAddAtividade] = useState(false)
+  const [ativSelecionadas, setAtivSelecionadas]   = useState<Set<string>>(new Set())
+  const [adicionando, setAdicionando]             = useState(false)
 
   // ── Fetch tudo ──────────────────────────────────────────────────────────────
   const fetchData = useCallback(async () => {
@@ -168,10 +171,17 @@ export default function Playbooks() {
   }, [ativFiltradas])
 
   // ─── Derivados aba preços ───────────────────────────────────────────────────
+  // Mostra APENAS as atividades que já têm preço na obra (selecionadas)
   const precosObra = useMemo(() => {
     if (!obraSel) return []
-    return atividades.filter(a => a.ativo)
-  }, [atividades, obraSel])
+    return atividades.filter(a => a.ativo && precosMap.has(`${a.id}::${obraSel.id}`))
+  }, [atividades, obraSel, precosMap])
+
+  // Todas as ativas disponíveis para adicionar (ainda não selecionadas)
+  const ativsDisponiveis = useMemo(() => {
+    if (!obraSel) return []
+    return atividades.filter(a => a.ativo && !precosMap.has(`${a.id}::${obraSel.id}`))
+  }, [atividades, obraSel, precosMap])
 
   const totalObra = useMemo(() => {
     if (!obraSel) return 0
@@ -249,6 +259,19 @@ export default function Playbooks() {
     if (!existing) return
     await supabase.from('playbook_precos').delete().eq('id', existing.id)
     toast.success('Preço removido'); fetchData()
+  }
+
+  async function adicionarAtividades() {
+    if (!obraSel || ativSelecionadas.size === 0) return
+    setAdicionando(true)
+    const inserts = Array.from(ativSelecionadas).map(ativId => ({
+      atividade_id: ativId, obra_id: obraSel.id, preco_unitario: 0, ativo: true,
+    }))
+    const { error } = await supabase.from('playbook_precos').insert(inserts)
+    setAdicionando(false)
+    if (error) { toast.error(traduzirErro(error.message)); return }
+    toast.success(`${inserts.length} atividade(s) adicionada(s)! Defina os preços na tabela.`)
+    setModalAddAtividade(false); setAtivSelecionadas(new Set()); fetchData()
   }
 
   async function copiarPrecos() {
@@ -484,15 +507,16 @@ export default function Playbooks() {
                   <div style={{ padding: '8px 16px', background: '#fefce8', borderBottom: '1px solid #fde68a', display: 'flex', alignItems: 'center', gap: 8 }}>
                     <AlertCircle size={14} color="#b45309" />
                     <span style={{ fontSize: 12, color: '#92400e' }}>
-                      {atividades.filter(a => a.ativo).length - atvsComPreco} atividade(s) sem preço — aparecerão como R$ 0,00 no portal
+                      {atividades.filter(a => a.ativo).length - atvsComPreco} atividade(s) do catálogo não adicionadas nesta obra
                     </span>
                   </div>
                 )}
 
-                {/* Tabela de preços */}
-                {atividades.filter(a => a.ativo).length === 0 ? (
+                {/* Tabela de preços — apenas os selecionados */}
+                {precosObra.length === 0 ? (
                   <div style={{ padding: 40, textAlign: 'center', color: 'var(--muted-foreground)' }}>
-                    Nenhuma atividade ativa. Cadastre atividades primeiro na aba "Atividades Padrão".
+                    Nenhuma atividade adicionada a esta obra ainda.<br />
+                    <span style={{ fontSize: 12 }}>Use o botão abaixo para adicionar atividades do catálogo.</span>
                   </div>
                 ) : (
                   <div style={{ overflowX: 'auto' }}>
@@ -508,7 +532,7 @@ export default function Playbooks() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {atividades.filter(a => a.ativo)
+                        {precosObra
                           .sort((a, b) => (a.categoria ?? 'Outros').localeCompare(b.categoria ?? 'Outros') || a.descricao.localeCompare(b.descricao))
                           .map((a, idx) => {
                             const precoAtual = precosMap.get(`${a.id}::${obraSel.id}`)
@@ -586,15 +610,24 @@ export default function Playbooks() {
                 )}
 
                 {/* Rodapé */}
-                <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 16, padding: '10px 16px', borderTop: '2px solid var(--border)', background: 'var(--muted)' }}>
-                  <span style={{ fontSize: 12, color: 'var(--muted-foreground)' }}>
-                    {atvsComPreco}/{atividades.filter(a => a.ativo).length} preços definidos
-                  </span>
-                  {totalObra > 0 && (
-                    <span style={{ fontSize: 13, fontWeight: 700, color: '#15803d' }}>
-                      Soma tabela: {formatCurrency(totalObra)}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, padding: '10px 16px', borderTop: '2px solid var(--border)', background: 'var(--muted)', flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    {canCreate && ativsDisponiveis.length > 0 && (
+                      <Button variant="outline" size="sm" onClick={() => setModalAddAtividade(true)} style={{ gap: 5 }}>
+                        <Plus size={13} /> Adicionar atividade ({ativsDisponiveis.length} disponíveis)
+                      </Button>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <span style={{ fontSize: 12, color: 'var(--muted-foreground)' }}>
+                      {atvsComPreco} atividade(s) nesta obra
                     </span>
-                  )}
+                    {totalObra > 0 && (
+                      <span style={{ fontSize: 13, fontWeight: 700, color: '#15803d' }}>
+                        Soma tabela: {formatCurrency(totalObra)}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
@@ -678,6 +711,53 @@ export default function Playbooks() {
             <Button variant="outline" onClick={() => setModalCopiar(false)}>Cancelar</Button>
             <Button disabled={!obraOrigem || copiando} onClick={copiarPrecos}>
               {copiando ? 'Copiando…' : 'Copiar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ════════ Modal Adicionar Atividades à Obra ═══════════════════════ */}
+      <Dialog open={modalAddAtividade} onOpenChange={o => { setModalAddAtividade(o); if (!o) setAtivSelecionadas(new Set()) }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Plus size={16} color="var(--primary)" /> Adicionar Atividades a {obraSel?.nome}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-2 space-y-2">
+            <p style={{ fontSize: 12, color: 'var(--muted-foreground)' }}>
+              Selecione as atividades do catálogo que serão executadas nesta obra. Os preços serão definidos como R$ 0,00 e você poderá ajustá-los depois.
+            </p>
+            <div style={{ maxHeight: 340, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>
+              {ativsDisponiveis.length === 0 ? (
+                <div style={{ padding: 20, textAlign: 'center', color: 'var(--muted-foreground)', fontSize: 13 }}>
+                  Todas as atividades do catálogo já estão nesta obra.
+                </div>
+              ) : ativsDisponiveis
+                .sort((a, b) => (a.categoria ?? 'Outros').localeCompare(b.categoria ?? 'Outros') || a.descricao.localeCompare(b.descricao))
+                .map((a, i) => {
+                  const sel = ativSelecionadas.has(a.id)
+                  return (
+                    <div key={a.id} onClick={() => setAtivSelecionadas(prev => { const n = new Set(prev); sel ? n.delete(a.id) : n.add(a.id); return n })}
+                      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderBottom: i < ativsDisponiveis.length - 1 ? '1px solid var(--border)' : 'none', cursor: 'pointer', background: sel ? 'rgba(37,99,235,0.06)' : 'transparent' }}>
+                      <input type="checkbox" readOnly checked={sel} style={{ width: 15, height: 15, flexShrink: 0, accentColor: 'var(--primary)' }} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: sel ? 600 : 400, color: sel ? 'var(--primary)' : 'var(--foreground)' }}>{a.descricao}</div>
+                        <div style={{ fontSize: 10, color: 'var(--muted-foreground)' }}>{a.categoria ?? 'Outros'} · {a.unidade}</div>
+                      </div>
+                      {a.codigo && <span style={{ fontSize: 10, fontFamily: 'monospace', background: '#f1f5f9', borderRadius: 4, padding: '1px 5px', color: '#475569', flexShrink: 0 }}>{a.codigo}</span>}
+                    </div>
+                  )
+                })}
+            </div>
+            {ativSelecionadas.size > 0 && (
+              <p style={{ fontSize: 12, color: 'var(--primary)', fontWeight: 600 }}>{ativSelecionadas.size} atividade(s) selecionada(s)</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setModalAddAtividade(false); setAtivSelecionadas(new Set()) }}>Cancelar</Button>
+            <Button disabled={ativSelecionadas.size === 0 || adicionando} onClick={adicionarAtividades}>
+              {adicionando ? 'Adicionando…' : `Adicionar ${ativSelecionadas.size > 0 ? `(${ativSelecionadas.size})` : ''}`}
             </Button>
           </DialogFooter>
         </DialogContent>

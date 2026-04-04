@@ -111,7 +111,7 @@ export default function GestorDashboard() {
           .lte('data', hoje)
           .order('data', { ascending: false }),
         supabase.from('portal_producao')
-          .select('quantidade, unidade, obra_id')
+          .select('id, quantidade, unidade, obra_id, colaborador_id, servico_descricao, data')
           .gte('data', mesInicio),
       ])
 
@@ -169,8 +169,8 @@ export default function GestorDashboard() {
         const atvsObra = ativos.filter(c => c.obra_id === o.id)
         const presObra = presentesHoje.filter(c => c.obra_id === o.id)
         const prodObra = (producao ?? [])
-          .filter(p => p.obra_id === o.id)
-          .reduce((s, p) => s + (p.quantidade ?? 0), 0)
+          .filter((p: any) => p.obra_id === o.id)
+          .reduce((s: number, p: any) => s + (p.quantidade ?? 0), 0)
         return {
           id: o.id,
           nome: o.nome,
@@ -184,7 +184,7 @@ export default function GestorDashboard() {
       setObras(obrasComDados)
 
       // Produção total do mês
-      const prodTotal = (producao ?? []).reduce((s, p) => s + (p.quantidade ?? 0), 0)
+      const prodTotal = (producao ?? []).reduce((s: number, p: any) => s + (p.quantidade ?? 0), 0)
       setProducaoTotal(Math.round(prodTotal * 100) / 100)
 
       // Atestados e acidentes

@@ -85,10 +85,15 @@ export default function PortalPlaybook() {
   useEffect(() => { fetchPlaybook() }, [fetchPlaybook])
 
   // ── Filtrar + agrupar ─────────────────────────────────────────────────────
+  // Mostra APENAS atividades que têm preço configurado na obra
   const atvsVisiveis = useMemo(() => {
     const q = busca.toLowerCase()
-    return ativs.filter(a => !q || a.descricao.toLowerCase().includes(q) || (a.codigo ?? '').toLowerCase().includes(q))
-  }, [ativs, busca])
+    return ativs.filter(a => {
+      const temPreco = precosMap.has(a.id)
+      if (!temPreco) return false // oculta se não tem preço nesta obra
+      return !q || a.descricao.toLowerCase().includes(q) || (a.codigo ?? '').toLowerCase().includes(q)
+    })
+  }, [ativs, busca, precosMap])
 
   const porCategoria = useMemo(() => {
     const m = new Map<string, Atividade[]>()
