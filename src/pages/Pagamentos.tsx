@@ -837,6 +837,7 @@ export default function Pagamentos() {
         </div>
         {/* Botões de relatório separados por aba */}
         {aba === 'agendados' && (
+          <>
           <button onClick={() => gerarRelatorioAgendados()}
             style={{ marginBottom:4, padding:'6px 14px', borderRadius:7, border:'1px solid #b45309', background:'#fff7ed', color:'#b45309', fontSize:12, fontWeight:700, cursor:'pointer', display:'flex', alignItems:'center', gap:6 }}>
             📊 Rel. Agendamentos
@@ -851,6 +852,7 @@ export default function Pagamentos() {
             style={{ marginBottom:4, padding:'6px 14px', borderRadius:7, border:'2px solid #059669', background:'linear-gradient(135deg,#059669,#047857)', color:'#fff', fontSize:12, fontWeight:800, cursor:'pointer', display:'flex', alignItems:'center', gap:6, boxShadow:'0 2px 8px rgba(5,150,105,0.35)' }}>
             🏦 Gerar Folha Inter (Agendados)
           </button>
+          </>
         )}
         {aba === 'realizados' && (
           <>
