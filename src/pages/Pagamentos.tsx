@@ -341,6 +341,20 @@ export default function Pagamentos() {
     fetchData()
   }
 
+  // ─── recusar lançamento de folha (devolve para status 'editavel') ──────────
+  async function recusarLancamento() {
+    if (!modalRecusarLanc) return
+    setSavingPgto(true)
+    const { error } = await supabase.from('ponto_lancamentos')
+      .update({ status: 'editavel', motivo_recusa: motivoRecusaLanc.trim() || 'Recusado pelo financeiro' })
+      .eq('id', modalRecusarLanc.id)
+    setSavingPgto(false)
+    if (error) { toast.error('Erro ao recusar: ' + error.message); return }
+    toast.success('↩ Lançamento devolvido para edição')
+    setModalRecusarLanc(null); setMotivoRecusaLanc('')
+    fetchLancsPendentes()
+  }
+
   // ─── efetivar pagamento de lançamento liberado ─────────────────────────────
   async function efetivarPagamento() {
     if (!modalPagarLanc) return
@@ -1883,6 +1897,51 @@ export default function Pagamentos() {
               onClick={recusarPagamentoVT}
               className="bg-destructive text-destructive-foreground"
             >
+              {savingPgto ? 'Processando…' : '↩ Recusar e devolver'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ══ MODAL: Recusar lançamento de folha ══════════════════════════════ */}
+      <AlertDialog open={!!modalRecusarLanc} onOpenChange={(o) => !o && setModalRecusarLanc(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle style={{ display:'flex', alignItems:'center', gap:8 }}>
+              ↩ Recusar Lançamento de Folha?
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div style={{ display:'flex', flexDirection:'column', gap:10, paddingTop:4 }}>
+                {modalRecusarLanc && (
+                  <div style={{ background:'#f8fafc', borderRadius:8, padding:'10px 12px', fontSize:13 }}>
+                    <div style={{ fontWeight:700 }}>{modalRecusarLanc.colaboradores?.nome ?? '—'}</div>
+                    <div style={{ fontSize:12, color:'#64748b', marginTop:2 }}>
+                      {modalRecusarLanc.obras?.nome ?? '—'} · {modalRecusarLanc.data_inicio?.slice(8)}/{modalRecusarLanc.data_inicio?.slice(5,7)} → {modalRecusarLanc.data_fim?.slice(8)}/{modalRecusarLanc.data_fim?.slice(5,7)}
+                    </div>
+                    <div style={{ fontSize:13, fontWeight:800, color:'#b45309', marginTop:4 }}>
+                      R$ {(modalRecusarLanc.snap_liquido ?? 0).toLocaleString('pt-BR',{minimumFractionDigits:2})}
+                    </div>
+                  </div>
+                )}
+                <div style={{ fontSize:12, color:'#64748b' }}>O lançamento voltará para status <strong>editável</strong> no módulo de Lançamentos para que o gestor possa corrigir e liberar novamente.</div>
+                <div>
+                  <label style={{ fontSize:12, fontWeight:600, display:'block', marginBottom:4 }}>Motivo da recusa (opcional)</label>
+                  <input
+                    value={motivoRecusaLanc}
+                    onChange={e => setMotivoRecusaLanc(e.target.value)}
+                    placeholder="Ex.: Valor divergente, período incorreto…"
+                    style={{ width:'100%', padding:'7px 10px', borderRadius:7, border:'1px solid #d1d5db', fontSize:13, outline:'none' }}
+                  />
+                </div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={savingPgto}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={savingPgto}
+              onClick={recusarLancamento}
+              style={{ background:'#dc2626', color:'#fff' }}>
               {savingPgto ? 'Processando…' : '↩ Recusar e devolver'}
             </AlertDialogAction>
           </AlertDialogFooter>
