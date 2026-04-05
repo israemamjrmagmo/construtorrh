@@ -14,7 +14,7 @@ import {
   Smartphone, Inbox, Scale, MessageSquare,
   Search, Bell, ChevronDown,
   LayoutGrid, FolderKanban, HeartPulse, Banknote, Gavel, Cog,
-  BookOpen, CreditCard, Layers, ClipboardCheck, ShoppingBasket, FolderOpen,
+  BookOpen, CreditCard, Layers, ClipboardCheck, ShoppingBasket, FolderOpen, ScrollText,
 } from 'lucide-react'
 
 // ─── Cor principal da sidebar ───────────────────────────────────────────────
@@ -43,6 +43,7 @@ const PAGE_TITLES: Record<string, { label: string; icon: React.ElementType; colo
   '/encargos':          { label: 'Encargos',            icon: Briefcase,       color: '#8b5cf6' },
   '/provisoes':         { label: 'Provisões Rescisão',  icon: Calculator,      color: '#ec4899' },
   '/juridico':          { label: 'Jurídico',            icon: Scale,           color: '#64748b' },
+  '/contratos':         { label: 'Contratos',           icon: ScrollText,      color: '#34d399' },
   '/relatorios':        { label: 'Relatórios',          icon: BarChart3,       color: '#6366f1' },
   '/usuarios':          { label: 'Usuários',            icon: UserCog,         color: '#0ea5e9' },
   '/portal-admin':      { label: 'Portal da Obra',      icon: Smartphone,      color: '#10b981' },
@@ -127,7 +128,8 @@ const NAV_GROUPS = [
     short: 'Juríd.',
     icon:  Scale,
     items: [
-      { to: '/juridico', label: 'Dossiê / Lista Negra', icon: Scale, color: '#a78bfa' },
+      { to: '/juridico',   label: 'Dossiê / Lista Negra',      icon: Scale,       color: '#a78bfa' },
+      { to: '/contratos',  label: 'Contratos e Documentos',     icon: ScrollText,  color: '#34d399' },
     ],
   },
   {
