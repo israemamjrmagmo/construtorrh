@@ -927,6 +927,10 @@ export default function Colaboradores() {
   const [filterFuncao, setFilterFuncao] = useState('todas')
   const [filterContrato, setFilterContrato] = useState('todos')
 
+  // ── Crachás em lote ──────────────────────────────────────────────────────
+  const [modalLote, setModalLote] = useState(false)
+  const [loteObra, setLoteObra]   = useState('todas')
+
   // Contadores
   const totalAtivos    = rows.filter(r => r.status === 'ativo').length
   const totalCLT       = rows.filter(r => r.status === 'ativo' && (r.tipo_contrato ?? '').toLowerCase() === 'clt').length
@@ -1128,319 +1132,264 @@ ${c.observacoes ? `<div class="sec"><div class="sec-title">Observações</div><t
     }
   }
 
-  // ── Gera Crachá CR-80 (5,4 cm × 8,6 cm) e abre para impressão ────────────
-  function gerarCracha(c: ColaboradorRow) {
-    const fn       = (c.funcoes as any)?.nome ?? '—'
-    const fotoUrl  = (c as any).foto_url ?? ''
-    const empresa  = 'CONSTRUTOR RH'
+  // ── helpers compartilhados de crachá ─────────────────────────────────────
+  const CRACHA_AZUL   = '#1e3a5f'
+  const CRACHA_AZULCL = '#2563eb'
 
-    /* ── paleta ── */
-    const azul   = '#1e3a5f'
-    const azulCl = '#2563eb'
-    const branco = '#ffffff'
+  /** CSS e estrutura HTML idênticos para crachá singular e em lote */
+  function crachaCSS(azul: string, azulCl: string, branco: string) {
+    return `
+  * { box-sizing:border-box; margin:0; padding:0; }
+  .card {
+    width:86mm; height:54mm;
+    background:${branco};
+    border-radius:3mm;
+    overflow:hidden;
+    display:flex; flex-direction:row;
+    box-shadow:0 2px 8px rgba(0,0,0,.18);
+    page-break-inside:avoid; break-inside:avoid;
+    position:relative;
+  }
+  .side {
+    width:14mm; background:${azul};
+    display:flex; flex-direction:column;
+    align-items:center; justify-content:center;
+    flex-shrink:0; padding:3mm 0; gap:2mm;
+  }
+  .side-text {
+    writing-mode:vertical-rl; text-orientation:mixed;
+    transform:rotate(180deg); color:${branco};
+    font-size:6.5pt; font-weight:800;
+    letter-spacing:.12em; text-transform:uppercase;
+    white-space:nowrap; opacity:.9;
+  }
+  .side-dot { width:5mm;height:5mm;border-radius:50%;background:${azulCl};opacity:.7;flex-shrink:0; }
+  .side-logo { width:10mm;height:10mm;object-fit:contain;border-radius:1mm;filter:brightness(0) invert(1); }
+  .main { flex:1;display:flex;flex-direction:column;overflow:hidden; }
+  .header { background:${azul};padding:2.5mm 3mm 2mm;display:flex;align-items:center;gap:2.5mm; }
+  .header-empresa { color:${branco};font-size:7.5pt;font-weight:900;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+  .header-line { flex:1;height:1px;background:rgba(255,255,255,.25);min-width:2mm; }
+  .header-chapa { color:#93c5fd;font-size:6pt;font-weight:700;white-space:nowrap;letter-spacing:.05em; }
+  .body { flex:1;display:flex;flex-direction:row;padding:2.5mm 3mm 2mm;gap:3mm;align-items:center; }
+  .foto-wrap { width:20mm;height:26mm;border-radius:2mm;overflow:hidden;flex-shrink:0;border:.5mm solid #cbd5e1;background:#334155; }
+  .dados { flex:1;display:flex;flex-direction:column;justify-content:center;gap:1.8mm;min-width:0;overflow:hidden; }
+  .nome { font-size:9.5pt;font-weight:900;color:#0f172a;line-height:1.15;word-break:break-word;hyphens:auto; }
+  .divider { height:.4mm;background:linear-gradient(90deg,${azulCl},transparent);border-radius:1mm;width:80%; }
+  .funcao-label { font-size:5.5pt;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.1em; }
+  .funcao-val { font-size:8pt;font-weight:700;color:${azulCl};word-break:break-word;hyphens:auto;line-height:1.2; }
+  .footer { background:#f1f5f9;border-top:.3mm solid #e2e8f0;padding:1.5mm 3mm;display:flex;align-items:center;justify-content:space-between; }
+  .footer-chapa { font-size:6pt;font-weight:800;color:${azul};letter-spacing:.06em;text-transform:uppercase; }
+  .footer-barras { display:flex;gap:.8mm;align-items:flex-end; }
+  .barra { background:${azul};border-radius:.3mm;opacity:.6; }
+  /* ── Marcas de corte ── */
+  .cut-wrap {
+    position:relative;
+    display:inline-block;
+    /* margem ao redor para as marcas de corte não ficarem fora */
+    padding:4mm;
+  }
+  .cut-wrap .card { position:relative; z-index:1; }
+  .cut-line {
+    position:absolute;
+    background:#b0b8c1;
+    z-index:0;
+  }
+  /* cantos: 4 traços por cartão */
+  .cut-tl-h { top:0; left:4mm; width:3mm; height:.3px; }
+  .cut-tl-v { top:0; left:4mm; width:.3px; height:3mm; }
+  .cut-tr-h { top:0; right:4mm; width:3mm; height:.3px; margin-left:-3mm; }
+  .cut-tr-v { top:0; right:4mm; width:.3px; height:3mm; }
+  .cut-bl-h { bottom:0; left:4mm; width:3mm; height:.3px; }
+  .cut-bl-v { bottom:0; left:4mm; width:.3px; height:3mm; margin-top:-3mm; }
+  .cut-br-h { bottom:0; right:4mm; width:3mm; height:.3px; margin-left:-3mm; }
+  .cut-br-v { bottom:0; right:4mm; width:.3px; height:3mm; margin-top:-3mm; }
+  @media print { .cut-line { background:#999; } }
+`
+  }
 
-    /* ── foto: img tag ou iniciais ── */
-    const fotoBloco = fotoUrl
-      ? `<img src="${fotoUrl}" alt="Foto" style="
-            width:100%; height:100%; object-fit:cover; object-position:center top;
-            display:block; border-radius:0;" />`
-      : `<div style="
-            width:100%; height:100%; display:flex; align-items:center;
-            justify-content:center; background:#334155;
-            font-size:34px; font-weight:900; color:#94a3b8; letter-spacing:-1px;">
-            ${c.nome.trim().split(/\s+/).map((n:string)=>n[0]).slice(0,2).join('').toUpperCase()}
-         </div>`
+  function crachaCardHTML(
+    c: ColaboradorRow,
+    empNome: string,
+    logoUrl: string
+  ): string {
+    const fn   = (c.funcoes as any)?.nome ?? '—'
+    const foto = (c as any).foto_url ?? ''
 
-    /* ── HTML do crachá ──
-       Dimensões CR-80: 85,6 mm × 54 mm  (paisagem)
-       Convertidas para px a 96 dpi:  325 × 205 px  (≈ 85.6 mm × 54 mm)
-       Com 300 dpi para impressão via @page ──────────────────────────── */
+    const fotoBloco = foto
+      ? `<img src="${foto}" alt="" style="width:100%;height:100%;object-fit:cover;object-position:center top;display:block;"/>`
+      : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#334155;font-size:20px;font-weight:900;color:#94a3b8;">${c.nome.trim().split(/\s+/).map((n: string) => n[0]).slice(0,2).join('').toUpperCase()}</div>`
+
+    // Lateral: logo (se houver) OU nome texto vertical
+    const sideContent = logoUrl
+      ? `<img src="${logoUrl}" alt="Logo" class="side-logo" onerror="this.style.display='none'"/>`
+      : `<span class="side-text">${empNome}</span>`
+
+    const barras = [7,10,6,9,5,8,4,7,6,10,5]
+      .map(h => `<div class="barra" style="width:1.2mm;height:${h}px"></div>`)
+      .join('')
+
+    return `
+<div class="cut-wrap">
+  <div class="cut-line cut-tl-h"></div><div class="cut-line cut-tl-v"></div>
+  <div class="cut-line cut-tr-h"></div><div class="cut-line cut-tr-v"></div>
+  <div class="cut-line cut-bl-h"></div><div class="cut-line cut-bl-v"></div>
+  <div class="cut-line cut-br-h"></div><div class="cut-line cut-br-v"></div>
+  <div class="card">
+    <div class="side">
+      <div class="side-dot"></div>
+      ${sideContent}
+      <div class="side-dot"></div>
+    </div>
+    <div class="main">
+      <div class="header">
+        <span class="header-empresa">${empNome}</span>
+        <div class="header-line"></div>
+        <span class="header-chapa">${c.chapa ?? ''}</span>
+      </div>
+      <div class="body">
+        <div class="foto-wrap">${fotoBloco}</div>
+        <div class="dados">
+          <div class="nome">${c.nome.trim()}</div>
+          <div class="divider"></div>
+          <div class="funcao-label">Função</div>
+          <div class="funcao-val">${fn}</div>
+        </div>
+      </div>
+      <div class="footer">
+        <span class="footer-chapa">Chapa: ${c.chapa ?? '—'}</span>
+        <div class="footer-barras">${barras}</div>
+      </div>
+    </div>
+  </div>
+</div>`
+  }
+
+  // ── Gera Crachá SINGULAR CR-80 e abre para impressão ──────────────────────
+  async function gerarCracha(c: ColaboradorRow) {
+    const emp     = await fetchEmpresaData()
+    const empNome = emp.nome || 'Empresa'
+    const logoUrl = emp.logoUrl || ''
+
     const html = `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8"/>
 <title>Crachá — ${c.nome}</title>
 <style>
-  * { box-sizing:border-box; margin:0; padding:0; }
-  html, body { width:100%; height:100%; background:#fff; }
-
-  @page {
-    size: 86mm 54mm;
-    margin: 0;
-  }
-
-  @media print {
-    html, body { width:86mm; height:54mm; }
-    .card { page-break-inside: avoid; }
-    .no-print { display:none !important; }
-  }
-
-  body {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 100vh;
-    font-family: 'Segoe UI', Arial, sans-serif;
-    background: #e2e8f0;
-  }
-
-  .card {
-    width: 86mm;
-    height: 54mm;
-    background: ${branco};
-    border-radius: 3mm;
-    overflow: hidden;
-    display: flex;
-    flex-direction: row;
-    box-shadow: 0 4px 24px rgba(0,0,0,.22);
-    position: relative;
-  }
-
-  /* ── Faixa lateral esquerda (logotipo / empresa) ── */
-  .side {
-    width: 14mm;
-    background: ${azul};
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-    padding: 3mm 0;
-    gap: 2mm;
-  }
-  .side-text {
-    writing-mode: vertical-rl;
-    text-orientation: mixed;
-    transform: rotate(180deg);
-    color: ${branco};
-    font-size: 6.5pt;
-    font-weight: 800;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    white-space: nowrap;
-    opacity: .9;
-  }
-  .side-dot {
-    width: 5mm; height: 5mm;
-    border-radius: 50%;
-    background: ${azulCl};
-    opacity: .7;
-    flex-shrink: 0;
-  }
-
-  /* ── Área principal ── */
-  .main {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-  }
-
-  /* ── Cabeçalho colorido ── */
-  .header {
-    background: ${azul};
-    padding: 2.5mm 3mm 2mm;
-    display: flex;
-    align-items: center;
-    gap: 2.5mm;
-  }
-  .header-empresa {
-    color: ${branco};
-    font-size: 7.5pt;
-    font-weight: 900;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    white-space: nowrap;
-  }
-  .header-line {
-    flex: 1;
-    height: 1px;
-    background: rgba(255,255,255,.25);
-  }
-  .header-chapa {
-    color: #93c5fd;
-    font-size: 6pt;
-    font-weight: 700;
-    white-space: nowrap;
-    letter-spacing: 0.05em;
-  }
-
-  /* ── Corpo (foto + dados) ── */
-  .body {
-    flex: 1;
-    display: flex;
-    flex-direction: row;
-    padding: 2.5mm 3mm 2mm;
-    gap: 3mm;
-    align-items: center;
-  }
-
-  /* ── Foto ── */
-  .foto-wrap {
-    width: 20mm;
-    height: 26mm;
-    border-radius: 2mm;
-    overflow: hidden;
-    flex-shrink: 0;
-    border: 0.5mm solid #cbd5e1;
-    background: #334155;
-  }
-
-  /* ── Dados textuais ── */
-  .dados {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    gap: 1.8mm;
-    min-width: 0;
-    overflow: hidden;
-  }
-  .nome {
-    font-size: 9.5pt;
-    font-weight: 900;
-    color: #0f172a;
-    line-height: 1.15;
-    word-break: break-word;
-    hyphens: auto;
-  }
-  .divider {
-    height: 0.4mm;
-    background: linear-gradient(90deg, ${azulCl}, transparent);
-    border-radius: 1mm;
-    width: 80%;
-  }
-  .funcao-label {
-    font-size: 5.5pt;
-    font-weight: 700;
-    color: #64748b;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-  }
-  .funcao-val {
-    font-size: 8pt;
-    font-weight: 700;
-    color: ${azulCl};
-    word-break: break-word;
-    hyphens: auto;
-    line-height: 1.2;
-  }
-
-  /* ── Rodapé ── */
-  .footer {
-    background: #f1f5f9;
-    border-top: 0.3mm solid #e2e8f0;
-    padding: 1.5mm 3mm;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-  .footer-chapa {
-    font-size: 6pt;
-    font-weight: 800;
-    color: ${azul};
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-  }
-  .footer-barras {
-    display: flex;
-    gap: 0.8mm;
-    align-items: flex-end;
-  }
-  .barra {
-    background: ${azul};
-    border-radius: 0.3mm;
-    opacity: .6;
-  }
-
-  /* ── Botão de impressão (some ao imprimir) ── */
+  html,body { background:#e2e8f0; display:flex; align-items:center; justify-content:center; min-height:100vh; font-family:'Segoe UI',Arial,sans-serif; }
+  @page { size:94mm 62mm; margin:0; }
+  @media print { html,body { background:#fff; width:94mm; height:62mm; } .no-print { display:none !important; } }
+  ${crachaCSS(CRACHA_AZUL, CRACHA_AZULCL, '#ffffff')}
   .no-print {
-    position: fixed;
-    bottom: 12px;
-    right: 12px;
-    background: ${azulCl};
-    color: #fff;
-    border: none;
-    border-radius: 8px;
-    padding: 10px 22px;
-    font-size: 14px;
-    font-weight: 700;
-    cursor: pointer;
-    box-shadow: 0 4px 12px rgba(0,0,0,.25);
-    z-index: 9999;
+    position:fixed; bottom:12px; right:12px;
+    background:${CRACHA_AZULCL}; color:#fff; border:none; border-radius:8px;
+    padding:10px 22px; font-size:14px; font-weight:700; cursor:pointer;
+    box-shadow:0 4px 12px rgba(0,0,0,.25); z-index:9999;
   }
-  .no-print:hover { background: #1d4ed8; }
+  .no-print:hover { background:#1d4ed8; }
 </style>
 </head>
 <body>
-
-<div class="card">
-
-  <!-- Faixa lateral -->
-  <div class="side">
-    <div class="side-dot"></div>
-    <span class="side-text">${empresa}</span>
-    <div class="side-dot"></div>
-  </div>
-
-  <!-- Área principal -->
-  <div class="main">
-
-    <!-- Cabeçalho -->
-    <div class="header">
-      <span class="header-empresa">${empresa}</span>
-      <div class="header-line"></div>
-      <span class="header-chapa">${c.chapa ?? ''}</span>
-    </div>
-
-    <!-- Corpo -->
-    <div class="body">
-
-      <!-- Foto -->
-      <div class="foto-wrap">${fotoBloco}</div>
-
-      <!-- Dados -->
-      <div class="dados">
-        <div class="nome">${c.nome.trim()}</div>
-        <div class="divider"></div>
-        <div class="funcao-label">Função</div>
-        <div class="funcao-val">${fn}</div>
-      </div>
-
-    </div>
-
-    <!-- Rodapé -->
-    <div class="footer">
-      <span class="footer-chapa">Chapa: ${c.chapa ?? '—'}</span>
-      <div class="footer-barras">
-        ${[7,10,6,9,5,8,4,7,6,10,5].map(h=>`<div class="barra" style="width:1.2mm;height:${h}px"></div>`).join('')}
-      </div>
-    </div>
-
-  </div>
-</div>
-
+${crachaCardHTML(c, empNome, logoUrl)}
 <button class="no-print" onclick="window.print()">🖨️ Imprimir Crachá</button>
-
 <script>
-  // Imprime automaticamente após imagem carregar (se houver foto)
-  const img = document.querySelector('img')
+  const img = document.querySelector('.foto-wrap img')
   if (img) {
-    img.onload  = () => window.print()
-    img.onerror = () => window.print()
-    // fallback: se já carregou antes do onload ser atribuído
-    if (img.complete) setTimeout(() => window.print(), 300)
-  } else {
-    window.onload = () => setTimeout(() => window.print(), 200)
+    const print = () => window.print()
+    img.onload = print; img.onerror = print
+    if (img.complete) setTimeout(print, 300)
+  } else { window.onload = () => setTimeout(() => window.print(), 200) }
+<\/script>
+</body>
+</html>`
+
+    const win = window.open('', '_blank', 'width=520,height=440')
+    if (win) { win.document.write(html); win.document.close() }
+    else toast.error('Bloqueio de pop-up detectado. Permita pop-ups para este site.')
+  }
+
+  // ── Gera crachás em LOTE por obra — grid A4 com marcas de corte ───────────
+  async function gerarCrachaLote(obraId: string) {
+    const lista = rows.filter(c => {
+      if (c.status !== 'ativo') return false
+      if (obraId !== 'todas' && (c as any).obra_id !== obraId) return false
+      return true
+    })
+
+    if (lista.length === 0) {
+      toast.warning('Nenhum colaborador ativo encontrado para essa seleção.')
+      return
+    }
+
+    const emp     = await fetchEmpresaData()
+    const empNome = emp.nome || 'Empresa'
+    const logoUrl = emp.logoUrl || ''
+
+    const obraNome = obraId === 'todas'
+      ? 'Todas as Obras'
+      : obras.find(o => o.id === obraId)?.nome ?? '—'
+
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<title>Crachás em Lote — ${obraNome}</title>
+<style>
+  * { box-sizing:border-box; margin:0; padding:0; }
+  @page { size:A4; margin:8mm; }
+  body { font-family:'Segoe UI',Arial,sans-serif; background:#e2e8f0; padding:60px 12px 12px; }
+  @media print { body { background:#fff; padding:0; } .no-print { display:none !important; } }
+  ${crachaCSS(CRACHA_AZUL, CRACHA_AZULCL, '#ffffff')}
+  /* Grid: 2 crachás por linha em A4 (área útil ~190mm; 2×86mm+gap~12mm = 184mm ✓) */
+  .grid {
+    display:grid;
+    grid-template-columns:repeat(2, max-content);
+    gap:0;
+    justify-content:center;
+    align-items:start;
+  }
+  /* Barra topo (some ao imprimir) */
+  .no-print {
+    position:fixed; top:0; left:0; right:0;
+    background:${CRACHA_AZUL}; color:#fff;
+    padding:10px 20px;
+    display:flex; align-items:center; justify-content:space-between;
+    font-family:'Segoe UI',Arial,sans-serif; font-size:13px; font-weight:700;
+    box-shadow:0 2px 8px rgba(0,0,0,.3); z-index:9999; gap:12px;
+  }
+  .no-print button {
+    background:${CRACHA_AZULCL}; color:#fff; border:none; border-radius:7px;
+    padding:8px 20px; font-size:13px; font-weight:700; cursor:pointer;
+  }
+  .no-print button:hover { background:#1d4ed8; }
+</style>
+</head>
+<body>
+<div class="no-print">
+  <span>🪪 Crachás em Lote — ${obraNome} · ${lista.length} colaborador(es)</span>
+  <button onclick="window.print()">🖨️ Imprimir / PDF</button>
+</div>
+<div class="grid">
+  ${lista.map(c => crachaCardHTML(c, empNome, logoUrl)).join('\n')}
+</div>
+<script>
+  const imgs = Array.from(document.querySelectorAll('.foto-wrap img'))
+  if (!imgs.length) { window.onload = () => setTimeout(() => window.print(), 300) }
+  else {
+    let n = 0
+    const done = () => { if (++n >= imgs.length) setTimeout(() => window.print(), 300) }
+    imgs.forEach(img => { if ((img as HTMLImageElement).complete) done(); else { img.onload = done; img.onerror = done } })
   }
 <\/script>
 </body>
 </html>`
 
-    const win = window.open('', '_blank', 'width=520,height=420')
+    const win = window.open('', '_blank', 'width=920,height=740')
     if (win) { win.document.write(html); win.document.close() }
     else toast.error('Bloqueio de pop-up detectado. Permita pop-ups para este site.')
   }
+
+
 
   // mapa: colaborador_id → tem ponto lançado? (bloqueia exclusão visualmente)
   const [colabsComPonto, setColabsComPonto] = useState<Set<string>>(new Set())
@@ -2298,7 +2247,14 @@ ${c.observacoes ? `<div class="sec"><div class="sec-title">Observações</div><t
           <div style={{ padding: '12px 12px 10px', background: '#1e3a5f', display: 'flex', flexDirection: 'column', gap: 8 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <span style={{ fontWeight: 700, fontSize: 13, color: '#fff' }}>👷 Colaboradores</span>
-              <button onClick={openNew} style={{ background: 'rgba(255,255,255,.2)', border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer', padding: '4px 10px', fontSize: 11, fontWeight: 700 }}>+ Novo</button>
+              <div style={{ display:'flex', gap:5 }}>
+                <button onClick={() => { setLoteObra('todas'); setModalLote(true) }}
+                  style={{ background:'rgba(5,150,105,.35)', border:'1px solid rgba(5,150,105,.6)', borderRadius:6, color:'#6ee7b7', cursor:'pointer', padding:'4px 9px', fontSize:11, fontWeight:700, display:'flex', alignItems:'center', gap:4 }}
+                  title="Gerar crachás em lote por obra">
+                  🪪 Lote
+                </button>
+                <button onClick={openNew} style={{ background: 'rgba(255,255,255,.2)', border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer', padding: '4px 10px', fontSize: 11, fontWeight: 700 }}>+ Novo</button>
+              </div>
             </div>
 
             {/* Badges de filtro rápido */}
@@ -2983,6 +2939,106 @@ ${c.observacoes ? `<div class="sec"><div class="sec-title">Observações</div><t
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* ═══════════ MODAL: CRACHÁS EM LOTE ════════════════════════════════ */}
+      {modalLote && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.55)', zIndex:9000, display:'flex', alignItems:'center', justifyContent:'center' }}
+          onClick={e => { if (e.target === e.currentTarget) setModalLote(false) }}>
+          <div style={{ background:'var(--card)', borderRadius:14, padding:28, width:420, maxWidth:'95vw', boxShadow:'0 8px 40px rgba(0,0,0,.35)', display:'flex', flexDirection:'column', gap:20 }}>
+
+            {/* Cabeçalho */}
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+              <div>
+                <div style={{ fontSize:17, fontWeight:800, display:'flex', alignItems:'center', gap:8 }}>🪪 Crachás em Lote</div>
+                <div style={{ fontSize:12, color:'var(--muted-foreground)', marginTop:3 }}>Gera um PDF A4 com todos os crachás CR-80 e marcas de corte</div>
+              </div>
+              <button onClick={() => setModalLote(false)} style={{ background:'none', border:'none', cursor:'pointer', fontSize:20, color:'var(--muted-foreground)', padding:'0 4px', lineHeight:1 }}>✕</button>
+            </div>
+
+            {/* Filtro por obra */}
+            <div>
+              <label style={{ fontSize:12, fontWeight:700, color:'var(--muted-foreground)', display:'block', marginBottom:6, textTransform:'uppercase', letterSpacing:'.05em' }}>
+                🏗️ Filtrar por Obra
+              </label>
+              <select
+                value={loteObra}
+                onChange={e => setLoteObra(e.target.value)}
+                style={{ width:'100%', height:38, borderRadius:8, border:'1px solid var(--border)', background:'var(--background)', color:'var(--foreground)', fontSize:13, paddingLeft:10 }}>
+                <option value="todas">Todas as obras ({rows.filter(c=>c.status==='ativo').length} ativos)</option>
+                {obras.map(o => {
+                  const qtd = rows.filter(c => c.status==='ativo' && (c as any).obra_id === o.id).length
+                  return <option key={o.id} value={o.id}>{o.nome} ({qtd})</option>
+                })}
+              </select>
+            </div>
+
+            {/* Preview da contagem */}
+            {(() => {
+              const qtd = rows.filter(c => {
+                if (c.status !== 'ativo') return false
+                if (loteObra !== 'todas' && (c as any).obra_id !== loteObra) return false
+                return true
+              }).length
+              const comFoto = rows.filter(c => {
+                if (c.status !== 'ativo') return false
+                if (loteObra !== 'todas' && (c as any).obra_id !== loteObra) return false
+                return !!(c as any).foto_url
+              }).length
+              return (
+                <div style={{ background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:9, padding:'12px 16px', display:'flex', gap:20 }}>
+                  <div style={{ textAlign:'center' }}>
+                    <div style={{ fontSize:24, fontWeight:900, color:'#15803d' }}>{qtd}</div>
+                    <div style={{ fontSize:11, color:'#166534', fontWeight:600 }}>crachás</div>
+                  </div>
+                  <div style={{ borderLeft:'1px solid #bbf7d0' }} />
+                  <div style={{ textAlign:'center' }}>
+                    <div style={{ fontSize:24, fontWeight:900, color:'#0369a1' }}>{comFoto}</div>
+                    <div style={{ fontSize:11, color:'#075985', fontWeight:600 }}>com foto</div>
+                  </div>
+                  <div style={{ borderLeft:'1px solid #bbf7d0' }} />
+                  <div style={{ textAlign:'center' }}>
+                    <div style={{ fontSize:24, fontWeight:900, color:'#92400e' }}>{qtd - comFoto}</div>
+                    <div style={{ fontSize:11, color:'#78350f', fontWeight:600 }}>só iniciais</div>
+                  </div>
+                  <div style={{ marginLeft:'auto', display:'flex', alignItems:'center' }}>
+                    <div style={{ fontSize:11, color:'#64748b', textAlign:'right', lineHeight:1.5 }}>
+                      {Math.ceil(qtd/2)} página(s) A4<br/>2 crachás por linha
+                    </div>
+                  </div>
+                </div>
+              )
+            })()}
+
+            {/* Info marcas de corte */}
+            <div style={{ background:'#fffbeb', border:'1px solid #fde68a', borderRadius:8, padding:'10px 14px', fontSize:12, color:'#92400e', display:'flex', gap:8, alignItems:'flex-start' }}>
+              <span style={{ fontSize:16, flexShrink:0 }}>✂️</span>
+              <span>Cada crachá inclui <strong>marcas de corte nos 4 cantos</strong> para facilitar o recorte no tamanho CR-80 (86 × 54 mm). O logo e nome da empresa são buscados automaticamente das configurações do sistema.</span>
+            </div>
+
+            {/* Ações */}
+            <div style={{ display:'flex', gap:10, justifyContent:'flex-end' }}>
+              <button onClick={() => setModalLote(false)}
+                style={{ padding:'8px 20px', borderRadius:8, border:'1px solid var(--border)', background:'var(--background)', color:'var(--foreground)', fontSize:13, fontWeight:600, cursor:'pointer' }}>
+                Cancelar
+              </button>
+              <button
+                onClick={() => {
+                  const qtd = rows.filter(c => {
+                    if (c.status !== 'ativo') return false
+                    if (loteObra !== 'todas' && (c as any).obra_id !== loteObra) return false
+                    return true
+                  }).length
+                  if (qtd === 0) { toast.warning('Nenhum colaborador ativo para a obra selecionada.'); return }
+                  setModalLote(false)
+                  gerarCrachaLote(loteObra)
+                }}
+                style={{ padding:'8px 22px', borderRadius:8, border:'2px solid #059669', background:'linear-gradient(135deg,#059669,#047857)', color:'#fff', fontSize:13, fontWeight:800, cursor:'pointer', display:'flex', alignItems:'center', gap:7, boxShadow:'0 2px 8px rgba(5,150,105,.35)' }}>
+                🖨️ Gerar e Imprimir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ═══════════ PRÉ-MODAL: ETAPA 1 — FUNÇÃO + ADMISSÃO ═════════════════ */}
       <Dialog open={preModal} onOpenChange={v => { if (!preLoading) setPreModal(v) }}>
