@@ -48,8 +48,19 @@ const CATEGORIAS: Record<string, { label: string; cor: string; bg: string; emoji
 
 const ALL_CATS = ['todos', ...Object.keys(CATEGORIAS)]
 
-const FONTS = ['Times New Roman', 'Arial', 'Georgia', 'Calibri', 'Courier New']
-const SIZES = ['10', '11', '12', '14', '16', '18', '24']
+const FONTS = ['Times New Roman', 'Arial', 'Georgia', 'Calibri', 'Courier New', 'Verdana', 'Tahoma', 'Helvetica']
+const SIZES = ['8', '9', '10', '11', '12', '13', '14', '16', '18', '20', '22', '24', '28', '32', '36', '48']
+const LINE_HEIGHTS = ['1.0', '1.2', '1.4', '1.5', '1.6', '1.8', '2.0', '2.4', '3.0']
+
+// Estilos de bloco de texto
+const BLOCK_STYLES = [
+  { value: 'p',  label: 'Parágrafo',   style: { fontSize: '12px', fontWeight: '400', margin: '8px 0' } },
+  { value: 'h1', label: 'Título 1',    style: { fontSize: '22px', fontWeight: '900', margin: '0 0 14px', textAlign: 'center', textTransform: 'uppercase', letterSpacing: '.04em' } },
+  { value: 'h2', label: 'Título 2',    style: { fontSize: '16px', fontWeight: '800', margin: '18px 0 8px', textTransform: 'uppercase', borderBottom: '1px solid #e2e8f0', paddingBottom: '4px' } },
+  { value: 'h3', label: 'Título 3',    style: { fontSize: '13px', fontWeight: '700', margin: '14px 0 5px' } },
+  { value: 'h4', label: 'Subtítulo',   style: { fontSize: '12px', fontWeight: '700', margin: '10px 0 4px', fontStyle: 'italic' } },
+  { value: 'blockquote', label: 'Citação', style: { fontSize: '12px', fontWeight: '400', margin: '10px 0', borderLeft: '3px solid #94a3b8', paddingLeft: '12px', color: '#475569', fontStyle: 'italic' } },
+]
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 function buildVarMap(
@@ -228,6 +239,46 @@ export default function Contratos() {
     editorRef.current?.focus()
   }
 
+  // Aplicar estilo de bloco (h1, h2, h3, h4, p, blockquote)
+  function applyBlockStyle(tag: string) {
+    const styleMap: Record<string, string> = {
+      p:          'font-size:12px;font-weight:400;margin:8px 0;',
+      h1:         'font-size:22px;font-weight:900;margin:0 0 14px;text-align:center;text-transform:uppercase;letter-spacing:.04em;',
+      h2:         'font-size:16px;font-weight:800;margin:18px 0 8px;text-transform:uppercase;border-bottom:1px solid #e2e8f0;padding-bottom:4px;',
+      h3:         'font-size:13px;font-weight:700;margin:14px 0 5px;',
+      h4:         'font-size:12px;font-weight:700;margin:10px 0 4px;font-style:italic;',
+      blockquote: 'font-size:12px;margin:10px 0;border-left:3px solid #94a3b8;padding-left:12px;color:#475569;font-style:italic;',
+    }
+    const inlineStyle = styleMap[tag] ?? ''
+    document.execCommand('formatBlock', false, tag)
+    // Aplica o style inline no elemento recém-criado
+    setTimeout(() => {
+      const sel = window.getSelection()
+      if (!sel || sel.rangeCount === 0) return
+      let node: Node | null = sel.getRangeAt(0).startContainer
+      while (node && node.nodeType !== 1) node = node.parentNode
+      const el = node as HTMLElement | null
+      if (el && el !== editorRef.current) {
+        const tagEl = el.closest(tag) as HTMLElement | null
+        if (tagEl) tagEl.setAttribute('style', inlineStyle)
+      }
+      editorRef.current?.focus()
+    }, 0)
+  }
+
+  // Aplicar line-height ao bloco atual
+  function applyLineHeight(lh: string) {
+    const sel = window.getSelection()
+    if (!sel || sel.rangeCount === 0) { editorRef.current?.focus(); return }
+    let node: Node | null = sel.getRangeAt(0).startContainer
+    while (node && node.nodeType !== 1) node = node.parentNode
+    let el = node as HTMLElement | null
+    // Sobe até encontrar filho direto do editor
+    while (el && el.parentElement !== editorRef.current) el = el.parentElement
+    if (el) el.style.lineHeight = lh
+    editorRef.current?.focus()
+  }
+
   function inserirVariavel(texto: string) {
     editorRef.current?.focus()
     document.execCommand('insertText', false, `{{${texto}}}`)
@@ -338,6 +389,8 @@ body { background:#f0f4f8; font-family:'Times New Roman',Georgia,serif; }
 h1 { font-size:16px; font-weight:800; text-align:center; margin:0 0 18px; text-transform:uppercase; letter-spacing:.04em; }
 h2 { font-size:13px; font-weight:700; margin:18px 0 8px; text-transform:uppercase; border-bottom:1px solid #e2e8f0; padding-bottom:4px; }
 h3 { font-size:12px; font-weight:700; margin:14px 0 5px; }
+h4 { font-size:11px; font-weight:700; margin:10px 0 4px; font-style:italic; }
+blockquote { margin:10px 0; border-left:3px solid #94a3b8; padding-left:12px; color:#475569; font-style:italic; }
 p  { margin:8px 0; text-align:justify; }
 table { width:100%; border-collapse:collapse; margin:10px 0; font-size:11px; }
 table td,table th { border:1px solid #d1d5db; padding:5px 8px; }
@@ -411,6 +464,8 @@ table th { background:#f8fafc; font-weight:700; }
   h1 { font-size:16px; font-weight:800; text-align:center; margin:0 0 18px; text-transform:uppercase; letter-spacing:.04em; }
   h2 { font-size:13px; font-weight:700; margin:18px 0 8px; text-transform:uppercase; letter-spacing:.04em; border-bottom:1px solid #e2e8f0; padding-bottom:4px; }
   h3 { font-size:12px; font-weight:700; margin:14px 0 5px; }
+  h4 { font-size:11px; font-weight:700; margin:10px 0 4px; font-style:italic; }
+  blockquote { margin:10px 0; border-left:3px solid #94a3b8; padding-left:12px; color:#475569; font-style:italic; }
   p  { margin:8px 0; text-align:justify; }
   table { width:100%; border-collapse:collapse; margin:10px 0; font-size:11px; }
   table td,table th { border:1px solid #d1d5db; padding:5px 8px; }
@@ -778,92 +833,158 @@ table th { background:#f8fafc; font-weight:700; }
             </div>
 
             {/* ── Toolbar WYSIWYG ── */}
-            <div style={{ padding: '6px 12px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap', background: '#f8fafc', flexShrink: 0 }}>
-              {/* Fonte */}
-              <select onChange={e => exec('fontName', e.target.value)} defaultValue=""
-                style={{ height: 28, borderRadius: 5, border: '1px solid var(--border)', background: 'var(--background)', fontSize: 11, paddingLeft: 4, paddingRight: 4, cursor: 'pointer' }}>
-                <option value="" disabled>Fonte</option>
-                {FONTS.map(f => <option key={f} value={f}>{f}</option>)}
+            <div style={{ padding: '5px 10px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'wrap', background: '#f8fafc', flexShrink: 0 }}>
+
+              {/* ── GRUPO 1: Estilo de Bloco ── */}
+              <select
+                onChange={e => { if (e.target.value) applyBlockStyle(e.target.value); e.target.value = '' }}
+                defaultValue=""
+                style={{ height: 28, minWidth: 105, borderRadius: 5, border: '1px solid #cbd5e1', background: '#fff', fontSize: 11, paddingLeft: 5, paddingRight: 4, cursor: 'pointer', fontWeight: 600, color: '#1e3a5f' }}
+                title="Estilo do parágrafo">
+                <option value="" disabled>¶ Estilo…</option>
+                {BLOCK_STYLES.map(bs => (
+                  <option key={bs.value} value={bs.value}>{bs.label}</option>
+                ))}
               </select>
-              {/* Tamanho */}
+
+              <div style={{ width: 1, height: 22, background: '#e2e8f0', margin: '0 2px' }} />
+
+              {/* ── GRUPO 2: Fonte + Tamanho ── */}
+              <select onChange={e => exec('fontName', e.target.value)} defaultValue=""
+                style={{ height: 28, minWidth: 130, borderRadius: 5, border: '1px solid #cbd5e1', background: '#fff', fontSize: 11, paddingLeft: 4, paddingRight: 4, cursor: 'pointer' }}>
+                <option value="" disabled>Fonte</option>
+                {FONTS.map(f => <option key={f} value={f} style={{ fontFamily: f }}>{f}</option>)}
+              </select>
+
               <select onChange={e => exec('fontSize', e.target.value)} defaultValue=""
-                style={{ height: 28, borderRadius: 5, border: '1px solid var(--border)', background: 'var(--background)', fontSize: 11, paddingLeft: 4, paddingRight: 4, cursor: 'pointer' }}>
+                style={{ height: 28, width: 68, borderRadius: 5, border: '1px solid #cbd5e1', background: '#fff', fontSize: 11, paddingLeft: 4, paddingRight: 4, cursor: 'pointer' }}>
                 <option value="" disabled>Tam</option>
                 {SIZES.map(s => <option key={s} value={s}>{s}pt</option>)}
               </select>
 
+              {/* Altura do texto */}
+              <select
+                onChange={e => { if (e.target.value) applyLineHeight(e.target.value); e.target.value = '' }}
+                defaultValue=""
+                style={{ height: 28, width: 72, borderRadius: 5, border: '1px solid #cbd5e1', background: '#fff', fontSize: 11, paddingLeft: 4, paddingRight: 4, cursor: 'pointer' }}
+                title="Altura da linha">
+                <option value="" disabled>↕ Alt.</option>
+                {LINE_HEIGHTS.map(lh => <option key={lh} value={lh}>× {lh}</option>)}
+              </select>
+
               <div style={{ width: 1, height: 22, background: '#e2e8f0', margin: '0 2px' }} />
 
-              {/* B I U S */}
+              {/* ── GRUPO 3: B I U S ── */}
               {[
-                { cmd: 'bold',          label: <strong>B</strong> },
-                { cmd: 'italic',        label: <em>I</em> },
-                { cmd: 'underline',     label: <span style={{ textDecoration: 'underline' }}>U</span> },
-                { cmd: 'strikeThrough', label: <span style={{ textDecoration: 'line-through' }}>S</span> },
-              ].map(({ cmd, label }) => (
+                { cmd: 'bold',          label: <strong style={{ fontSize: 13 }}>B</strong>,  title: 'Negrito (Ctrl+B)' },
+                { cmd: 'italic',        label: <em style={{ fontSize: 13 }}>I</em>,           title: 'Itálico (Ctrl+I)' },
+                { cmd: 'underline',     label: <span style={{ textDecoration: 'underline', fontSize: 13 }}>U</span>, title: 'Sublinhado (Ctrl+U)' },
+                { cmd: 'strikeThrough', label: <span style={{ textDecoration: 'line-through', fontSize: 13 }}>S</span>, title: 'Riscado' },
+              ].map(({ cmd, label, title }) => (
                 <button key={cmd} onMouseDown={e => { e.preventDefault(); exec(cmd) }}
-                  style={{ width: 28, height: 28, borderRadius: 5, border: '1px solid var(--border)', background: 'var(--background)', cursor: 'pointer', fontFamily: 'serif', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  title={title}
+                  style={{ width: 28, height: 28, borderRadius: 5, border: '1px solid #cbd5e1', background: '#fff', cursor: 'pointer', fontFamily: 'serif', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   {label}
                 </button>
               ))}
 
               <div style={{ width: 1, height: 22, background: '#e2e8f0', margin: '0 2px' }} />
 
-              {/* Alinhamentos */}
+              {/* ── GRUPO 4: Alinhamentos ── */}
               {[
-                { cmd: 'justifyLeft',   label: '⬅' },
-                { cmd: 'justifyCenter', label: '↔' },
-                { cmd: 'justifyRight',  label: '➡' },
-                { cmd: 'justifyFull',   label: '≡' },
-              ].map(({ cmd, label }) => (
+                { cmd: 'justifyLeft',   label: '⬛▬▬', title: 'Alinhar à esquerda' },
+                { cmd: 'justifyCenter', label: '▬⬛▬', title: 'Centralizar' },
+                { cmd: 'justifyRight',  label: '▬▬⬛', title: 'Alinhar à direita' },
+                { cmd: 'justifyFull',   label: '▬▬▬', title: 'Justificado' },
+              ].map(({ cmd, label, title }) => (
                 <button key={cmd} onMouseDown={e => { e.preventDefault(); exec(cmd) }}
-                  style={{ width: 28, height: 28, borderRadius: 5, border: '1px solid var(--border)', background: 'var(--background)', cursor: 'pointer', fontSize: 13 }}>
-                  {label}
+                  title={title}
+                  style={{ width: 28, height: 28, borderRadius: 5, border: '1px solid #cbd5e1', background: '#fff', cursor: 'pointer', fontSize: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {label === '⬛▬▬' ? (
+                    <svg width="14" height="12" viewBox="0 0 14 12" fill="none"><rect x="0" y="0" width="14" height="2" rx="1" fill="#475569"/><rect x="0" y="5" width="10" height="2" rx="1" fill="#475569"/><rect x="0" y="10" width="12" height="2" rx="1" fill="#475569"/></svg>
+                  ) : cmd === 'justifyCenter' ? (
+                    <svg width="14" height="12" viewBox="0 0 14 12" fill="none"><rect x="0" y="0" width="14" height="2" rx="1" fill="#475569"/><rect x="2" y="5" width="10" height="2" rx="1" fill="#475569"/><rect x="1" y="10" width="12" height="2" rx="1" fill="#475569"/></svg>
+                  ) : cmd === 'justifyRight' ? (
+                    <svg width="14" height="12" viewBox="0 0 14 12" fill="none"><rect x="0" y="0" width="14" height="2" rx="1" fill="#475569"/><rect x="4" y="5" width="10" height="2" rx="1" fill="#475569"/><rect x="2" y="10" width="12" height="2" rx="1" fill="#475569"/></svg>
+                  ) : (
+                    <svg width="14" height="12" viewBox="0 0 14 12" fill="none"><rect x="0" y="0" width="14" height="2" rx="1" fill="#475569"/><rect x="0" y="5" width="14" height="2" rx="1" fill="#475569"/><rect x="0" y="10" width="14" height="2" rx="1" fill="#475569"/></svg>
+                  )}
                 </button>
               ))}
 
               <div style={{ width: 1, height: 22, background: '#e2e8f0', margin: '0 2px' }} />
 
-              {/* Listas */}
+              {/* ── GRUPO 5: Indentação ── */}
+              <button onMouseDown={e => { e.preventDefault(); exec('indent') }}
+                title="Aumentar recuo"
+                style={{ width: 28, height: 28, borderRadius: 5, border: '1px solid #cbd5e1', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <svg width="14" height="12" viewBox="0 0 14 12" fill="none"><path d="M0 1h14M4 5h10M4 9h10M0 5l3 2-3 2V5z" stroke="#475569" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/></svg>
+              </button>
+              <button onMouseDown={e => { e.preventDefault(); exec('outdent') }}
+                title="Diminuir recuo"
+                style={{ width: 28, height: 28, borderRadius: 5, border: '1px solid #cbd5e1', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <svg width="14" height="12" viewBox="0 0 14 12" fill="none"><path d="M0 1h14M4 5h10M4 9h10M3 5l-3 2 3 2V5z" stroke="#475569" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/></svg>
+              </button>
+
+              <div style={{ width: 1, height: 22, background: '#e2e8f0', margin: '0 2px' }} />
+
+              {/* ── GRUPO 6: Listas ── */}
               <button onMouseDown={e => { e.preventDefault(); exec('insertUnorderedList') }}
-                style={{ height: 28, padding: '0 8px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--background)', cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>
-                • Lista
+                title="Lista com marcadores"
+                style={{ height: 28, padding: '0 8px', borderRadius: 5, border: '1px solid #cbd5e1', background: '#fff', cursor: 'pointer', fontSize: 11, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 3 }}>
+                <span style={{ fontSize: 14 }}>•</span> Lista
               </button>
               <button onMouseDown={e => { e.preventDefault(); exec('insertOrderedList') }}
-                style={{ height: 28, padding: '0 8px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--background)', cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>
-                1. Lista
+                title="Lista numerada"
+                style={{ height: 28, padding: '0 8px', borderRadius: 5, border: '1px solid #cbd5e1', background: '#fff', cursor: 'pointer', fontSize: 11, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 3 }}>
+                <span style={{ fontSize: 11 }}>1.</span> Lista
               </button>
 
               <div style={{ width: 1, height: 22, background: '#e2e8f0', margin: '0 2px' }} />
 
-              {/* Cor texto */}
-              <label style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 11, color: '#64748b', cursor: 'pointer' }}>
-                <span>🎨</span>
+              {/* ── GRUPO 7: Cores ── */}
+              <label style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, color: '#475569', cursor: 'pointer' }} title="Cor do texto">
+                <span style={{ fontSize: 13 }}>A</span>
                 <input type="color" defaultValue="#000000"
                   onChange={e => exec('foreColor', e.target.value)}
-                  style={{ width: 22, height: 22, border: 'none', borderRadius: 4, cursor: 'pointer', padding: 0 }} />
+                  style={{ width: 20, height: 20, border: '1px solid #cbd5e1', borderRadius: 3, cursor: 'pointer', padding: 0 }} />
               </label>
-              {/* Cor fundo */}
-              <label style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 11, color: '#64748b', cursor: 'pointer' }}>
-                <span>🖊</span>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, color: '#475569', cursor: 'pointer' }} title="Cor de fundo">
+                <span style={{ fontSize: 13 }}>◨</span>
                 <input type="color" defaultValue="#ffffff"
                   onChange={e => exec('hiliteColor', e.target.value)}
-                  style={{ width: 22, height: 22, border: 'none', borderRadius: 4, cursor: 'pointer', padding: 0 }} />
+                  style={{ width: 20, height: 20, border: '1px solid #cbd5e1', borderRadius: 3, cursor: 'pointer', padding: 0 }} />
               </label>
 
               <div style={{ width: 1, height: 22, background: '#e2e8f0', margin: '0 2px' }} />
 
-              {/* Linha HR */}
+              {/* ── GRUPO 8: Inserções especiais ── */}
               <button onMouseDown={e => { e.preventDefault(); exec('insertHTML', '<hr style="border:none;border-top:1px solid #e2e8f0;margin:14px 0"/>') }}
-                style={{ height: 28, padding: '0 8px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--background)', cursor: 'pointer', fontSize: 11 }}>
+                title="Inserir linha divisória"
+                style={{ height: 28, padding: '0 8px', borderRadius: 5, border: '1px solid #cbd5e1', background: '#fff', cursor: 'pointer', fontSize: 11 }}>
                 ─ Linha
               </button>
+              <button onMouseDown={e => {
+                e.preventDefault()
+                exec('insertHTML', '<p style="margin:8px 0">&nbsp;</p>')
+              }}
+                title="Adicionar parágrafo em branco"
+                style={{ height: 28, padding: '0 8px', borderRadius: 5, border: '1px solid #cbd5e1', background: '#fff', cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>
+                + ¶
+              </button>
 
-              {/* Desfazer / Refazer */}
+              <div style={{ width: 1, height: 22, background: '#e2e8f0', margin: '0 2px' }} />
+
+              {/* ── GRUPO 9: Desfazer / Refazer ── */}
               <button onMouseDown={e => { e.preventDefault(); exec('undo') }}
-                style={{ width: 28, height: 28, borderRadius: 5, border: '1px solid var(--border)', background: 'var(--background)', cursor: 'pointer', fontSize: 13 }} title="Desfazer">↩</button>
+                title="Desfazer (Ctrl+Z)"
+                style={{ width: 28, height: 28, borderRadius: 5, border: '1px solid #cbd5e1', background: '#fff', cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>↩</button>
               <button onMouseDown={e => { e.preventDefault(); exec('redo') }}
-                style={{ width: 28, height: 28, borderRadius: 5, border: '1px solid var(--border)', background: 'var(--background)', cursor: 'pointer', fontSize: 13 }} title="Refazer">↪</button>
+                title="Refazer (Ctrl+Y)"
+                style={{ width: 28, height: 28, borderRadius: 5, border: '1px solid #cbd5e1', background: '#fff', cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>↪</button>
+
+              {/* ── Dica de atalho ── */}
+              <span style={{ marginLeft: 'auto', fontSize: 10, color: '#94a3b8', whiteSpace: 'nowrap' }}>Ctrl+B/I/U · Selecione texto para formatar</span>
             </div>
 
             {/* ── Área principal: Editor + Painel lateral ── */}
