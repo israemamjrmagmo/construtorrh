@@ -6,7 +6,7 @@ import { fetchEmpresaData, type EmpresaData } from '@/lib/relatorioHeader'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { toast } from 'sonner'
-import { Search, Plus, Pencil, Trash2, FileText, Eye, Printer, X, ChevronDown } from 'lucide-react'
+import { Search, Plus, Pencil, Trash2, FileText, Eye, Printer, X, ChevronDown, Settings, Save, BookOpen, Briefcase } from 'lucide-react'
 
 // ─── tipos ───────────────────────────────────────────────────────────────────
 interface Modelo {
@@ -198,6 +198,9 @@ export default function Contratos() {
   const [abaAtiva, setAbaAtiva]       = useState<'contratos' | 'funcoes'>('contratos')
   const [descricaoEdit, setDescricaoEdit] = useState<Record<string, string>>({})
   const [savingFunc, setSavingFunc]   = useState<string | null>(null)
+
+  // modal Configurar Funções
+  const [modalFuncoes, setModalFuncoes] = useState(false)
 
   // confirmação exclusão
   const [confirmDel, setConfirmDel]   = useState<Modelo | null>(null)
@@ -634,10 +637,16 @@ table th { background:#f8fafc; font-weight:700; }
         )}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', padding: '6px 0' }}>
           {isAdmin && abaMain === 'modelos' && (
-            <button onClick={() => abrirEditor()}
-              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 14px', borderRadius: 7, border: '2px solid #059669', background: 'linear-gradient(135deg,#059669,#047857)', color: '#fff', fontSize: 12, fontWeight: 800, cursor: 'pointer' }}>
-              <Plus size={13} /> Novo Modelo
-            </button>
+            <>
+              <button onClick={() => setModalFuncoes(true)}
+                style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 7, border: '1.5px solid #7c3aed', background: '#ede9fe', color: '#7c3aed', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                <Settings size={13} /> Configurar Funções
+              </button>
+              <button onClick={() => abrirEditor()}
+                style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 14px', borderRadius: 7, border: '2px solid #059669', background: 'linear-gradient(135deg,#059669,#047857)', color: '#fff', fontSize: 12, fontWeight: 800, cursor: 'pointer' }}>
+                <Plus size={13} /> Novo Modelo
+              </button>
+            </>
           )}
           <div style={{ fontSize: 11, color: 'var(--muted-foreground)' }}>
             {modelos.length} modelo(s) · {colaboradores.length} colaborador(es)
@@ -1266,6 +1275,150 @@ table th { background:#f8fafc; font-weight:700; }
                   )}
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══ MODAL: Configurar Funções ══════════════════════════════════════ */}
+      {modalFuncoes && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', zIndex: 9200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+          onClick={e => { if (e.target === e.currentTarget) setModalFuncoes(false) }}>
+          <div style={{ background: 'var(--card)', borderRadius: 14, width: '100%', maxWidth: 820, maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 16px 64px rgba(0,0,0,.35)' }}>
+
+            {/* ── Header ── */}
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 16, fontWeight: 800 }}>
+                  <Settings size={18} color="#7c3aed" /> Configurar Funções
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--muted-foreground)', marginTop: 2 }}>
+                  Edite o nome, CBO e a descrição de atividades de cada função — esses dados aparecem como variável inserível no editor de modelos.
+                </div>
+              </div>
+              <button onClick={() => setModalFuncoes(false)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: 6, borderRadius: 6 }}>
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* ── Legenda ── */}
+            <div style={{ padding: '8px 20px', background: '#f5f3ff', borderBottom: '1px solid #e9d5ff', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 11, color: '#6d28d9', display: 'flex', alignItems: 'center', gap: 5 }}>
+                <BookOpen size={12} /> No editor de contratos, clique em <strong>💼 Funções</strong> para inserir o bloco de função no documento.
+              </span>
+              <span style={{ fontSize: 11, color: '#64748b' }}>
+                · {funcoes.length} função(ões) cadastradas
+              </span>
+            </div>
+
+            {/* ── Lista de funções ── */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {loading ? (
+                <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: 13, padding: 32 }}>Carregando funções…</div>
+              ) : funcoes.length === 0 ? (
+                <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: 13, padding: 32 }}>
+                  <Briefcase size={32} strokeWidth={1} style={{ marginBottom: 8, opacity: .4 }} />
+                  <div>Nenhuma função cadastrada.</div>
+                  <div style={{ fontSize: 11, marginTop: 4 }}>Cadastre funções em Configurações → Funções.</div>
+                </div>
+              ) : funcoes.map(fn => {
+                const editando = descricaoEdit[fn.id] !== undefined
+                const valorAtual = editando ? descricaoEdit[fn.id] : (fn.descricao ?? '')
+                const salvando = savingFunc === fn.id
+                return (
+                  <div key={fn.id} style={{ background: 'var(--background)', border: `1.5px solid ${editando ? '#a78bfa' : 'var(--border)'}`, borderRadius: 10, overflow: 'hidden', transition: 'border-color .15s' }}>
+
+                    {/* Cabeçalho da função */}
+                    <div style={{ padding: '10px 14px', background: editando ? '#f5f3ff' : 'var(--card)', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid var(--border)' }}>
+                      <div style={{ width: 34, height: 34, borderRadius: 8, background: editando ? '#7c3aed' : '#1e3a5f', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <Briefcase size={16} color="#fff" />
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 700, fontSize: 14, color: editando ? '#6d28d9' : 'var(--foreground)' }}>{fn.nome}</div>
+                        <div style={{ display: 'flex', gap: 6, marginTop: 2, flexWrap: 'wrap' }}>
+                          {fn.sigla && (
+                            <span style={{ background: '#e0f2fe', color: '#0369a1', borderRadius: 5, padding: '1px 7px', fontSize: 10, fontWeight: 700 }}>{fn.sigla}</span>
+                          )}
+                          {fn.cbo && (
+                            <span style={{ background: '#f1f5f9', color: '#64748b', borderRadius: 5, padding: '1px 7px', fontSize: 10 }}>CBO: {fn.cbo}</span>
+                          )}
+                          {!fn.descricao && !editando && (
+                            <span style={{ background: '#fef3c7', color: '#b45309', borderRadius: 5, padding: '1px 7px', fontSize: 10, fontWeight: 600 }}>⚠️ Sem descrição</span>
+                          )}
+                          {fn.descricao && !editando && (
+                            <span style={{ background: '#f0fdf4', color: '#15803d', borderRadius: 5, padding: '1px 7px', fontSize: 10, fontWeight: 600 }}>✓ Descrição configurada</span>
+                          )}
+                        </div>
+                      </div>
+                      {!editando ? (
+                        <button onClick={() => setDescricaoEdit(p => ({ ...p, [fn.id]: fn.descricao ?? '' }))}
+                          style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--background)', fontSize: 11, fontWeight: 600, cursor: 'pointer', color: '#64748b', flexShrink: 0 }}>
+                          <Pencil size={11} /> Editar
+                        </button>
+                      ) : (
+                        <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                          <button
+                            onClick={async () => {
+                              setSavingFunc(fn.id)
+                              const { error } = await supabase.from('funcoes').update({ descricao: descricaoEdit[fn.id] ?? '' }).eq('id', fn.id)
+                              if (error) { toast.error('Erro ao salvar'); setSavingFunc(null); return }
+                              toast.success(`✅ Função "${fn.nome}" salva!`)
+                              setFuncoes(prev => prev.map(f => f.id === fn.id ? { ...f, descricao: descricaoEdit[fn.id] } : f))
+                              setDescricaoEdit(p => { const n = { ...p }; delete n[fn.id]; return n })
+                              setSavingFunc(null)
+                            }}
+                            disabled={salvando}
+                            style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 12px', borderRadius: 6, border: '1.5px solid #059669', background: '#f0fdf4', color: '#15803d', fontSize: 11, fontWeight: 700, cursor: salvando ? 'not-allowed' : 'pointer', opacity: salvando ? .7 : 1 }}>
+                            <Save size={11} /> {salvando ? 'Salvando…' : 'Salvar'}
+                          </button>
+                          <button
+                            onClick={() => setDescricaoEdit(p => { const n = { ...p }; delete n[fn.id]; return n })}
+                            disabled={salvando}
+                            style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--background)', fontSize: 11, fontWeight: 600, cursor: 'pointer', color: '#64748b' }}>
+                            <X size={11} /> Cancelar
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Área de descrição */}
+                    <div style={{ padding: '10px 14px' }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 5 }}>
+                        <BookOpen size={10} /> Descrição das Atividades
+                        <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: '#94a3b8' }}>(aparece no contrato ao inserir esta função)</span>
+                      </div>
+                      {editando ? (
+                        <textarea
+                          value={valorAtual}
+                          onChange={e => setDescricaoEdit(p => ({ ...p, [fn.id]: e.target.value }))}
+                          autoFocus
+                          rows={5}
+                          placeholder={`Descreva as atividades e atribuições do(a) ${fn.nome}…\n\nEx: Executar serviços de alvenaria, assentamento de tijolos, reboco e massa corrida. Preparar argamassa e realizar acabamentos conforme especificações técnicas do projeto.`}
+                          style={{ width: '100%', padding: '10px 12px', borderRadius: 7, border: '1.5px solid #a78bfa', background: '#faf5ff', fontSize: 12, fontFamily: "'Times New Roman', Georgia, serif", lineHeight: 1.7, resize: 'vertical', outline: 'none', color: '#1a1a1a', boxSizing: 'border-box' }}
+                        />
+                      ) : (
+                        <div
+                          onClick={() => setDescricaoEdit(p => ({ ...p, [fn.id]: fn.descricao ?? '' }))}
+                          style={{ padding: '10px 12px', borderRadius: 7, border: '1px dashed #cbd5e1', background: '#fafbfc', fontSize: 12, fontFamily: "'Times New Roman', Georgia, serif", lineHeight: 1.7, color: fn.descricao ? '#1a1a1a' : '#94a3b8', cursor: 'text', minHeight: 56, whiteSpace: 'pre-wrap' }}>
+                          {fn.descricao || `Clique para adicionar a descrição das atividades de ${fn.nome}…`}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* ── Footer ── */}
+            <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, background: 'var(--card)' }}>
+              <span style={{ fontSize: 11, color: '#64748b' }}>
+                {funcoes.filter(f => f.descricao).length} de {funcoes.length} função(ões) com descrição configurada
+              </span>
+              <button onClick={() => setModalFuncoes(false)}
+                style={{ padding: '7px 20px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--background)', fontSize: 13, fontWeight: 600, cursor: 'pointer', color: '#64748b' }}>
+                Fechar
+              </button>
             </div>
           </div>
         </div>
