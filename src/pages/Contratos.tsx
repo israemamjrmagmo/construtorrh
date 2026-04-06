@@ -32,8 +32,8 @@ interface FuncaoRow {
 }
 
 type ColaboradorRow = Colaborador & {
-  funcoes?: Pick<Funcao, 'nome' | 'sigla'>
-  obras?: Pick<Obra, 'nome' | 'codigo'>
+  funcoes?: Pick<Funcao, 'nome' | 'sigla' | 'descricao' | 'valor_hora_clt' | 'valor_hora_autonomo'>
+  obras?: Pick<Obra, 'nome' | 'codigo' | 'endereco' | 'cidade' | 'estado'>
 }
 
 // ─── constantes ──────────────────────────────────────────────────────────────
@@ -79,10 +79,37 @@ function buildVarMap(
   const salFmt  = c.salario ? `R$ ${c.salario.toLocaleString('pt-BR',{minimumFractionDigits:2})}` : ''
   const fn  = (c.funcoes as any)?.nome ?? ''
   const ob  = (c.obras  as any)?.nome  ?? ''
+
+  // Endereço da obra
+  const obraEndereco = (() => {
+    const o = c.obras as any
+    if (!o) return ''
+    const parts = [o.endereco, o.cidade, o.estado].filter(Boolean)
+    return parts.join(', ')
+  })()
+  const obraCidade = (c.obras as any)?.cidade ?? emp.cidade ?? ''
+
+  // Valor hora da função
+  const fnData = c.funcoes as any
+  const fmtHora = (v: number | null | undefined) =>
+    v ? `R$ ${Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2})}` : ''
+  const valorHoraCLT  = fmtHora(fnData?.valor_hora_clt)
+  const valorHoraExt  = fmtHora(fnData?.valor_hora_autonomo)
+  const fmtHoraNum = (v: number | null | undefined) =>
+    v ? Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2}) : ''
+  const valorHoraCLTNum = fmtHoraNum(fnData?.valor_hora_clt)
+  const valorHoraExtNum = fmtHoraNum(fnData?.valor_hora_autonomo)
+
+  // Descrição da função
+  const fnDescricao = fnData?.descricao ?? ''
+  const fnCBO       = fnData?.cbo ?? ''
+  const fnSigla     = fnData?.sigla ?? ''
+
   const genero: Record<string,string> = { masculino:'brasileiro', feminino:'brasileira', outro:'brasileiro(a)' }
   const civil:  Record<string,string> = { solteiro:'solteiro(a)', casado:'casado(a)', divorciado:'divorciado(a)', viuvo:'viúvo(a)', uniao_estavel:'em união estável' }
 
   return {
+    // Colaborador
     'Nome Completo': c.nome, 'NOME': c.nome, 'Nome Completo do Empregado': c.nome,
     'Nome do(a) Novo(a) Colaborador(a)': c.nome, 'NOME COMPLETO': c.nome,
     'CPF': c.cpf ?? '', 'Número do CPF': c.cpf ?? '',
@@ -90,8 +117,34 @@ function buildVarMap(
     'PIS/NIT': c.pis_nit ?? '', 'Número do PIS/PASEP': c.pis_nit ?? '',
     'CTPS Nº': c.ctps_numero ?? '', 'Número da CTPS': c.ctps_numero ?? '',
     'Série CTPS': c.ctps_serie ?? '', 'Série da CTPS': c.ctps_serie ?? '',
+    // Função — nome
     'Função': fn, 'FUNÇÃO': fn, 'NOME DA FUNÇÃO': fn, 'Profissão': fn, 'Profissão/Função': fn,
+    'NOME COMPLETO DA FUNÇÃO': fn,
+    // Função — sigla / CBO
+    'Sigla da Função': fnSigla,
+    'CBO': fnCBO, 'Código CBO': fnCBO,
+    // Função — descrição de atividades
+    'Descrição da Função': fnDescricao,
+    'DESCRIÇÃO DAS ATIVIDADES': fnDescricao,
+    'Atividades da Função': fnDescricao,
+    'Descrição das Atividades': fnDescricao,
+    // Função — valor hora
+    'Valor Hora CLT': valorHoraCLT,
+    'Valor da Hora CLT': valorHoraCLT,
+    'Hora CLT': valorHoraCLT,
+    'Valor Hora Externo': valorHoraExt,
+    'Valor da Hora Externo': valorHoraExt,
+    'Hora Externa': valorHoraExt,
+    'Hora Autônomo': valorHoraExt,
+    'Valor Hora Numérico CLT': valorHoraCLTNum,
+    'Valor Hora Numérico Externo': valorHoraExtNum,
+    // Obra
     'Obra': ob, 'LOCAL DA PRESTAÇÃO DOS SERVIÇOS': ob,
+    'Nome da Obra': ob,
+    'Endereço da Obra': obraEndereco,
+    'Local de Trabalho': obraEndereco || ob,
+    'Endereço do Local de Trabalho': obraEndereco,
+    // Colaborador — data / salário / endereço
     'Data Admissão': fmtDate(c.data_admissao), 'Data de Início': fmtDate(c.data_admissao),
     'Salário': salFmt, 'valor numérico': salFmt,
     'Endereço': `${c.endereco ?? ''}, ${c.cidade ?? ''} - ${c.estado ?? ''}, CEP ${c.cep ?? ''}`,
@@ -107,9 +160,9 @@ function buildVarMap(
     'Endereço Empresa': emp.endereco, 'Endereço Completo do Empregador': emp.endereco,
     // Data
     'Dia': dia, 'DIA': dia, 'Mês': mes, 'MÊS': mes, 'Ano': ano, 'ANO': ano,
-    'CIDADE': emp.cidade || c.cidade || 'São Paulo',
-    'cidade/estado/raio km': emp.cidade,
-    'região metropolitana de CIDADE DA PRESTAÇÃO DE SERVIÇOS': emp.cidade,
+    'CIDADE': emp.cidade || obraCidade || c.cidade || 'São Paulo',
+    'cidade/estado/raio km': emp.cidade || obraCidade,
+    'região metropolitana de CIDADE DA PRESTAÇÃO DE SERVIÇOS': emp.cidade || obraCidade,
   }
 }
 
@@ -145,14 +198,25 @@ const VARS_COLABORADOR = [
   { label: 'PIS/NIT', value: 'PIS/NIT' },
   { label: 'CTPS Nº', value: 'CTPS Nº' },
   { label: 'Série CTPS', value: 'Série CTPS' },
-  { label: 'Função', value: 'Função' },
-  { label: 'Obra', value: 'Obra' },
   { label: 'Data Admissão', value: 'Data Admissão' },
   { label: 'Salário', value: 'Salário' },
   { label: 'Endereço', value: 'Endereço' },
   { label: 'Cidade', value: 'Cidade' },
   { label: 'Estado Civil', value: 'Estado Civil' },
   { label: 'Nacionalidade', value: 'Nacionalidade' },
+]
+const VARS_FUNCAO = [
+  { label: 'Função', value: 'Função' },
+  { label: 'Sigla', value: 'Sigla da Função' },
+  { label: 'CBO', value: 'CBO' },
+  { label: 'Descrição', value: 'Descrição da Função' },
+  { label: 'Hora CLT', value: 'Valor Hora CLT' },
+  { label: 'Hora Externo', value: 'Valor Hora Externo' },
+]
+const VARS_OBRA = [
+  { label: 'Obra', value: 'Obra' },
+  { label: 'Endereço da Obra', value: 'Endereço da Obra' },
+  { label: 'Local de Trabalho', value: 'Local de Trabalho' },
 ]
 const VARS_EMPRESA = [
   { label: 'Nome Empresa', value: 'Nome Empresa' },
@@ -251,7 +315,7 @@ export default function Contratos() {
     const [modRes, colRes, fnRes] = await Promise.all([
       supabase.from('contratos_modelos').select('*').eq('ativo', true).order('ordem'),
       supabase.from('colaboradores')
-        .select('id,nome,chapa,cpf,rg,pis_nit,ctps_numero,ctps_serie,genero,estado_civil,funcao_id,obra_id,salario,tipo_contrato,data_admissao,endereco,cidade,estado,cep,telefone,email,funcoes(nome,sigla),obras(nome,codigo)')
+        .select('id,nome,chapa,cpf,rg,pis_nit,ctps_numero,ctps_serie,genero,estado_civil,funcao_id,obra_id,salario,tipo_contrato,data_admissao,endereco,cidade,estado,cep,telefone,email,funcoes(nome,sigla,descricao,cbo,valor_hora_clt,valor_hora_autonomo),obras(nome,codigo,endereco,cidade,estado)')
         .eq('status', 'ativo').order('nome'),
       supabase.from('funcoes').select('id,nome,sigla,descricao,cbo').eq('ativo', true).order('nome'),
     ])
@@ -1225,47 +1289,30 @@ table th { background:#f8fafc; font-weight:700; }
                 <div style={{ flex: 1, overflowY: 'auto', padding: '10px 10px' }}>
 
                   {editorTab === 'variaveis' && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+
                       {/* Colaborador */}
-                      <div>
-                        <div style={{ fontSize: 10, fontWeight: 800, color: '#1e3a5f', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 6 }}>👤 Colaborador</div>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                          {VARS_COLABORADOR.map(v => (
-                            <button key={v.value} onMouseDown={e => { e.preventDefault(); inserirVariavel(v.value) }}
-                              style={{ padding: '3px 8px', borderRadius: 5, border: '1px solid #bae6fd', background: '#e0f2fe', color: '#0369a1', fontSize: 10, fontWeight: 600, cursor: 'pointer', fontFamily: 'monospace' }}>
-                              {v.label}
-                            </button>
-                          ))}
+                      {[
+                        { titulo: '👤 Colaborador', vars: VARS_COLABORADOR, border: '#bae6fd', bg: '#e0f2fe', cor: '#0369a1' },
+                        { titulo: '🔧 Função', vars: VARS_FUNCAO, border: '#c4b5fd', bg: '#ede9fe', cor: '#7c3aed' },
+                        { titulo: '🏗️ Obra / Local', vars: VARS_OBRA, border: '#fed7aa', bg: '#fff7ed', cor: '#c2410c' },
+                        { titulo: '🏢 Empresa', vars: VARS_EMPRESA, border: '#bbf7d0', bg: '#dcfce7', cor: '#15803d' },
+                        { titulo: '📅 Data', vars: VARS_DATA, border: '#fde68a', bg: '#fef3c7', cor: '#b45309' },
+                      ].map(grupo => (
+                        <div key={grupo.titulo}>
+                          <div style={{ fontSize: 10, fontWeight: 800, color: '#1e3a5f', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 5 }}>{grupo.titulo}</div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+                            {grupo.vars.map(v => (
+                              <button key={v.value} onMouseDown={e => { e.preventDefault(); inserirVariavel(v.value) }}
+                                style={{ padding: '3px 8px', borderRadius: 5, border: `1px solid ${grupo.border}`, background: grupo.bg, color: grupo.cor, fontSize: 10, fontWeight: 600, cursor: 'pointer', fontFamily: 'monospace' }}>
+                                {v.label}
+                              </button>
+                            ))}
+                          </div>
                         </div>
-                      </div>
+                      ))}
 
-                      {/* Empresa */}
-                      <div>
-                        <div style={{ fontSize: 10, fontWeight: 800, color: '#1e3a5f', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 6 }}>🏢 Empresa</div>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                          {VARS_EMPRESA.map(v => (
-                            <button key={v.value} onMouseDown={e => { e.preventDefault(); inserirVariavel(v.value) }}
-                              style={{ padding: '3px 8px', borderRadius: 5, border: '1px solid #bbf7d0', background: '#dcfce7', color: '#15803d', fontSize: 10, fontWeight: 600, cursor: 'pointer', fontFamily: 'monospace' }}>
-                              {v.label}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Data */}
-                      <div>
-                        <div style={{ fontSize: 10, fontWeight: 800, color: '#1e3a5f', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 6 }}>📅 Data</div>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                          {VARS_DATA.map(v => (
-                            <button key={v.value} onMouseDown={e => { e.preventDefault(); inserirVariavel(v.value) }}
-                              style={{ padding: '3px 8px', borderRadius: 5, border: '1px solid #fde68a', background: '#fef3c7', color: '#b45309', fontSize: 10, fontWeight: 600, cursor: 'pointer', fontFamily: 'monospace' }}>
-                              {v.label}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Funções (dropdown) */}
+                      {/* Funções (dropdown — inserir bloco completo) */}
                       <div>
                         <div style={{ fontSize: 10, fontWeight: 800, color: '#1e3a5f', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 6 }}>💼 Funções</div>
                         <select value={funcaoSel} onChange={e => setFuncaoSel(e.target.value)}
