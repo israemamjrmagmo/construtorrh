@@ -666,13 +666,13 @@ export default function Premios() {
               </div>
               <div>
                 <Label className="mb-1 block">Obra</Label>
-                <Select value={form.obra_id||'nenhuma'} onValueChange={v=>setField('obra_id',v==='nenhuma'?'':v)}>
-                  <SelectTrigger><SelectValue placeholder="Sem obra"/></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="nenhuma">Sem obra</SelectItem>
-                    {obras.map(o=><SelectItem key={o.id} value={o.id}>{o.nome}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <SearchableSelect
+                  options={obras.map(o=>({ value:o.id, label:o.nome }))}
+                  value={form.obra_id||''}
+                  onChange={v=>setField('obra_id',v)}
+                  placeholder="Pesquisar obra…"
+                  emptyLabel="— Sem obra —"
+                />
               </div>
               <div style={{gridColumn:'1/-1'}}>
                 <Label className="mb-1 block">Observações</Label>
