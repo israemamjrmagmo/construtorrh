@@ -650,7 +650,7 @@ table th { background:#f8fafc; font-weight:700; }
 <style>
   * { box-sizing:border-box; margin:0; padding:0; }
   @page { size:A4; margin:2.5cm; }
-  body { font-family:Arial,Helvetica,sans-serif; font-size:12pt; color:#1a1a1a; background:#fff; line-height:1.5; }
+  body { font-family:Calibri,Arial,sans-serif; font-size:12pt; color:#1a1a1a; background:#fff; line-height:1.5; }
   @media print {
     .no-print { display:none!important; }
     body { margin:0; padding:0; }
@@ -672,37 +672,37 @@ table th { background:#f8fafc; font-weight:700; }
   .linha-dupla { border-top:3px solid #1e3a5f; border-bottom:1px solid #93c5fd; margin-bottom:0; }
 
   /* ── Área de conteúdo ── */
-  .content-area { padding:20px 0 36px; font-family:Arial,Helvetica,sans-serif; font-size:12pt; line-height:1.5; position:relative; }
+  .content-area { padding:20px 0 36px; font-family:Calibri,Arial,sans-serif; font-size:12pt; line-height:1.5; position:relative; }
 
   /* ── Marca d'água ── */
-  .watermark { position:fixed; top:50%; left:50%; transform:translate(-50%,-50%) rotate(-45deg); font-size:72px; color:rgba(30,58,95,.04); font-weight:900; pointer-events:none; z-index:0; white-space:nowrap; font-family:Arial,sans-serif; letter-spacing:.1em; }
+  .watermark { position:fixed; top:50%; left:50%; transform:translate(-50%,-50%) rotate(-45deg); font-size:72px; color:rgba(30,58,95,.04); font-weight:900; pointer-events:none; z-index:0; white-space:nowrap; font-family:Calibri,Arial,sans-serif; letter-spacing:.1em; }
 
   /* ── Conteúdo do doc ── */
-  h1 { font-family:Arial,sans-serif; font-size:16pt; font-weight:900; text-align:center; margin:0 0 16px; text-transform:uppercase; letter-spacing:.04em; line-height:1.3; }
-  h2 { font-family:Arial,sans-serif; font-size:13pt; font-weight:800; margin:18px 0 8px; text-transform:uppercase; letter-spacing:.04em; border-bottom:2px solid #334155; padding-bottom:4px; line-height:1.3; }
-  h3 { font-family:Arial,sans-serif; font-size:12pt; font-weight:700; margin:14px 0 6px; line-height:1.4; }
-  h4 { font-family:Arial,sans-serif; font-size:11pt; font-weight:700; margin:10px 0 4px; font-style:italic; line-height:1.4; }
-  blockquote { font-family:Arial,sans-serif; font-size:11pt; margin:12px 0; border-left:3px solid #94a3b8; padding-left:14px; color:#475569; font-style:italic; line-height:1.5; }
-  p { font-family:Arial,sans-serif; font-size:12pt; margin:10px 0; line-height:1.5; text-align:justify; }
-  li { font-family:Arial,sans-serif; font-size:12pt; line-height:1.5; text-align:justify; margin-bottom:4px; }
+  h1 { font-family:Calibri,Arial,sans-serif; font-size:16pt; font-weight:900; text-align:center; margin:0 0 16px; text-transform:uppercase; letter-spacing:.04em; line-height:1.3; }
+  h2 { font-family:Calibri,Arial,sans-serif; font-size:13pt; font-weight:800; margin:18px 0 8px; text-transform:uppercase; letter-spacing:.04em; border-bottom:2px solid #334155; padding-bottom:4px; line-height:1.3; }
+  h3 { font-family:Calibri,Arial,sans-serif; font-size:12pt; font-weight:700; margin:14px 0 6px; line-height:1.4; }
+  h4 { font-family:Calibri,Arial,sans-serif; font-size:11pt; font-weight:700; margin:10px 0 4px; font-style:italic; line-height:1.4; }
+  blockquote { font-family:Calibri,Arial,sans-serif; font-size:11pt; margin:12px 0; border-left:3px solid #94a3b8; padding-left:14px; color:#475569; font-style:italic; line-height:1.5; }
+  p { font-family:Calibri,Arial,sans-serif; font-size:12pt; margin:10px 0; line-height:1.5; text-align:justify; }
+  li { font-family:Calibri,Arial,sans-serif; font-size:12pt; line-height:1.5; text-align:justify; margin-bottom:4px; }
   strong,b { font-weight:700; }
   table { width:100%; border-collapse:collapse; margin:10px 0; font-size:11px; }
   table td,table th { border:1px solid #d1d5db; padding:5px 8px; }
   table th { background:#f8fafc; font-weight:700; }
 
   /* ── Badge categoria ── */
-  .badge { display:inline-block; background:${cat.bg}; color:${cat.cor}; border-radius:20px; padding:2px 10px; font-size:10px; font-weight:700; margin-bottom:12px; font-family:Arial,sans-serif; }
+  .badge { display:inline-block; background:${cat.bg}; color:${cat.cor}; border-radius:20px; padding:2px 10px; font-size:10px; font-weight:700; margin-bottom:12px; font-family:Calibri,Arial,sans-serif; }
 
   /* ── Info doc ── */
   .doc-meta { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:18px; }
-  .doc-meta-right { font-size:10px; color:#64748b; text-align:right; font-family:Arial,sans-serif; }
+  .doc-meta-right { font-size:10px; color:#64748b; text-align:right; font-family:Calibri,Arial,sans-serif; }
 
   /* ── Assinaturas ── */
   .sign-block { margin-top:48px; display:flex; gap:40px; }
   .sign-line { flex:1; border-top:1px solid #0f172a; padding-top:8px; text-align:center; font-size:11px; }
 
   /* ── Botão imprimir ── */
-  .no-print { position:fixed; bottom:20px; right:20px; background:#1d4ed8; color:#fff; border:none; border-radius:9px; padding:11px 22px; font-size:13px; font-weight:700; cursor:pointer; box-shadow:0 4px 14px rgba(0,0,0,.25); z-index:9999; font-family:Arial,sans-serif; }
+  .no-print { position:fixed; bottom:20px; right:20px; background:#1d4ed8; color:#fff; border:none; border-radius:9px; padding:11px 22px; font-size:13px; font-weight:700; cursor:pointer; box-shadow:0 4px 14px rgba(0,0,0,.25); z-index:9999; font-family:Calibri,Arial,sans-serif; }
   .no-print:hover { background:#1e40af; }
 </style>
 </head>
