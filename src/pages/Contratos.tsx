@@ -107,9 +107,9 @@ function buildVarMap(
   const mes   = meses[hoje.getMonth()]
   const ano   = String(hoje.getFullYear())
   const fmtDate = (d: string | null) => d ? new Date(d + 'T12:00:00').toLocaleDateString('pt-BR') : ''
-  const salFmt  = c.salario ? `R$ ${c.salario.toLocaleString('pt-BR',{minimumFractionDigits:2})}` : ''
+  const salFmt  = c.salario ? `R$ ${c.salario.toLocaleString('pt-BR',{minimumFractionDigits:2})}` : '[Salário não cadastrado]'
   const salMensalNum = c.salario ?? 0
-  const salExtenso  = valorPorExtenso(salMensalNum)
+  const salExtenso  = salMensalNum > 0 ? valorPorExtenso(salMensalNum) : '[salário não cadastrado]'
   const fn  = (c.funcoes as any)?.nome ?? ''
   const ob  = (c.obras  as any)?.nome  ?? ''
 
