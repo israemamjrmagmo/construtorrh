@@ -247,7 +247,7 @@ const VARS_FUNCAO = [
   { label: 'CBO', value: 'CBO' },
   { label: 'Descrição', value: 'Descrição da Função' },
   { label: 'Hora CLT', value: 'Valor Hora CLT' },
-  { label: 'Hora Externo', value: 'Valor Hora Externo' },
+  { label: 'Hora Extenso', value: 'Valor Hora Extenso' },
 ]
 const VARS_OBRA = [
   { label: 'Obra', value: 'Obra' },
