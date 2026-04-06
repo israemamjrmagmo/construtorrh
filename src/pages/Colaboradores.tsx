@@ -22,6 +22,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
+import { SearchableSelect } from '@/components/ui/searchable-select'
 import {
   Users, Plus, Search, Pencil, Trash2, HardHat, History,
   Briefcase, Tag, Clock, AlertTriangle, CheckCircle2,
@@ -3118,31 +3119,82 @@ ${crachaCardHTML(c, empNome, logoUrl)}
           onEscapeKeyDown={e => e.preventDefault()}
           style={{ maxWidth: 860, width: '95vw', padding: 0, display: 'flex', flexDirection: 'column', height: '92vh', maxHeight: '92vh', overflow: 'hidden' }}>
 
-          {/* cabeçalho */}
-          <DialogHeader style={{ padding: '18px 24px 0', flexShrink: 0 }}>
-            <DialogTitle style={{ fontSize: 16 }}>
-              {editId ? 'Editar Colaborador' : 'Novo Colaborador'}
-            </DialogTitle>
-          </DialogHeader>
+          {/* cabeçalho colorido */}
+          <div style={{ background: '#0d3f56', padding: '20px 24px 16px', flexShrink: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+              {/* Avatar com iniciais */}
+              <div style={{
+                width: 52, height: 52, borderRadius: '50%', flexShrink: 0,
+                background: form.status === 'ativo' ? '#1d9a6c' : form.status === 'ferias' ? '#d97706' : '#dc2626',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 20, fontWeight: 800, color: '#fff', border: '3px solid rgba(255,255,255,0.25)',
+                letterSpacing: -1,
+              }}>
+                {form.nome ? form.nome.trim().split(' ').slice(0,2).map((n: string) => n[0]?.toUpperCase()).join('') : (editId ? '?' : '+')}
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 18, fontWeight: 700, color: '#fff', lineHeight: 1.2 }}>
+                  {form.nome || (editId ? 'Colaborador' : 'Novo Colaborador')}
+                </div>
+                <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
+                  {/* Badge função */}
+                  {form.funcao_id && (() => { const fn = funcoes.find(f => f.id === form.funcao_id); return fn ? (
+                    <span style={{ background: 'rgba(255,255,255,0.18)', color: '#e2e8f0', fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 12, border: '1px solid rgba(255,255,255,0.25)' }}>
+                      🏷️ {fn.sigla ? `[${fn.sigla}] ` : ''}{fn.nome}
+                    </span>
+                  ) : null })()}
+                  {/* Badge status */}
+                  <span style={{
+                    background: form.status === 'ativo' ? 'rgba(29,154,108,0.35)' : form.status === 'ferias' ? 'rgba(217,119,6,0.35)' : 'rgba(220,38,38,0.35)',
+                    color: form.status === 'ativo' ? '#6ee7b7' : form.status === 'ferias' ? '#fde68a' : '#fca5a5',
+                    fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 12,
+                    border: `1px solid ${form.status === 'ativo' ? 'rgba(110,231,183,0.4)' : form.status === 'ferias' ? 'rgba(253,230,138,0.4)' : 'rgba(252,165,165,0.4)'}`,
+                    textTransform: 'uppercase' as const,
+                  }}>
+                    {form.status === 'ativo' ? '● Ativo' : form.status === 'ferias' ? '☀ Férias' : form.status === 'inativo' ? '✕ Inativo' : form.status || '—'}
+                  </span>
+                  {/* Badge tipo contrato */}
+                  {form.tipo_contrato && (
+                    <span style={{
+                      background: form.tipo_contrato === 'clt' ? 'rgba(29,78,216,0.35)' : 'rgba(249,115,22,0.35)',
+                      color: form.tipo_contrato === 'clt' ? '#93c5fd' : '#fdba74',
+                      fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 12,
+                      border: `1px solid ${form.tipo_contrato === 'clt' ? 'rgba(147,197,253,0.4)' : 'rgba(253,186,116,0.4)'}`,
+                      textTransform: 'uppercase' as const,
+                    }}>
+                      {form.tipo_contrato.toUpperCase()}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', textAlign: 'right', flexShrink: 0 }}>
+                {form.chapa && <div style={{ fontFamily: 'monospace', fontSize: 13, color: 'rgba(255,255,255,0.8)', fontWeight: 700 }}>#{form.chapa}</div>}
+                <div>{editId ? 'Editar' : 'Novo'}</div>
+              </div>
+            </div>
+          </div>
 
           {/* abas do modal — sem Status */}
-          <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--border)', margin: '12px 24px 0', flexShrink: 0 }}>
+          <div style={{ display: 'flex', gap: 0, borderBottom: '2px solid #e2e8f0', margin: '0 24px', flexShrink: 0, background: '#fff' }}>
             {(['pessoal', 'funcao', 'bancario', 'vt', 'epis'] as const).map(s => {
               const labels: Record<string, string> = { pessoal: 'Dados Pessoais', funcao: 'Função & Contrato', bancario: 'Dados Bancários', vt: 'Vale Transporte', epis: '🦺 EPIs' }
               const isEpisTab = s === 'epis'
               const hasEpis   = isEpisTab && epiList.length > 0
+              const icons: Record<string, string> = { pessoal: '👤', funcao: '💼', bancario: '🏦', vt: '🚌', epis: '🦺' }
               return (
                 <button key={s} onClick={() => setSection(s)} style={{
-                  padding: '8px 16px', fontSize: 13, fontWeight: 500, border: 'none', background: 'none',
+                  padding: '10px 16px', fontSize: 13, fontWeight: section === s ? 700 : 500, border: 'none',
+                  background: section === s ? '#fff' : 'transparent',
                   cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
-                  borderBottom: section === s ? '2px solid var(--primary)' : '2px solid transparent',
-                  color: section === s ? 'var(--primary)' : 'var(--muted-foreground)',
-                  marginBottom: -1,
+                  borderBottom: section === s ? '2px solid #0d3f56' : '2px solid transparent',
+                  color: section === s ? '#0d3f56' : '#64748b',
+                  marginBottom: -2, transition: 'color 0.15s',
                 }}>
+                  <span style={{ fontSize: 14 }}>{icons[s]}</span>
                   {labels[s]}
                   {hasEpis && (
                     <span style={{
-                      background: section === s ? 'var(--primary)' : '#16a34a',
+                      background: section === s ? '#0d3f56' : '#16a34a',
                       color: '#fff', fontSize: 10, fontWeight: 700,
                       borderRadius: 10, padding: '1px 6px', lineHeight: '16px',
                     }}>
@@ -3155,7 +3207,7 @@ ${crachaCardHTML(c, empNome, logoUrl)}
           </div>
 
           {/* conteúdo scrollável */}
-          <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
+          <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', background: '#f8fafc' }}>
 
             {/* ── SEÇÃO DADOS PESSOAIS (+ Complementares + Endereço) ──────────── */}
             {section === 'pessoal' && (
@@ -4746,21 +4798,15 @@ function FuncaoSection({
             <div /> /* placeholder para manter o grid 2 colunas */
           )}
 
-          {/* Obra — sem SelectItem com value="" */}
+          {/* Obra — SearchableSelect */}
           <Field label="Obra" span={2}>
-            <Select
-              value={form.obra_id || undefined}
-              onValueChange={v => onSet('obra_id', v)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="— Sem obra vinculada —" />
-              </SelectTrigger>
-              <SelectContent>
-                {obras.map(o => (
-                  <SelectItem key={o.id} value={o.id}>{o.nome}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              options={obras.map(o => ({ value: o.id, label: o.nome }))}
+              value={form.obra_id || ''}
+              onChange={v => onSet('obra_id', v)}
+              placeholder="— Sem obra vinculada —"
+              emptyLabel="— Sem obra vinculada —"
+            />
           </Field>
 
           <Field label="Data de admissão">
@@ -4844,9 +4890,12 @@ function FuncaoSection({
 // ─── micro-componentes ────────────────────────────────────────────────────────
 function Sec({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="page-root">
-      <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--muted-foreground)', borderBottom: '1px solid var(--border)', paddingBottom: 4, marginBottom: 12 }}>
-        {title}
+    <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #e2e8f0', padding: '14px 16px', marginBottom: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+        <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#0d3f56' }}>
+          {title}
+        </span>
+        <div style={{ flex: 1, height: 1, background: 'linear-gradient(to right, #cbd5e1, transparent)' }} />
       </div>
       {children}
     </div>
@@ -4864,7 +4913,7 @@ function Grid({ cols, children }: { cols: number; children: React.ReactNode }) {
 function Field({ label, children, span }: { label: React.ReactNode; children: React.ReactNode; span?: number }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4, gridColumn: span ? `span ${span}` : undefined }}>
-      <Label style={{ fontSize: 11, color: 'var(--muted-foreground)', fontWeight: 500 }}>{label}</Label>
+      <Label style={{ fontSize: 11, color: '#475569', fontWeight: 600, letterSpacing: '0.03em' }}>{label}</Label>
       {children}
     </div>
   )

@@ -649,9 +649,17 @@ table th { background:#f8fafc; font-weight:700; }
 <title>${modeloSel.titulo}${colabSel ? ' — ' + colabSel.nome : ''}</title>
 <style>
   * { box-sizing:border-box; margin:0; padding:0; }
-  @page { size:A4; margin:0; }
-  body { font-family:'Times New Roman',Georgia,serif; font-size:12px; color:#1a1a1a; background:#fff; }
-  @media print { .no-print { display:none!important; } }
+  @page { size:A4; margin:2.5cm; }
+  body { font-family:Arial,Helvetica,sans-serif; font-size:12pt; color:#1a1a1a; background:#fff; line-height:1.5; }
+  @media print {
+    .no-print { display:none!important; }
+    body { margin:0; padding:0; }
+    .header-timbrado { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+    .watermark { display:none!important; }
+    p { text-align:justify; orphans:3; widows:3; }
+    h1,h2,h3,h4 { page-break-after:avoid; }
+    .sign-block { page-break-inside:avoid; }
+  }
 
   /* ── Cabeçalho timbrado ── */
   .header-timbrado { background:#1e3a5f; color:#fff; padding:16px 28px; display:flex; align-items:center; gap:16px; }
@@ -664,18 +672,20 @@ table th { background:#f8fafc; font-weight:700; }
   .linha-dupla { border-top:3px solid #1e3a5f; border-bottom:1px solid #93c5fd; margin-bottom:0; }
 
   /* ── Área de conteúdo ── */
-  .content-area { padding:28px 36px 36px; font-family:'Times New Roman',serif; font-size:12px; line-height:1.8; position:relative; }
+  .content-area { padding:20px 0 36px; font-family:Arial,Helvetica,sans-serif; font-size:12pt; line-height:1.5; position:relative; }
 
   /* ── Marca d'água ── */
   .watermark { position:fixed; top:50%; left:50%; transform:translate(-50%,-50%) rotate(-45deg); font-size:72px; color:rgba(30,58,95,.04); font-weight:900; pointer-events:none; z-index:0; white-space:nowrap; font-family:Arial,sans-serif; letter-spacing:.1em; }
 
   /* ── Conteúdo do doc ── */
-  h1 { font-size:18pt; font-weight:900; text-align:center; margin:0 0 12px; text-transform:uppercase; letter-spacing:.04em; line-height:1.3; }
-  h2 { font-size:14pt; font-weight:800; margin:16px 0 6px; text-transform:uppercase; letter-spacing:.04em; border-bottom:1.5px solid #334155; padding-bottom:3px; line-height:1.3; }
-  h3 { font-size:12pt; font-weight:700; margin:12px 0 4px; line-height:1.4; }
-  h4 { font-size:11pt; font-weight:700; margin:10px 0 3px; font-style:italic; line-height:1.4; }
-  blockquote { font-size:11pt; margin:10px 0; border-left:3px solid #94a3b8; padding-left:12px; color:#475569; font-style:italic; line-height:1.6; }
-  p  { font-size:12pt; margin:8px 0; line-height:1.6; }
+  h1 { font-family:Arial,sans-serif; font-size:16pt; font-weight:900; text-align:center; margin:0 0 16px; text-transform:uppercase; letter-spacing:.04em; line-height:1.3; }
+  h2 { font-family:Arial,sans-serif; font-size:13pt; font-weight:800; margin:18px 0 8px; text-transform:uppercase; letter-spacing:.04em; border-bottom:2px solid #334155; padding-bottom:4px; line-height:1.3; }
+  h3 { font-family:Arial,sans-serif; font-size:12pt; font-weight:700; margin:14px 0 6px; line-height:1.4; }
+  h4 { font-family:Arial,sans-serif; font-size:11pt; font-weight:700; margin:10px 0 4px; font-style:italic; line-height:1.4; }
+  blockquote { font-family:Arial,sans-serif; font-size:11pt; margin:12px 0; border-left:3px solid #94a3b8; padding-left:14px; color:#475569; font-style:italic; line-height:1.5; }
+  p { font-family:Arial,sans-serif; font-size:12pt; margin:10px 0; line-height:1.5; text-align:justify; }
+  li { font-family:Arial,sans-serif; font-size:12pt; line-height:1.5; text-align:justify; margin-bottom:4px; }
+  strong,b { font-weight:700; }
   table { width:100%; border-collapse:collapse; margin:10px 0; font-size:11px; }
   table td,table th { border:1px solid #d1d5db; padding:5px 8px; }
   table th { background:#f8fafc; font-weight:700; }
