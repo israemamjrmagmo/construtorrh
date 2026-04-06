@@ -64,11 +64,9 @@ function cpfSemPontuacao(cpf: string): string {
   return cpf.replace(/\D/g, '')
 }
 
-function defaultSenha(cpf: string, chapa: string): string {
-  const cpfNum = cpfSemPontuacao(cpf)
-  const ultimos4Cpf = cpfNum.slice(-4)
-  const primeiros4Chapa = chapa.slice(0, 4)
-  return ultimos4Cpf + primeiros4Chapa
+// Senha padrão: 123 — colaborador deverá trocar no primeiro acesso
+function defaultSenha(_cpf: string, _chapa: string): string {
+  return '123'
 }
 
 function fmtCompetencia(dateStr: string): string {
