@@ -154,7 +154,7 @@ const NAV_GROUPS = [
       { to: '/gestor-admin',  label: 'Gestores',              icon: BarChart3, color: '#f59e0b', adminOnly: true },
       { to: '/gestor',        label: 'Portal do Gestor',      icon: BarChart3, color: '#f59e0b' },
       { to: '/configuracoes', label: 'Configurações',         icon: Settings,  color: '#94a3b8' },
-      { to: '/configuracoes#acessos', label: 'Acesso Colaboradores',  icon: KeyRound,  color: '#f59e0b', adminOnly: true },
+      { to: '/acesso-colaboradores', label: 'Acesso Colaboradores',  icon: KeyRound,  color: '#f59e0b', adminOnly: true },
     ],
   },
 ]

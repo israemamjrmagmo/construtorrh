@@ -810,11 +810,16 @@ function TelaLista({ sessao, holerites, colab, empresa, onSelecionar, onSair }: 
       {/* Conteúdo */}
       <div style={{ maxWidth:500, margin:'0 auto', width:'100%', padding:'16px 16px 32px' }}>
         {!h ? (
-          <div style={{ background:'#fff', borderRadius:14, padding:48, textAlign:'center', border:'1px solid #e5e7eb' }}>
-            <Receipt size={48} strokeWidth={1} color="#d1d5db" style={{ margin:'0 auto 12px', display:'block' }}/>
-            <div style={{ fontSize:16, fontWeight:600, color:'#6b7280' }}>Nenhum contracheque disponível</div>
-            <div style={{ fontSize:13, color:'#9ca3af', marginTop:6 }}>
-              Seus contracheques aparecerão aqui quando publicados pelo RH.
+          <div style={{ background:'#fff', borderRadius:14, padding:'36px 24px', textAlign:'center', border:'1px solid #e5e7eb' }}>
+            <div style={{ width:64, height:64, borderRadius:'50%', background:'#f3f4f6', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 16px' }}>
+              <Receipt size={32} strokeWidth={1} color="#9ca3af"/>
+            </div>
+            <div style={{ fontSize:17, fontWeight:700, color:'#374151', marginBottom:8 }}>Nenhum contracheque disponível</div>
+            <div style={{ fontSize:13, color:'#6b7280', lineHeight:1.7, maxWidth:320, margin:'0 auto' }}>
+              Seus contracheques serão exibidos aqui assim que o RH publicar os holerites do mês.
+            </div>
+            <div style={{ marginTop:20, padding:'12px 16px', background:'#eff6ff', borderRadius:10, border:'1px solid #bfdbfe', fontSize:12, color:'#1d4ed8', display:'inline-block', textAlign:'left' }}>
+              <strong>Dúvidas?</strong> Entre em contato com o departamento de RH da empresa.
             </div>
           </div>
         ) : (

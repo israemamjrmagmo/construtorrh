@@ -51,6 +51,7 @@ const PortalClima        = React.lazy(() => import('@/pages/portal/PortalClima')
 const MensagensAdmin     = React.lazy(() => import('@/pages/MensagensAdmin'))
 const CestaBasica        = React.lazy(() => import('@/pages/CestaBasica'))
 const Contracheques      = React.lazy(() => import('@/pages/Contracheques'))
+const AcessoColaboradores = React.lazy(() => import('@/pages/AcessoColaboradores'))
 const PortalContracheque = React.lazy(() => import('@/pages/portal/PortalContracheque'))
 
 // Portal do Gestor
@@ -434,6 +435,17 @@ export default function App() {
                 }
               />
               <Route path="/portal/contracheque" element={<PortalContracheque />} />
+
+              <Route
+                path="/acesso-colaboradores"
+                element={
+                  <PrivateRoute>
+                    <Layout>
+                      <AcessoColaboradores />
+                    </Layout>
+                  </PrivateRoute>
+                }
+              />
 
               {/* 404 */}
               <Route
