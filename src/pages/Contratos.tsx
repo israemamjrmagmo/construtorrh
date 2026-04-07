@@ -145,17 +145,19 @@ function buildVarMap(
   if (!c) return {}
   const hoje  = new Date()
   const dia   = String(hoje.getDate()).padStart(2, '0')
-  const meses = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro']
+  const meses = ['janeiro','fevereiro','mar\u00e7o','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro']
+  const mesNum = String(hoje.getMonth() + 1).padStart(2, '0')
   const mes   = meses[hoje.getMonth()]
   const ano   = String(hoje.getFullYear())
   const fmtDate = (d: string | null) => d ? new Date(d + 'T12:00:00').toLocaleDateString('pt-BR') : ''
-  const salFmt  = c.salario ? `R$ ${c.salario.toLocaleString('pt-BR',{minimumFractionDigits:2})}` : '[Salário não cadastrado]'
-  const salMensalNum = c.salario ?? 0
-  const salExtenso  = salMensalNum > 0 ? valorPorExtenso(salMensalNum) : '[salário não cadastrado]'
+  const salBase = (c as any).salario_base ?? (c as any).salario ?? null
+  const salFmt  = salBase ? `R$ ${Number(salBase).toLocaleString('pt-BR',{minimumFractionDigits:2})}` : '[Sal\u00e1rio n\u00e3o cadastrado]'
+  const salMensalNum = salBase ? Number(salBase) : 0
+  const salExtenso  = salMensalNum > 0 ? valorPorExtenso(salMensalNum) : '[sal\u00e1rio n\u00e3o cadastrado]'
   const fn  = (c.funcoes as any)?.nome ?? ''
   const ob  = (c.obras  as any)?.nome  ?? ''
 
-  // Endereço da obra
+  // Endere\u00e7o da obra
   const obraEndereco = (() => {
     const o = c.obras as any
     if (!o) return ''
@@ -164,7 +166,7 @@ function buildVarMap(
   })()
   const obraCidade = (c.obras as any)?.cidade ?? emp.cidade ?? ''
 
-  // Valor hora da função
+  // Valor hora da fun\u00e7\u00e3o
   const fnData = c.funcoes as any
   const fmtHora = (v: number | null | undefined) =>
     v ? `R$ ${Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2})}` : ''
@@ -173,78 +175,94 @@ function buildVarMap(
   const valorHoraCLTNum   = fmtHoraNum(fnData?.valor_hora_clt)
   const valorHoraExtNum   = fmtHoraNum(fnData?.valor_hora_autonomo)
   const valorHoraExt      = fmtHora(fnData?.valor_hora_autonomo)
-  // Valor hora CLT: número + extenso combinados
   const valorHoraCLTExtVal  = fnData?.valor_hora_clt ? Number(fnData.valor_hora_clt) : 0
   const valorHoraCLTExtenso = valorHoraCLTExtVal > 0 ? valorPorExtenso(valorHoraCLTExtVal) : ''
   const valorHoraCLT = valorHoraCLTExtVal > 0
     ? `R$ ${valorHoraCLTExtVal.toLocaleString('pt-BR',{minimumFractionDigits:2})} (${valorHoraCLTExtenso})`
-    : '[valor/hora não cadastrado]'
+    : '[valor/hora n\u00e3o cadastrado]'
 
-  // Descrição da função
   const fnDescricao = fnData?.descricao ?? ''
   const fnCBO       = fnData?.cbo ?? ''
   const fnSigla     = fnData?.sigla ?? ''
 
   const genero: Record<string,string> = { masculino:'brasileiro', feminino:'brasileira', outro:'brasileiro(a)' }
-  const civil:  Record<string,string> = { solteiro:'solteiro(a)', casado:'casado(a)', divorciado:'divorciado(a)', viuvo:'viúvo(a)', uniao_estavel:'em união estável' }
+  const civil:  Record<string,string> = { solteiro:'solteiro(a)', casado:'casado(a)', divorciado:'divorciado(a)', viuvo:'vi\u00favo(a)', uniao_estavel:'em uni\u00e3o est\u00e1vel' }
+  const contrato: Record<string,string> = { clt:'CLT', autonomo:'Aut\u00f4nomo', pj:'PJ', temporario:'Tempor\u00e1rio', aprendiz:'Menor Aprendiz', estagiario:'Estagi\u00e1rio' }
+
+  // Dados banc\u00e1rios
+  const cc = c as any
+  const bancoStr = [cc.banco, cc.agencia ? `Ag. ${cc.agencia}` : '', cc.conta ? `Cc. ${cc.conta}` : '', cc.tipo_conta === 'poupanca' ? '(Poupan\u00e7a)' : cc.tipo_conta === 'corrente' ? '(Corrente)' : ''].filter(Boolean).join(' / ')
+  const pixStr = cc.pix_chave ? `${cc.pix_tipo?.toUpperCase() ?? 'PIX'}: ${cc.pix_chave}` : ''
 
   return {
-    // Colaborador
+    // ─── COLABORADOR ────────────────────────────────────────────
     'Nome Completo': c.nome, 'NOME': c.nome, 'Nome Completo do Empregado': c.nome,
     'Nome do(a) Novo(a) Colaborador(a)': c.nome, 'NOME COMPLETO': c.nome,
-    'CPF': c.cpf ?? '', 'Número do CPF': c.cpf ?? '',
-    'RG': c.rg ?? '', 'Número do RG': c.rg ?? '',
-    'PIS/NIT': c.pis_nit ?? '', 'Número do PIS/PASEP': c.pis_nit ?? '',
-    'CTPS Nº': c.ctps_numero ?? '', 'Número da CTPS': c.ctps_numero ?? '',
-    'Série CTPS': c.ctps_serie ?? '', 'Série da CTPS': c.ctps_serie ?? '',
-    // Função — nome
-    'Função': fn, 'FUNÇÃO': fn, 'NOME DA FUNÇÃO': fn, 'Profissão': fn, 'Profissão/Função': fn,
-    'NOME COMPLETO DA FUNÇÃO': fn,
-    // Função — sigla / CBO
-    'Sigla da Função': fnSigla,
-    'CBO': fnCBO, 'Código CBO': fnCBO,
-    // Função — descrição de atividades
-    'Descrição da Função': fnDescricao,
-    'DESCRIÇÃO DAS ATIVIDADES': fnDescricao,
-    'Atividades da Função': fnDescricao,
-    'Descrição das Atividades': fnDescricao,
-    // Função — valor hora
-    'Valor Hora CLT': valorHoraCLT,
-    'Valor da Hora CLT': valorHoraCLT,
-    'Hora CLT': valorHoraCLT,
-    'Valor Hora Externo': valorHoraExt,
-    'Valor da Hora Externo': valorHoraExt,
-    'Hora Externa': valorHoraExt,
-    'Hora Autônomo': valorHoraExt,
-    'Valor Hora Numérico CLT': valorHoraCLTNum,
-    'Valor Hora Numérico Externo': valorHoraExtNum,
-    // Obra
-    'Obra': ob, 'LOCAL DA PRESTAÇÃO DOS SERVIÇOS': ob,
-    'Nome da Obra': ob,
-    'Endereço da Obra': obraEndereco,
+    'Chapa': c.chapa ?? '', 'N\u00famero da Chapa': c.chapa ?? '',
+    'CPF': c.cpf ?? '', 'N\u00famero do CPF': c.cpf ?? '',
+    'RG': c.rg ?? '', 'N\u00famero do RG': c.rg ?? '',
+    'PIS/NIT': c.pis_nit ?? '', 'N\u00famero do PIS/PASEP': c.pis_nit ?? '',
+    'CTPS N\u00ba': c.ctps_numero ?? '', 'N\u00famero da CTPS': c.ctps_numero ?? '', 'CTPS': c.ctps_numero ?? '',
+    'S\u00e9rie CTPS': c.ctps_serie ?? '', 'S\u00e9rie da CTPS': c.ctps_serie ?? '',
+    'Telefone': cc.telefone ?? '', 'Celular': cc.telefone ?? '', 'Telefone/Celular': cc.telefone ?? '',
+    'Email': cc.email ?? '', 'E-mail': cc.email ?? '',
+    'Data Nascimento': fmtDate(cc.data_nascimento), 'Data de Nascimento': fmtDate(cc.data_nascimento),
+    'Tipo Contrato': contrato[c.tipo_contrato ?? ''] ?? (c.tipo_contrato ?? ''),
+    'Tipo de Contrato': contrato[c.tipo_contrato ?? ''] ?? (c.tipo_contrato ?? ''),
+    'G\u00eanero': c.genero ?? '', 'Sexo': c.genero ?? '',
+    // ─── FUN\u00c7\u00c3O ─────────────────────────────────────────────────────
+    'Fun\u00e7\u00e3o': fn, 'FUN\u00c7\u00c3O': fn, 'NOME DA FUN\u00c7\u00c3O': fn, 'Profiss\u00e3o': fn, 'Profiss\u00e3o/Fun\u00e7\u00e3o': fn,
+    'NOME COMPLETO DA FUN\u00c7\u00c3O': fn,
+    'Sigla da Fun\u00e7\u00e3o': fnSigla, 'Sigla': fnSigla,
+    'CBO': fnCBO, 'C\u00f3digo CBO': fnCBO,
+    'Descri\u00e7\u00e3o da Fun\u00e7\u00e3o': fnDescricao,
+    'DESCRI\u00c7\u00c3O DAS ATIVIDADES': fnDescricao,
+    'Atividades da Fun\u00e7\u00e3o': fnDescricao,
+    'Descri\u00e7\u00e3o das Atividades': fnDescricao,
+    'Valor Hora CLT': valorHoraCLT, 'Valor da Hora CLT': valorHoraCLT, 'Hora CLT': valorHoraCLT,
+    'Valor Hora Externo': valorHoraExt, 'Valor da Hora Externo': valorHoraExt,
+    'Hora Externa': valorHoraExt, 'Hora Aut\u00f4nomo': valorHoraExt,
+    'Valor Hora Num\u00e9rico CLT': valorHoraCLTNum, 'Valor Hora Num\u00e9rico Externo': valorHoraExtNum,
+    // ─── OBRA ───────────────────────────────────────────────────
+    'Obra': ob, 'LOCAL DA PRESTA\u00c7\u00c3O DOS SERVI\u00c7OS': ob, 'Nome da Obra': ob,
+    'C\u00f3digo da Obra': (c.obras as any)?.codigo ?? '',
+    'Endere\u00e7o da Obra': obraEndereco,
     'Local de Trabalho': obraEndereco || ob,
-    'Endereço do Local de Trabalho': obraEndereco,
-    // Colaborador — data / salário / endereço
-    'Data Admissão': fmtDate(c.data_admissao), 'Data de Início': fmtDate(c.data_admissao),
-    'Salário': salFmt, 'valor numérico': salFmt,
-    'Salário por Extenso': salExtenso, 'Salário Extenso': salExtenso,
+    'Endere\u00e7o do Local de Trabalho': obraEndereco,
+    // ─── COLABORADOR cont. ──────────────────────────────────────
+    'Data Admiss\u00e3o': fmtDate(c.data_admissao), 'Data de In\u00edcio': fmtDate(c.data_admissao),
+    'Sal\u00e1rio': salFmt, 'valor num\u00e9rico': salFmt,
+    'Sal\u00e1rio por Extenso': salExtenso, 'Sal\u00e1rio Extenso': salExtenso,
     'Valor por Extenso': salExtenso, 'Valor Extenso': salExtenso,
-    'Endereço': `${c.endereco ?? ''}, ${c.cidade ?? ''} - ${c.estado ?? ''}, CEP ${c.cep ?? ''}`,
-    'Endereço Completo do Empregado': `${c.endereco ?? ''}, ${c.cidade ?? ''} - ${c.estado ?? ''}`,
-    'Endereço Completo do Empregado, não esquecer de colocar número, quadra, lote e CEP': `${c.endereco ?? ''}, ${c.cidade ?? ''} - ${c.estado ?? ''}, CEP ${c.cep ?? ''}`,
-    'Cidade': c.cidade ?? '', 'Estado Civil': civil[c.estado_civil ?? ''] ?? '',
+    'Endere\u00e7o': `${c.endereco ?? ''}, ${c.cidade ?? ''} - ${c.estado ?? ''}, CEP ${c.cep ?? ''}`,
+    'Endere\u00e7o Completo': `${c.endereco ?? ''}, ${c.cidade ?? ''} - ${c.estado ?? ''}, CEP ${c.cep ?? ''}`,
+    'Endere\u00e7o Completo do Empregado': `${c.endereco ?? ''}, ${c.cidade ?? ''} - ${c.estado ?? ''}`,
+    'Endere\u00e7o Completo do Empregado, n\u00e3o esquecer de colocar n\u00famero, quadra, lote e CEP': `${c.endereco ?? ''}, ${c.cidade ?? ''} - ${c.estado ?? ''}, CEP ${c.cep ?? ''}`,
+    'CEP': c.cep ?? '',
+    'Cidade': c.cidade ?? '', 'Estado': c.estado ?? '',
+    'Estado Civil': civil[c.estado_civil ?? ''] ?? '',
     'Nacionalidade': genero[c.genero ?? ''] ?? 'brasileiro(a)',
-    // Empresa
+    // Dados banc\u00e1rios
+    'Banco': cc.banco ?? '', 'Nome do Banco': cc.banco ?? '',
+    'Ag\u00eancia': cc.agencia ?? '', 'N\u00famero da Ag\u00eancia': cc.agencia ?? '',
+    'Conta': cc.conta ?? '', 'N\u00famero da Conta': cc.conta ?? '',
+    'Tipo de Conta': cc.tipo_conta === 'poupanca' ? 'Poupan\u00e7a' : cc.tipo_conta === 'corrente' ? 'Corrente' : (cc.tipo_conta ?? ''),
+    'Dados Banc\u00e1rios': bancoStr,
+    'Chave PIX': pixStr, 'PIX': pixStr,
+    // ─── EMPRESA ────────────────────────────────────────────────
     'Nome Empresa': emp.nome, 'NOME FANTASIA DA EMPRESA': emp.nome,
-    'Nome Completo ou Razão Social do Empregador': emp.razaoSocial || emp.nome,
-    'Razão Social da Empresa': emp.razaoSocial || emp.nome,
-    'CNPJ': emp.cnpj, 'Número do CNPJ': emp.cnpj,
-    'Endereço Empresa': emp.endereco, 'Endereço Completo do Empregador': emp.endereco,
-    // Data
-    'Dia': dia, 'DIA': dia, 'Mês': mes, 'MÊS': mes, 'Ano': ano, 'ANO': ano,
-    'CIDADE': emp.cidade || obraCidade || c.cidade || 'São Paulo',
+    'Nome Completo ou Raz\u00e3o Social do Empregador': emp.razaoSocial || emp.nome,
+    'Raz\u00e3o Social da Empresa': emp.razaoSocial || emp.nome,
+    'Raz\u00e3o Social': emp.razaoSocial || emp.nome,
+    'CNPJ': emp.cnpj, 'N\u00famero do CNPJ': emp.cnpj,
+    'Endere\u00e7o Empresa': emp.endereco, 'Endere\u00e7o Completo do Empregador': emp.endereco,
+    // ─── DATA ────────────────────────────────────────────────────
+    'Dia': dia, 'DIA': dia,
+    'M\u00eas': mes, 'M\u00eaS': mes, 'M\u00eas (n\u00famero)': mesNum,
+    'Ano': ano, 'ANO': ano,
+    'CIDADE': emp.cidade || obraCidade || c.cidade || 'S\u00e3o Paulo',
     'cidade/estado/raio km': emp.cidade || obraCidade,
-    'região metropolitana de CIDADE DA PRESTAÇÃO DE SERVIÇOS': emp.cidade || obraCidade,
+    'regi\u00e3o metropolitana de CIDADE DA PRESTA\u00c7\u00c3O DE SERVI\u00c7OS': emp.cidade || obraCidade,
   }
 }
 
@@ -275,17 +293,30 @@ function markdownToHtml(md: string): string {
 // ─── Variáveis fixas para o painel lateral ───────────────────────────────────
 const VARS_COLABORADOR = [
   { label: 'Nome Completo', value: 'Nome Completo' },
+  { label: 'Chapa', value: 'Chapa' },
   { label: 'CPF', value: 'CPF' },
   { label: 'RG', value: 'RG' },
   { label: 'PIS/NIT', value: 'PIS/NIT' },
   { label: 'CTPS Nº', value: 'CTPS Nº' },
   { label: 'Série CTPS', value: 'Série CTPS' },
   { label: 'Data Admissão', value: 'Data Admissão' },
+  { label: 'Data Nascimento', value: 'Data Nascimento' },
   { label: 'Salário', value: 'Salário' },
+  { label: 'Salário Extenso', value: 'Salário por Extenso' },
+  { label: 'Tipo Contrato', value: 'Tipo Contrato' },
   { label: 'Endereço', value: 'Endereço' },
+  { label: 'CEP', value: 'CEP' },
   { label: 'Cidade', value: 'Cidade' },
+  { label: 'Estado', value: 'Estado' },
   { label: 'Estado Civil', value: 'Estado Civil' },
   { label: 'Nacionalidade', value: 'Nacionalidade' },
+  { label: 'Telefone', value: 'Telefone' },
+  { label: 'E-mail', value: 'Email' },
+  { label: 'Banco', value: 'Banco' },
+  { label: 'Agência', value: 'Agência' },
+  { label: 'Conta', value: 'Conta' },
+  { label: 'Dados Bancários', value: 'Dados Bancários' },
+  { label: 'Chave PIX', value: 'Chave PIX' },
 ]
 const VARS_FUNCAO = [
   { label: 'Função', value: 'Função' },
@@ -293,20 +324,24 @@ const VARS_FUNCAO = [
   { label: 'CBO', value: 'CBO' },
   { label: 'Descrição', value: 'Descrição da Função' },
   { label: 'Hora CLT', value: 'Valor Hora CLT' },
+  { label: 'Hora Autônomo', value: 'Hora Autônomo' },
 ]
 const VARS_OBRA = [
   { label: 'Obra', value: 'Obra' },
+  { label: 'Código Obra', value: 'Código da Obra' },
   { label: 'Endereço da Obra', value: 'Endereço da Obra' },
   { label: 'Local de Trabalho', value: 'Local de Trabalho' },
 ]
 const VARS_EMPRESA = [
   { label: 'Nome Empresa', value: 'Nome Empresa' },
+  { label: 'Razão Social', value: 'Razão Social' },
   { label: 'CNPJ', value: 'CNPJ' },
   { label: 'Endereço Empresa', value: 'Endereço Empresa' },
 ]
 const VARS_DATA = [
   { label: 'Dia', value: 'Dia' },
   { label: 'Mês', value: 'Mês' },
+  { label: 'Mês (nº)', value: 'Mês (número)' },
   { label: 'Ano', value: 'Ano' },
   { label: 'Cidade', value: 'CIDADE' },
 ]
@@ -380,6 +415,8 @@ export default function Contratos() {
 
   // confirmação exclusão
   const [confirmDel, setConfirmDel]   = useState<Modelo | null>(null)
+  const [previewModelo, setPreviewModelo] = useState<Modelo | null>(null)
+  const [previewColabId, setPreviewColabId] = useState('')
 
   // aba principal da página
   const [abaMain, setAbaMain]         = useState<'gerar' | 'modelos'>('gerar')
@@ -433,7 +470,7 @@ export default function Contratos() {
     const [modRes, colRes, fnRes] = await Promise.all([
       supabase.from('contratos_modelos').select('*').eq('ativo', true).order('ordem'),
       supabase.from('colaboradores')
-        .select('id,nome,chapa,cpf,rg,pis_nit,ctps_numero,ctps_serie,genero,estado_civil,funcao_id,obra_id,salario,tipo_contrato,data_admissao,endereco,cidade,estado,cep,telefone,email,funcoes(nome,sigla,descricao,cbo,valor_hora_clt,valor_hora_autonomo),obras(nome,codigo,endereco,cidade,estado)')
+        .select('id,nome,chapa,cpf,rg,pis_nit,ctps_numero,ctps_serie,genero,estado_civil,funcao_id,obra_id,salario,tipo_contrato,data_admissao,data_nascimento,endereco,cidade,estado,cep,telefone,email,banco,agencia,conta,tipo_conta,pix_chave,pix_tipo,funcoes(nome,sigla,descricao,cbo,valor_hora_clt,valor_hora_autonomo),obras(nome,codigo,endereco,cidade,estado)')
         .eq('status', 'ativo').order('nome'),
       supabase.from('funcoes').select('id,nome,sigla,descricao,cbo').eq('ativo', true).order('nome'),
     ])
@@ -1323,6 +1360,10 @@ table th { background:#f8fafc; font-weight:700; }
                         {m.descricao && <div style={{ fontSize: 10, color: '#64748b', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.descricao}</div>}
                       </div>
                       <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
+                        <button onClick={e => { e.stopPropagation(); setPreviewModelo(m); setPreviewColabId(colaboradores[0]?.id ?? '') }}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#0369a1', padding: 3, borderRadius: 4 }} title="Visualizar modelo">
+                          <Eye size={12} />
+                        </button>
                         <button onClick={e => { e.stopPropagation(); abrirEditor(m) }}
                           style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: 3, borderRadius: 4 }} title="Editar modelo">
                           <Pencil size={12} />
@@ -1893,6 +1934,72 @@ table th { background:#f8fafc; font-weight:700; }
           </div>
         </div>
       )}
+
+      {/* ══ MODAL: Visualizar Modelo ══════════════════════════════════════ */}
+      {previewModelo && (() => {
+        const pvColab = colaboradores.find(c => c.id === previewColabId) ?? colaboradores[0] ?? null
+        const varMap = buildVarMap(pvColab as ColaboradorRow, empData)
+        let html = previewModelo.conteudo
+        if (html.trimStart().startsWith('#') || (!html.includes('<') && html.includes('\n'))) html = markdownToHtml(html)
+        const previewHtmlLocal = aplicarVariaveis(html, varMap)
+        const cat = CATEGORIAS[previewModelo.categoria] ?? CATEGORIAS.outro
+        return (
+          <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.7)', zIndex:9500, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}
+            onClick={e => { if (e.target === e.currentTarget) setPreviewModelo(null) }}>
+            <div style={{ background:'var(--card)', borderRadius:16, width:'100%', maxWidth:780, maxHeight:'94vh', display:'flex', flexDirection:'column', boxShadow:'0 16px 48px rgba(0,0,0,.5)', overflow:'hidden' }}>
+              {/* Header */}
+              <div style={{ padding:'14px 20px', background:'#1e3a5f', display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0, flexWrap:'wrap', gap:8 }}>
+                <div style={{ display:'flex', alignItems:'center', gap:10, minWidth:0 }}>
+                  <Eye size={16} color="#93c5fd"/>
+                  <div>
+                    <div style={{ color:'#fff', fontWeight:800, fontSize:14 }}>Visualizar Modelo</div>
+                    <div style={{ color:'#93c5fd', fontSize:11 }}>{previewModelo.titulo}</div>
+                  </div>
+                </div>
+                <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                  <span style={{ fontSize:11, color:'#94a3b8' }}>Colaborador:</span>
+                  <select value={previewColabId} onChange={e => setPreviewColabId(e.target.value)}
+                    style={{ height:30, borderRadius:6, border:'1px solid #334155', background:'#0f172a', color:'#fff', fontSize:12, padding:'0 8px', maxWidth:220 }}>
+                    {colaboradores.map(c => (
+                      <option key={c.id} value={c.id}>{c.nome} ({c.chapa})</option>
+                    ))}
+                  </select>
+                  <button onClick={() => setPreviewModelo(null)}
+                    style={{ background:'rgba(255,255,255,.15)', border:'none', borderRadius:8, padding:'6px 10px', color:'#fff', cursor:'pointer', fontSize:13 }}>✕</button>
+                </div>
+              </div>
+              {/* Preview */}
+              <div style={{ flex:1, overflowY:'auto', padding:'20px', background:'#3c3f41' }}>
+                <div style={{ background:'#fff', maxWidth:700, margin:'0 auto', boxShadow:'0 2px 12px rgba(0,0,0,.5)', borderRadius:6, overflow:'hidden' }}>
+                  <div style={{ background:'#1e3a5f', color:'#fff', padding:'10px 18px', display:'flex', alignItems:'center', gap:10 }}>
+                    <span style={{ fontSize:20 }}>🏗️</span>
+                    <div>
+                      <div style={{ fontSize:13, fontWeight:800 }}>{empData.nome || 'EMPRESA'}</div>
+                      {empData.cnpj && <div style={{ fontSize:9, color:'#93c5fd' }}>CNPJ: {empData.cnpj}</div>}
+                    </div>
+                    <span style={{ marginLeft:'auto', fontSize:9, padding:'2px 8px', borderRadius:10, background:cat.bg, color:cat.cor, fontWeight:700 }}>{cat.emoji} {cat.label}</span>
+                  </div>
+                  <div style={{ height:3, background:'#1e3a5f', borderBottom:'1px solid #93c5fd' }}/>
+                  <div style={{ padding:'24px 28px', fontFamily:"'Times New Roman',Georgia,serif", fontSize:'12pt', lineHeight:1.6, color:'#1a1a1a' }}
+                    dangerouslySetInnerHTML={{ __html: previewHtmlLocal }}/>
+                </div>
+                <div style={{ marginTop:12, textAlign:'center', fontSize:11, color:'rgba(255,255,255,.4)' }}>
+                  Variáveis em amarelo = não preenchidas no cadastro do colaborador
+                </div>
+              </div>
+              {/* Footer */}
+              <div style={{ padding:'10px 16px', borderTop:'1px solid var(--border)', background:'var(--background)', flexShrink:0, display:'flex', justifyContent:'flex-end', gap:8 }}>
+                <button onClick={() => setPreviewModelo(null)}
+                  style={{ padding:'7px 16px', borderRadius:8, border:'1px solid var(--border)', background:'var(--card)', fontSize:13, fontWeight:600, cursor:'pointer' }}>Fechar</button>
+                <button onClick={() => abrirEditor(previewModelo)}
+                  style={{ padding:'7px 16px', borderRadius:8, border:'none', background:'linear-gradient(135deg,#0369a1,#0284c7)', color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer', display:'flex', alignItems:'center', gap:6 }}>
+                  <Pencil size={13}/> Editar Modelo
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* ══ MODAL: Gerar Avulso ═══════════════════════════════════════════ */}
       {modalAvulso && (() => {
