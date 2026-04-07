@@ -317,6 +317,7 @@ const VARS_COLABORADOR = [
   { label: 'Conta', value: 'Conta' },
   { label: 'Dados Bancários', value: 'Dados Bancários' },
   { label: 'Chave PIX', value: 'Chave PIX' },
+  { label: 'Exame Admissional', value: 'Data Exame Admissional' },
 ]
 const VARS_FUNCAO = [
   { label: 'Função', value: 'Função' },
@@ -470,7 +471,7 @@ export default function Contratos() {
     const [modRes, colRes, fnRes] = await Promise.all([
       supabase.from('contratos_modelos').select('*').eq('ativo', true).order('ordem'),
       supabase.from('colaboradores')
-        .select('id,nome,chapa,cpf,rg,pis_nit,ctps_numero,ctps_serie,genero,estado_civil,funcao_id,obra_id,salario,tipo_contrato,data_admissao,data_nascimento,endereco,cidade,estado,cep,telefone,email,banco,agencia,conta,tipo_conta,pix_chave,pix_tipo,funcoes(nome,sigla,descricao,cbo,valor_hora_clt,valor_hora_autonomo),obras(nome,codigo,endereco,cidade,estado)')
+        .select('id,nome,chapa,cpf,rg,pis_nit,ctps_numero,ctps_serie,genero,estado_civil,funcao_id,obra_id,salario,tipo_contrato,data_admissao,data_nascimento,data_exame_admissional,endereco,cidade,estado,cep,telefone,email,banco,agencia,conta,tipo_conta,pix_chave,pix_tipo,funcoes(nome,sigla,descricao,cbo,valor_hora_clt,valor_hora_autonomo),obras(nome,codigo,endereco,cidade,estado)')
         .eq('status', 'ativo').order('nome'),
       supabase.from('funcoes').select('id,nome,sigla,descricao,cbo').eq('ativo', true).order('nome'),
     ])
@@ -2086,52 +2087,107 @@ table th{background:#f8fafc;font-weight:700;}
                 ))}
               </div>
 
-              <div style={{ flex:1, overflowY:'auto', padding:20, display:'flex', flexDirection:'column', gap:16 }}>
+              <div style={{ flex:1, overflow:'hidden', display:'flex' }}>
                 {avulsoStep === 1 ? (
-                  <>
-                    <div style={{ fontSize:13, fontWeight:600, color:'var(--foreground)', marginBottom:4 }}>👤 Colaborador *</div>
-                    <SearchableSelect
-                      value={avulsoColabId}
-                      onChange={v => setAvulsoColabId(v)}
-                      placeholder="Pesquisar colaborador por nome ou chapa…"
-                      options={colabOptions}
-                    />
-                    {avulsoColab && (
-                      <div style={{ padding:'12px 14px', background:'#f0fdf4', borderRadius:10, border:'1px solid #bbf7d0', display:'flex', alignItems:'center', gap:12 }}>
-                        <div style={{ width:40, height:40, borderRadius:'50%', background:'#16a34a', display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontWeight:800, fontSize:16, flexShrink:0 }}>
-                          {avulsoColab.nome.charAt(0)}
-                        </div>
-                        <div>
-                          <div style={{ fontWeight:700, fontSize:14, color:'#15803d' }}>{avulsoColab.nome}</div>
-                          <div style={{ fontSize:11, color:'#16a34a' }}>
-                            {avulsoColab.chapa}{(avulsoColab as any).funcoes?.nome ? ` · ${(avulsoColab as any).funcoes.nome}` : ''}
-                          </div>
-                        </div>
-                        <span style={{ marginLeft:'auto', fontSize:11, fontWeight:700, background:'#dcfce7', color:'#15803d', padding:'2px 8px', borderRadius:20 }}>✓ Selecionado</span>
+                  /* ── STEP 1: grid de colaboradores ── */
+                  <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden' }}>
+                    {/* barra de busca */}
+                    <div style={{ padding:'10px 16px', borderBottom:'1px solid var(--border)', background:'var(--background)', flexShrink:0, display:'flex', gap:8, alignItems:'center' }}>
+                      <div style={{ position:'relative', flex:1 }}>
+                        <Search size={13} style={{ position:'absolute', left:9, top:'50%', transform:'translateY(-50%)', color:'#9ca3af' }}/>
+                        <input
+                          value={buscaColabEsq} onChange={e => setBuscaColabEsq(e.target.value)}
+                          placeholder="Buscar por nome ou chapa…"
+                          autoFocus
+                          style={{ width:'100%', height:36, paddingLeft:30, borderRadius:8, border:'1px solid var(--border)', background:'var(--card)', fontSize:13, color:'var(--foreground)', outline:'none', boxSizing:'border-box' }}
+                        />
                       </div>
-                    )}
-                  </>
+                      {avulsoColabId && (
+                        <span style={{ fontSize:12, fontWeight:700, background:'#f0fdf4', color:'#15803d', border:'1px solid #bbf7d0', borderRadius:20, padding:'3px 12px', whiteSpace:'nowrap' }}>
+                          ✓ {colaboradores.find(c=>c.id===avulsoColabId)?.nome.split(' ')[0]}
+                        </span>
+                      )}
+                    </div>
+                    {/* grid */}
+                    <div style={{ flex:1, overflowY:'auto', padding:12 }}>
+                      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(220px,1fr))', gap:8 }}>
+                        {colaboradores
+                          .filter(c => {
+                            const q = buscaColabEsq.toLowerCase()
+                            return !q || c.nome.toLowerCase().includes(q) || (c.chapa??'').toLowerCase().includes(q)
+                          })
+                          .map(c => {
+                            const sel = avulsoColabId === c.id
+                            return (
+                              <div key={c.id} onClick={() => setAvulsoColabId(sel ? '' : c.id)}
+                                style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 12px', borderRadius:10, cursor:'pointer', transition:'all .12s',
+                                  border:`2px solid ${sel ? '#0369a1' : '#e2e8f0'}`,
+                                  background: sel ? '#eff6ff' : 'var(--card)',
+                                  boxShadow: sel ? '0 0 0 3px rgba(3,105,161,.15)' : 'none' }}>
+                                <div style={{ width:36, height:36, borderRadius:'50%', background: sel ? '#0369a1' : '#e2e8f0', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:800, fontSize:15, color: sel ? '#fff' : '#64748b', flexShrink:0 }}>
+                                  {c.nome.charAt(0)}
+                                </div>
+                                <div style={{ minWidth:0 }}>
+                                  <div style={{ fontSize:13, fontWeight: sel ? 700 : 600, color: sel ? '#0369a1' : 'var(--foreground)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{c.nome}</div>
+                                  <div style={{ fontSize:10, color:'var(--muted-foreground)', marginTop:1 }}>
+                                    {c.chapa}{(c.funcoes as any)?.nome ? ` · ${(c.funcoes as any).nome}` : ''}
+                                  </div>
+                                </div>
+                                {sel && <span style={{ marginLeft:'auto', color:'#0369a1', fontWeight:900, fontSize:16, flexShrink:0 }}>✓</span>}
+                              </div>
+                            )
+                          })
+                        }
+                      </div>
+                    </div>
+                  </div>
                 ) : (
-                  <>
+                  /* ── STEP 2: escolher documento ── */
+                  <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden' }}>
                     {avulsoColab && (
-                      <div style={{ padding:'8px 12px', background:'#f0fdf4', borderRadius:8, border:'1px solid #bbf7d0', fontSize:12, color:'#15803d', fontWeight:600 }}>
+                      <div style={{ padding:'10px 16px', background:'#f0fdf4', borderBottom:'1px solid #bbf7d0', flexShrink:0, fontSize:12, color:'#15803d', fontWeight:600 }}>
                         👤 {avulsoColab.nome} · {avulsoColab.chapa}
                       </div>
                     )}
-                    <div style={{ fontSize:13, fontWeight:600, color:'var(--foreground)', marginBottom:4 }}>📄 Documento *</div>
-                    <SearchableSelect
-                      value={avulsoModeloId}
-                      onChange={v => setAvulsoModeloId(v)}
-                      placeholder="Pesquisar documento por título…"
-                      options={modeloOptions}
-                    />
-                    {avulsoModelo && (
-                      <div style={{ padding:'12px 14px', background:'#eff6ff', borderRadius:10, border:'1px solid #bfdbfe' }}>
-                        <div style={{ fontWeight:700, fontSize:14, color:'#1d4ed8' }}>{avulsoModelo.titulo}</div>
-                        {avulsoModelo.descricao && <div style={{ fontSize:11, color:'#3b82f6', marginTop:3 }}>{avulsoModelo.descricao}</div>}
+                    <div style={{ flex:1, overflowY:'auto', padding:16, display:'flex', flexDirection:'column', gap:12 }}>
+                      <div style={{ fontSize:13, fontWeight:600, color:'var(--foreground)' }}>📄 Selecione o documento *</div>
+                      <SearchableSelect
+                        value={avulsoModeloId}
+                        onChange={v => setAvulsoModeloId(v)}
+                        placeholder="Pesquisar documento por título…"
+                        options={modeloOptions}
+                      />
+                      {/* Lista visual de modelos por categoria */}
+                      <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                        {(['admissional','contrato','termo','declaracao','politica','ficha','outro'] as const).map(cat => {
+                          const mCat = modelos.filter(m => m.categoria === cat)
+                          if (!mCat.length) return null
+                          const catInfo = CATEGORIAS[cat] ?? CATEGORIAS.outro
+                          return (
+                            <div key={cat}>
+                              <div style={{ fontSize:10, fontWeight:700, color:catInfo.cor, background:catInfo.bg, borderRadius:5, padding:'2px 8px', marginBottom:4, display:'inline-block' }}>{catInfo.emoji} {catInfo.label}</div>
+                              <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
+                                {mCat.map(m => {
+                                  const sel = avulsoModeloId === m.id
+                                  return (
+                                    <div key={m.id} onClick={() => setAvulsoModeloId(sel ? '' : m.id)}
+                                      style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 12px', borderRadius:8, cursor:'pointer',
+                                        border:`1px solid ${sel ? catInfo.cor : 'var(--border)'}`,
+                                        background: sel ? catInfo.bg : 'var(--card)', transition:'all .12s' }}>
+                                      <div style={{ width:16, height:16, borderRadius:4, border:`2px solid ${sel ? catInfo.cor : '#d1d5db'}`, background:sel ? catInfo.cor : '#fff', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                                        {sel && <span style={{ color:'#fff', fontSize:10, fontWeight:900 }}>✓</span>}
+                                      </div>
+                                      <span style={{ fontSize:13, fontWeight:sel?700:500, color:sel?catInfo.cor:'var(--foreground)' }}>{m.titulo}</span>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )
+                        })}
                       </div>
-                    )}
-                  </>
+                    </div>
+                  </div>
                 )}
               </div>
 

@@ -109,7 +109,7 @@ const EMPTY: FormData = {
   genero: '', estado_civil: '', telefone: '', email: '', endereco: '',
   cidade: '', estado: '', cep: '', funcao_id: '', obra_id: '',
   salario: '',
-  tipo_contrato: 'clt', data_admissao: '', ctps_numero: '', ctps_serie: '',
+  tipo_contrato: 'clt', data_admissao: '', ctps_numero: '', ctps_serie: '', data_exame_admissional: '',
   banco: '', agencia: '', conta: '', tipo_conta: '',
   pix_tipo: '', pix_chave: '',
   vt_modalidade: 'nenhum', vt_gasolina_valor_dia: '',
@@ -4879,6 +4879,15 @@ function FuncaoSection({
           </Field>
           <Field label="Série CTPS">
             <Input value={form.ctps_serie} onChange={e => onSet('ctps_serie', maskCTPSSerie(e.target.value))} placeholder="0000" inputMode="numeric" style={{ fontFamily: 'monospace' }} />
+          </Field>
+        </Grid>
+      </Sec>
+
+      {/* ── Exame Admissional ─────────────────────────────────────────── */}
+      <Sec title="Exame Admissional (ASO)">
+        <Grid cols={1}>
+          <Field label="Data do Exame Admissional">
+            <Input type="date" value={(form as any).data_exame_admissional ?? ''} onChange={e => onSet('data_exame_admissional', e.target.value)} />
           </Field>
         </Grid>
       </Sec>
