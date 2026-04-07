@@ -86,7 +86,6 @@ const NAV_GROUPS = [
       { to: '/playbooks',     label: 'Playbooks',     icon: ClipboardList,color: '#a78bfa' },
       { to: '/feriados',      label: 'Feriados',      icon: CalendarDays, color: '#fbbf24' },
       { to: '/documentos',    label: 'Documentos',    icon: FileText,     color: '#64748b' },
-      { to: '/contracheques', label: 'Contracheque',  icon: Receipt,      color: '#0d9488' },
     ],
   },
   {
@@ -120,6 +119,7 @@ const NAV_GROUPS = [
     items: [
       { to: '/fechamento-ponto', label: 'Fechamento',         icon: Lock,       color: '#fb923c', badge: 'fech' as const },
       { to: '/pagamentos',       label: 'Pagamentos',         icon: DollarSign, color: '#4ade80' },
+      { to: '/contracheques',    label: 'Contracheques',      icon: Receipt,    color: '#0d9488' },
       { to: '/encargos',         label: 'Encargos',           icon: Briefcase,  color: '#a78bfa' },
       { to: '/provisoes',        label: 'Provisões Rescisão', icon: Calculator, color: '#f472b6' },
     ],
