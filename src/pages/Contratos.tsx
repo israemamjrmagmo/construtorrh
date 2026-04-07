@@ -350,6 +350,25 @@ export default function Contratos() {
   const [filtroObraLote, setFiltroObraLote]   = useState('')
   const [filtroFuncaoLote, setFiltroFuncaoLote] = useState('')
 
+  // ── Kit de documentos padrão ────────────────────────────────────────────
+  const [modalKit, setModalKit]           = useState(false)   // modal visualizar/configurar kit
+  const [gerandoKit, setGerandoKit]       = useState(false)
+  const [kitGerado, setKitGerado]         = useState(false)
+
+  // IDs dos modelos selecionados no kit padrão (persistido em localStorage)
+  const [kitModelosIds, setKitModelosIds] = useState<string[]>(() => {
+    try {
+      const s = localStorage.getItem('rh_kit_modelos')
+      if (s) { const p = JSON.parse(s); if (Array.isArray(p)) return p }
+    } catch {}
+    return []
+  })
+
+  function salvarKitModelos(ids: string[]) {
+    setKitModelosIds(ids)
+    localStorage.setItem('rh_kit_modelos', JSON.stringify(ids))
+  }
+
   // busca do painel esquerdo de colaboradores
   const [buscaColabEsq, setBuscaColabEsq] = useState('')
   const colabsEsqFiltrados = colaboradores.filter(c => {
@@ -572,6 +591,143 @@ export default function Contratos() {
       if (modeloSel?.id === m.id) setModeloSel(null)
       fetchAll()
     }
+  }
+
+  // ── gerar Kit Padrão (1 colaborador, N modelos) ──────────────────────────
+  async function gerarKitPadrao() {
+    if (!colabSel || kitModelosIds.length === 0) return
+    const kitModelos = modelos.filter(m => kitModelosIds.includes(m.id))
+    if (kitModelos.length === 0) { toast.warning('Nenhum modelo válido no kit'); return }
+    setGerandoKit(true)
+
+    const dataGer  = new Date().toLocaleDateString('pt-BR')
+    let logoBlock  = `<div class="logo-fallback">🏗️</div>`
+    if (empData.logoUrl)
+      logoBlock = `<img src="${empData.logoUrl}" class="logo" alt="Logo" onerror="this.style.display='none'" />`
+
+    const paginaHtml = (m: Modelo, idx: number) => {
+      const cat    = CATEGORIAS[m.categoria] ?? CATEGORIAS.outro
+      const varMap = buildVarMap(colabSel, empData)
+      let html = m.conteudo
+      if (html.trimStart().startsWith('#') || (!html.includes('<') && html.includes('\n')))
+        html = markdownToHtml(html)
+      html = aplicarVariaveis(html, varMap)
+      const isLast = idx === kitModelos.length - 1
+      return `
+<div class="folha${isLast ? ' ultima' : ''}">
+  <div class="timbre">
+    ${logoBlock}
+    <div>
+      <div class="emp-nome">${empData.nome || 'EMPRESA'}</div>
+      <div class="emp-det">${empData.cnpj ? 'CNPJ: ' + empData.cnpj : ''}${empData.cnpj && empData.endereco ? ' &nbsp;|&nbsp; ' : ''}${empData.endereco}${empData.cidade ? ' &nbsp;|&nbsp; ' + empData.cidade : ''}</div>
+    </div>
+  </div>
+  <div class="linha-dupla"></div>
+  <div class="corpo">
+    <div class="doc-meta">
+      <div>
+        <span class="badge" style="background:${cat.bg};color:${cat.cor}">${cat.emoji} ${cat.label}</span>
+        <span class="kit-badge">📋 Kit Padrão · Doc ${idx + 1}/${kitModelos.length}</span>
+      </div>
+      <div class="meta-right">
+        Emitido em ${dataGer}<br/>
+        <strong>${colabSel.nome}</strong>${colabSel.chapa ? ' · ' + colabSel.chapa : ''}
+      </div>
+    </div>
+    <div class="conteudo">${html}</div>
+    <div class="assinaturas">
+      <div class="ass">${empData.nome || 'Empresa'}<br/><span>Representante Legal</span></div>
+      <div class="ass">${colabSel.nome}<br/><span>${(colabSel.funcoes as any)?.nome ?? 'Colaborador(a)'}</span></div>
+    </div>
+  </div>
+  <div class="rodape">
+    ${m.titulo} &nbsp;·&nbsp; ${colabSel.nome} &nbsp;·&nbsp; ${dataGer}
+  </div>
+</div>`
+    }
+
+    const fullHtml = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<title>Kit Padrão — ${colabSel.nome}</title>
+<style>
+  @page { size: A4 portrait; margin: 12mm 14mm; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html,body { font-family: Calibri, Arial, sans-serif; font-size: 12pt; color: #1a1a1a; }
+  .folha {
+    width: 100%; min-height: 246mm;
+    page-break-after: always; break-after: page;
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  .folha.ultima { page-break-after: avoid; break-after: avoid; }
+  .timbre { background:#1e3a5f; color:#fff; padding:12px 18px; display:flex; align-items:center; gap:14px; flex-shrink:0; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  .logo { height:52px; max-width:160px; object-fit:contain; filter:brightness(0) invert(1); border-radius:3px; }
+  .logo-fallback { width:44px; height:44px; background:rgba(255,255,255,.15); border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:22px; flex-shrink:0; }
+  .emp-nome { font-size:15pt; font-weight:900; letter-spacing:.04em; line-height:1.2; }
+  .emp-det  { font-size:8.5pt; color:#93c5fd; margin-top:3px; }
+  .linha-dupla { border-top:3pt solid #1e3a5f; border-bottom:1pt solid #93c5fd; flex-shrink:0; }
+  .corpo { flex:1; padding:14pt 0 0; display:flex; flex-direction:column; }
+  .doc-meta { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12pt; gap:8pt; }
+  .meta-right { font-size:9pt; color:#555; text-align:right; line-height:1.5; }
+  .badge { border-radius:20px; padding:2px 10px; font-size:8.5pt; font-weight:700; display:inline-block; }
+  .kit-badge { display:inline-block; background:#fef3c7; color:#b45309; border-radius:20px; padding:2px 10px; font-size:8pt; font-weight:700; margin-left:6pt; }
+  .conteudo { flex:1; }
+  .conteudo h1 { font-size:15pt; font-weight:900; text-align:center; margin:0 0 12pt; text-transform:uppercase; letter-spacing:.04em; line-height:1.3; }
+  .conteudo h2 { font-size:12pt; font-weight:800; margin:12pt 0 5pt; text-transform:uppercase; border-bottom:1.5pt solid #334155; padding-bottom:3pt; line-height:1.3; }
+  .conteudo h3 { font-size:11pt; font-weight:700; margin:9pt 0 4pt; }
+  .conteudo h4 { font-size:10pt; font-weight:700; font-style:italic; margin:7pt 0 3pt; }
+  .conteudo p  { font-size:11pt; margin:5pt 0; line-height:1.7; text-align:justify; orphans:3; widows:3; }
+  .conteudo li { font-size:11pt; line-height:1.7; text-align:justify; margin-bottom:3pt; }
+  .conteudo strong,.conteudo b { font-weight:700; }
+  .conteudo blockquote { font-size:10.5pt; margin:7pt 0; border-left:2.5pt solid #94a3b8; padding-left:10pt; color:#475569; font-style:italic; line-height:1.6; }
+  .conteudo table { width:100%; border-collapse:collapse; margin:7pt 0; font-size:9.5pt; }
+  .conteudo td,.conteudo th { border:0.5pt solid #d1d5db; padding:4pt 6pt; }
+  .conteudo th { background:#f8fafc; font-weight:700; }
+  .assinaturas { display:grid; grid-template-columns:1fr 1fr; gap:28pt; margin-top:24pt; flex-shrink:0; page-break-inside:avoid; }
+  .ass { border-top:1pt solid #0f172a; padding-top:6pt; font-size:10pt; font-weight:700; text-align:center; line-height:1.5; }
+  .ass span { font-size:8.5pt; font-weight:400; color:#555; }
+  .rodape { font-size:7.5pt; color:#aaa; text-align:center; border-top:0.5pt solid #e5e7eb; padding-top:5pt; margin-top:10pt; flex-shrink:0; }
+  @media screen {
+    body { background:#3c3f41; padding:24px; }
+    .folha { background:#fff; padding:12mm 14mm; margin:0 auto 24px; max-width:210mm; box-shadow:0 2px 16px rgba(0,0,0,.4),0 8px 32px rgba(0,0,0,.25); }
+    .btn-imprimir { position:fixed; bottom:20px; right:20px; background:#b45309; color:#fff; border:none; border-radius:9px; padding:11px 22px; font-size:14px; font-weight:700; cursor:pointer; box-shadow:0 4px 14px rgba(0,0,0,.25); z-index:9999; font-family:Calibri,Arial,sans-serif; }
+    .btn-imprimir:hover { background:#92400e; }
+  }
+  @media print {
+    body { background:#fff; padding:0; }
+    .folha { margin:0; padding:0; box-shadow:none; }
+    .btn-imprimir { display:none!important; }
+    h1,h2,h3,h4 { page-break-after:avoid; }
+  }
+</style>
+</head>
+<body>
+${kitModelos.map((m, i) => paginaHtml(m, i)).join('')}
+<button class="btn-imprimir" onclick="window.print()">🖨️ Imprimir Kit (${kitModelos.length} docs)</button>
+<script>window.onload=()=>setTimeout(()=>window.print(),500)<\/script>
+</body></html>`
+
+    // Registrar no banco
+    for (const m of kitModelos) {
+      const varMap = buildVarMap(colabSel, empData)
+      let html = m.conteudo
+      if (html.trimStart().startsWith('#') || (!html.includes('<') && html.includes('\n')))
+        html = markdownToHtml(html)
+      await supabase.from('contratos_gerados').insert({
+        modelo_id: m.id, colaborador_id: colabSel.id,
+        titulo_gerado: `[Kit] ${m.titulo} — ${colabSel.nome}`,
+        conteudo_final: aplicarVariaveis(html, varMap),
+      }).then(() => {})
+    }
+
+    const win = window.open('', '_blank', 'width=960,height=800')
+    if (win) { win.document.write(fullHtml); win.document.close() }
+    else toast.error('Bloqueio de pop-up — libere pop-ups para este site.')
+    setGerandoKit(false)
+    setKitGerado(true)
+    setTimeout(() => setKitGerado(false), 3000)
+    toast.success(`Kit com ${kitModelos.length} documento(s) gerado para ${colabSel.nome}!`)
   }
 
   // ── geração em lote ───────────────────────────────────────────────────────
@@ -1017,16 +1173,60 @@ table th { background:#f8fafc; font-weight:700; }
               })}
             </div>
 
-            {/* Rodapé: colaborador selecionado */}
+            {/* Rodapé: colaborador selecionado + botão Kit Padrão */}
             {colabSel && (
-              <div style={{ padding: '8px 12px', borderTop: '1px solid var(--border)', background: '#f0fdf4', flexShrink: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+              <div style={{ padding: '8px 10px', borderTop: '1px solid var(--border)', background: '#f0fdf4', flexShrink: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, marginBottom: 6 }}>
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontSize: 11, fontWeight: 700, color: '#15803d', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{colabSel.nome}</div>
                     <div style={{ fontSize: 10, color: '#64748b' }}>{colabSel.chapa}</div>
                   </div>
                   <button onClick={() => setColabSel(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: 2, flexShrink: 0 }}><X size={13} /></button>
                 </div>
+                {/* Botão Kit Padrão */}
+                <button
+                  onClick={() => {
+                    if (kitModelosIds.length === 0) {
+                      setModalKit(true)
+                    } else {
+                      gerarKitPadrao()
+                    }
+                  }}
+                  disabled={gerandoKit}
+                  title={kitModelosIds.length === 0 ? 'Configure o kit primeiro' : `Gerar ${kitModelosIds.length} documento(s) do kit`}
+                  style={{
+                    width: '100%', height: 34, borderRadius: 8, border: 'none', cursor: 'pointer',
+                    background: kitGerado
+                      ? '#16a34a'
+                      : gerandoKit
+                        ? '#94a3b8'
+                        : kitModelosIds.length === 0
+                          ? '#f8fafc'
+                          : 'linear-gradient(135deg,#b45309,#d97706)',
+                    color: kitModelosIds.length === 0 ? '#b45309' : '#fff',
+                    fontWeight: 700, fontSize: 12,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                    border: kitModelosIds.length === 0 ? '1.5px dashed #d97706' : 'none',
+                    transition: 'all .2s',
+                  }}
+                >
+                  {kitGerado
+                    ? <><CheckCircle2 size={14}/> Kit gerado!</>
+                    : gerandoKit
+                      ? 'Gerando…'
+                      : kitModelosIds.length === 0
+                        ? <><Settings size={13}/> Configurar Kit Padrão</>
+                        : <><span style={{ fontSize: 14 }}>📋</span> Kit Padrão ({kitModelosIds.length} docs)</>
+                  }
+                </button>
+                {kitModelosIds.length > 0 && (
+                  <button onClick={() => setModalKit(true)}
+                    style={{ width: '100%', marginTop: 4, height: 24, borderRadius: 6, border: 'none', cursor: 'pointer',
+                      background: 'none', fontSize: 10, color: '#b45309', fontWeight: 600,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                    <Settings size={10}/> Editar kit
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -1776,6 +1976,98 @@ table th { background:#f8fafc; font-weight:700; }
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
               <button onClick={() => setConfirmDel(null)} style={{ padding: '7px 18px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--background)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Cancelar</button>
               <button onClick={() => excluirModelo(confirmDel)} style={{ padding: '7px 18px', borderRadius: 7, border: 'none', background: '#ef4444', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>Sim, remover</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══ MODAL: Kit Padrão — configurar ════════════════════════════════ */}
+      {modalKit && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.6)', zIndex:9300, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}
+          onClick={e => { if (e.target === e.currentTarget) setModalKit(false) }}>
+          <div style={{ background:'var(--card)', borderRadius:16, width:'100%', maxWidth:560, maxHeight:'90vh', display:'flex', flexDirection:'column', boxShadow:'0 16px 48px rgba(0,0,0,.4)', overflow:'hidden' }}>
+
+            {/* Header */}
+            <div style={{ padding:'16px 20px', background:'linear-gradient(135deg,#b45309,#d97706)', display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0 }}>
+              <div>
+                <div style={{ color:'#fff', fontWeight:800, fontSize:15, display:'flex', alignItems:'center', gap:8 }}>
+                  📋 Kit de Documentos Padrão
+                </div>
+                <div style={{ color:'rgba(255,255,255,.75)', fontSize:11, marginTop:2 }}>
+                  Selecione os modelos que compõem o kit de admissão padrão
+                </div>
+              </div>
+              <button onClick={() => setModalKit(false)}
+                style={{ background:'rgba(255,255,255,.2)', border:'none', borderRadius:8, padding:'6px 10px', color:'#fff', cursor:'pointer', fontSize:13 }}>
+                ✕
+              </button>
+            </div>
+
+            {/* Info */}
+            <div style={{ padding:'10px 16px', background:'#fef3c7', borderBottom:'1px solid #fcd34d', fontSize:12, color:'#92400e', flexShrink:0 }}>
+              💡 O botão <strong>"Kit Padrão"</strong> gera todos os documentos abaixo de uma vez, personalizados com os dados do colaborador selecionado.
+            </div>
+
+            {/* Lista de modelos */}
+            <div style={{ flex:1, overflowY:'auto', padding:12 }}>
+              {['admissional','contrato','termo','declaracao','politica','ficha','outro'].map(cat => {
+                const modelosCat = modelos.filter(m => m.categoria === cat)
+                if (modelosCat.length === 0) return null
+                const catInfo = CATEGORIAS[cat] ?? CATEGORIAS.outro
+                return (
+                  <div key={cat} style={{ marginBottom:10 }}>
+                    <div style={{ fontSize:10, fontWeight:700, color:catInfo.cor, background:catInfo.bg,
+                      borderRadius:6, padding:'4px 8px', marginBottom:4, display:'inline-block' }}>
+                      {catInfo.emoji} {catInfo.label}
+                    </div>
+                    <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+                      {modelosCat.map(m => {
+                        const sel = kitModelosIds.includes(m.id)
+                        return (
+                          <div key={m.id} onClick={() => salvarKitModelos(sel ? kitModelosIds.filter(id => id !== m.id) : [...kitModelosIds, m.id])}
+                            style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 12px', borderRadius:8, cursor:'pointer',
+                              border:`1px solid ${sel ? catInfo.cor : 'var(--border)'}`,
+                              background: sel ? catInfo.bg : 'var(--card)',
+                              transition:'all .12s' }}>
+                            <div style={{ width:18, height:18, borderRadius:5, border:`2px solid ${sel ? catInfo.cor : '#d1d5db'}`,
+                              background:sel ? catInfo.cor : '#fff', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                              {sel && <span style={{ color:'#fff', fontSize:11, lineHeight:1, fontWeight:900 }}>✓</span>}
+                            </div>
+                            <div style={{ flex:1, minWidth:0 }}>
+                              <div style={{ fontSize:13, fontWeight:sel?700:600, color:sel?catInfo.cor:'var(--foreground)' }}>{m.titulo}</div>
+                              {m.descricao && <div style={{ fontSize:10, color:'var(--muted-foreground)', marginTop:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{m.descricao}</div>}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Footer */}
+            <div style={{ padding:'12px 16px', borderTop:'1px solid var(--border)', background:'var(--background)', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'space-between', gap:10 }}>
+              <div style={{ fontSize:12, color:'var(--muted-foreground)' }}>
+                {kitModelosIds.length > 0
+                  ? <><strong style={{ color:'#b45309' }}>{kitModelosIds.length} documento(s)</strong> no kit</>
+                  : <span style={{ color:'#ef4444' }}>Nenhum documento selecionado</span>
+                }
+              </div>
+              <div style={{ display:'flex', gap:8 }}>
+                {kitModelosIds.length > 0 && (
+                  <button onClick={() => salvarKitModelos([])}
+                    style={{ padding:'8px 14px', borderRadius:8, border:'1px solid #fecaca', background:'#fff1f2', fontSize:12, fontWeight:600, cursor:'pointer', color:'#dc2626' }}>
+                    Limpar kit
+                  </button>
+                )}
+                <button onClick={() => setModalKit(false)}
+                  style={{ padding:'8px 20px', borderRadius:8, border:'none', fontSize:13, fontWeight:700, cursor:'pointer',
+                    background: kitModelosIds.length > 0 ? 'linear-gradient(135deg,#b45309,#d97706)' : '#94a3b8',
+                    color:'#fff', display:'flex', alignItems:'center', gap:8 }}>
+                  {kitModelosIds.length > 0 ? <><CheckCircle2 size={14}/> Salvar Kit</> : 'Fechar'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
