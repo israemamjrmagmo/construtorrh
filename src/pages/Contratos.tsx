@@ -1946,7 +1946,7 @@ table th { background:#f8fafc; font-weight:700; }
         return (
           <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.7)', zIndex:9500, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}
             onClick={e => { if (e.target === e.currentTarget) setPreviewModelo(null) }}>
-            <div style={{ background:'var(--card)', borderRadius:16, width:'100%', maxWidth:780, maxHeight:'94vh', display:'flex', flexDirection:'column', boxShadow:'0 16px 48px rgba(0,0,0,.5)', overflow:'hidden' }}>
+            <div style={{ background:'var(--card)', borderRadius:16, width:'100%', maxWidth:960, maxHeight:'96vh', display:'flex', flexDirection:'column', boxShadow:'0 16px 48px rgba(0,0,0,.5)', overflow:'hidden' }}>
               {/* Header */}
               <div style={{ padding:'14px 20px', background:'#1e3a5f', display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0, flexWrap:'wrap', gap:8 }}>
                 <div style={{ display:'flex', alignItems:'center', gap:10, minWidth:0 }}>
@@ -2064,7 +2064,7 @@ table th{background:#f8fafc;font-weight:700;}
         return (
           <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.6)', zIndex:9400, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}
             onClick={e => { if (e.target === e.currentTarget) setModalAvulso(false) }}>
-            <div style={{ background:'var(--card)', borderRadius:16, width:'100%', maxWidth:540, maxHeight:'92vh', display:'flex', flexDirection:'column', boxShadow:'0 16px 48px rgba(0,0,0,.4)', overflow:'hidden' }}>
+            <div style={{ background:'var(--card)', borderRadius:16, width:'100%', maxWidth:720, maxHeight:'96vh', display:'flex', flexDirection:'column', boxShadow:'0 16px 48px rgba(0,0,0,.4)', overflow:'hidden' }}>
               {/* Header */}
               <div style={{ padding:'16px 20px', background:'linear-gradient(135deg,#0369a1,#0284c7)', display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0 }}>
                 <div>
@@ -2222,7 +2222,7 @@ ${paginas.join('\n')}
         return (
           <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.6)', zIndex:9400, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}
             onClick={e => { if (e.target === e.currentTarget) setModalNovoLote(false) }}>
-            <div style={{ background:'var(--card)', borderRadius:16, width:'100%', maxWidth:820, maxHeight:'92vh', display:'flex', flexDirection:'column', boxShadow:'0 16px 48px rgba(0,0,0,.4)', overflow:'hidden' }}>
+            <div style={{ background:'var(--card)', borderRadius:16, width:'100%', maxWidth:1000, maxHeight:'96vh', display:'flex', flexDirection:'column', boxShadow:'0 16px 48px rgba(0,0,0,.4)', overflow:'hidden' }}>
               {/* Header */}
               <div style={{ padding:'16px 20px', background:'linear-gradient(135deg,#7c3aed,#6d28d9)', display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0 }}>
                 <div>
@@ -2393,7 +2393,7 @@ ${paginas.join('\n')}
       {modalKit && (
         <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.6)', zIndex:9300, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}
           onClick={e => { if (e.target === e.currentTarget) setModalKit(false) }}>
-          <div style={{ background:'var(--card)', borderRadius:16, width:'100%', maxWidth:560, maxHeight:'90vh', display:'flex', flexDirection:'column', boxShadow:'0 16px 48px rgba(0,0,0,.4)', overflow:'hidden' }}>
+          <div style={{ background:'var(--card)', borderRadius:16, width:'100%', maxWidth:680, maxHeight:'96vh', display:'flex', flexDirection:'column', boxShadow:'0 16px 48px rgba(0,0,0,.4)', overflow:'hidden' }}>
 
             {/* Header */}
             <div style={{ padding:'16px 20px', background:'linear-gradient(135deg,#b45309,#d97706)', display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0 }}>
@@ -2506,7 +2506,7 @@ ${paginas.join('\n')}
       {modalLote && modeloSel && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', zIndex: 9200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
           onClick={e => { if (e.target === e.currentTarget) setModalLote(false) }}>
-          <div style={{ background: 'var(--card)', borderRadius: 16, width: '100%', maxWidth: 760, maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 16px 48px rgba(0,0,0,.4)', overflow: 'hidden' }}>
+          <div style={{ background: 'var(--card)', borderRadius: 16, width: '100%', maxWidth: 920, maxHeight: '96vh', display: 'flex', flexDirection: 'column', boxShadow: '0 16px 48px rgba(0,0,0,.4)', overflow: 'hidden' }}>
 
             {/* Header */}
             <div style={{ padding: '16px 20px', background: '#1e3a5f', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
