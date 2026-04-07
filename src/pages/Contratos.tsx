@@ -330,6 +330,7 @@ export default function Contratos() {
 
   // empresa
   const [empData, setEmpData]         = useState<EmpresaData>({ nome: '', razaoSocial: '', cnpj: '', endereco: '', cidade: '', cep: '', telefone: '', email: '', logoUrl: '' })
+  const [epiPreviewHtml, setEpiPreviewHtml] = useState<string>('')
 
   // editor de modelo
   const [modalEditor, setModalEditor] = useState(false)
@@ -1116,12 +1117,23 @@ table th { background:#f8fafc; font-weight:700; }
   }
 
   // ── preview inline (col 3) ────────────────────────────────────────────────
+  // Carregar EPIs quando colaborador/modelo mudar
+  useEffect(() => {
+    if (!modeloSel || !colabSel) { setEpiPreviewHtml(''); return }
+    const fId = (colabSel?.funcoes as any)?.id ?? (colabSel as any)?.funcao_id ?? null
+    if (modeloSel.conteudo.includes('{{EPIs da Função}}') || modeloSel.conteudo.includes('{{Tabela EPIs}}')) {
+      buscarEpisDaFuncao(fId, supabase).then(h => setEpiPreviewHtml(h))
+    } else { setEpiPreviewHtml('') }
+  }, [modeloSel?.id, colabSel?.id])
+
   const previewHtml = modeloSel ? (() => {
     let html = modeloSel.conteudo
     if (html.trimStart().startsWith('#') || (!html.includes('<') && html.includes('\n'))) {
       html = markdownToHtml(html)
     }
-    return aplicarVariaveis(html, buildVarMap(colabSel, empData))
+    const varMap = buildVarMap(colabSel, empData)
+    if (epiPreviewHtml) { varMap['EPIs da Função'] = epiPreviewHtml; varMap['Tabela EPIs'] = epiPreviewHtml }
+    return aplicarVariaveis(html, varMap)
   })() : ''
 
 
