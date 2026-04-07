@@ -649,7 +649,7 @@ table th { background:#f8fafc; font-weight:700; }
 <title>${modeloSel.titulo}${colabSel ? ' — ' + colabSel.nome : ''}</title>
 <style>
   * { box-sizing:border-box; margin:0; padding:0; }
-  @page { size:A4; margin:2.5cm; }
+  @page { size:A4; margin:10.5mm; }
   body { font-family:Calibri,Arial,sans-serif; font-size:12pt; color:#1a1a1a; background:#fff; line-height:1.5; }
   @media print {
     .no-print { display:none!important; }
