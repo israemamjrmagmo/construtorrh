@@ -45,6 +45,7 @@ type ColabInfo = {
 
 type EmpresaInfo = {
   nome: string; cnpj: string; cidade: string; logo_url: string
+  codigos?: Record<string, string>  // codigos contabeis configurados: { salario:'0001', producao:'0002', ... }
 }
 
 type RegistroPonto = {
@@ -113,15 +114,32 @@ function fmtDiaSemana(d: string): string {
   const dt = new Date(parseInt(y), parseInt(m) - 1, parseInt(day))
   return `${DIAS_SEMANA[dt.getDay()]}, ${day}/${m}`
 }
-function mesesDisponiveis(): { val: string; label: string }[] {
+// Gera lista de meses desde a admissão até o mês atual
+function mesesDesdeAdmissao(dataAdmissao: string | null): { val: string; label: string }[] {
   const result = []
   const now = new Date()
-  for (let i = 0; i < 12; i++) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
-    const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-    result.push({ val, label: `${MESES[d.getMonth()]} ${d.getFullYear()}` })
+  const mesAtual = new Date(now.getFullYear(), now.getMonth(), 1)
+  // Início: mês de admissão (ou 12 meses atrás como fallback)
+  let inicio: Date
+  if (dataAdmissao) {
+    const [y, m] = dataAdmissao.split('-').map(Number)
+    inicio = new Date(y, m - 1, 1)
+  } else {
+    inicio = new Date(now.getFullYear(), now.getMonth() - 11, 1)
+  }
+  // Gera do mais recente para o mais antigo
+  let cur = new Date(mesAtual)
+  while (cur >= inicio) {
+    const val = `${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, '0')}`
+    result.push({ val, label: `${MESES[cur.getMonth()]} ${cur.getFullYear()}` })
+    cur = new Date(cur.getFullYear(), cur.getMonth() - 1, 1)
   }
   return result
+}
+
+// Fallback para 12 meses (sem data de admissão)
+function mesesDisponiveis(): { val: string; label: string }[] {
+  return mesesDesdeAdmissao(null)
 }
 
 const TIPO_LABEL: Record<string, string> = {
@@ -313,6 +331,7 @@ ${h.fgts&&h.fgts>0?`<div style="font-size:10px;color:#6b7280;padding:6px 18px;ba
         </div>
       </div>
       <div style={{ maxWidth:480, margin:'0 auto', width:'100%', padding:'0 0 32px' }}>
+        {/* Barra de FGTS se houver */}
         <div style={{ background:'#1a56a0', padding:'0 16px 16px', color:'#fff' }}>
           <div style={{ background:'rgba(255,255,255,.12)', borderRadius:8, padding:'8px 12px', marginBottom:8 }}>
             <div style={{ fontSize:10, color:'rgba(255,255,255,.7)', marginBottom:1 }}>Empresa · Matrícula</div>
@@ -338,11 +357,11 @@ ${h.fgts&&h.fgts>0?`<div style="font-size:10px;color:#6b7280;padding:6px 18px;ba
               </div>
             )}
             <div style={{ marginTop:8 }}>
-              <LinhaDetalhe codigo="0001" descricao="Salário / Valor Horas" valor={h.salario_base} cor="#16a34a"/>
-              <LinhaDetalhe codigo="0002" descricao="Produção"              valor={h.valor_producao} cor="#16a34a"/>
-              <LinhaDetalhe codigo="0003" descricao="DSR"                   valor={h.valor_dsr} cor="#16a34a"/>
-              <LinhaDetalhe codigo="0004" descricao="Prêmios"               valor={h.valor_premio} cor="#16a34a"/>
-              {!h.salario_base&&!h.valor_producao&&bruto>0&&<LinhaDetalhe codigo="0001" descricao="Total Rendimentos" valor={bruto} cor="#16a34a"/>}
+              <LinhaDetalhe codigo={empresa?.codigos?.salario??'0001'} descricao="Salário / Valor Horas" valor={h.salario_base} cor="#16a34a"/>
+              <LinhaDetalhe codigo={empresa?.codigos?.producao??'0002'} descricao="Produção"              valor={h.valor_producao} cor="#16a34a"/>
+              <LinhaDetalhe codigo={empresa?.codigos?.dsr??'0003'} descricao="DSR"                   valor={h.valor_dsr} cor="#16a34a"/>
+              <LinhaDetalhe codigo={empresa?.codigos?.premio??'0004'} descricao="Prêmios"               valor={h.valor_premio} cor="#16a34a"/>
+              {!h.salario_base&&!h.valor_producao&&bruto>0&&<LinhaDetalhe codigo={empresa?.codigos?.salario??'0001'} descricao="Total Rendimentos" valor={bruto} cor="#16a34a"/>}
               <div style={{ display:'flex', justifyContent:'space-between', padding:'10px 16px', background:'#f0fdf4', borderTop:'2px solid #bbf7d0' }}>
                 <span style={{ fontWeight:700, fontSize:13, color:'#15803d' }}>Total Rendimentos</span>
                 <span style={{ fontWeight:800, fontSize:14, color:'#15803d' }}>{fmtR(bruto)}</span>
@@ -356,12 +375,12 @@ ${h.fgts&&h.fgts>0?`<div style="font-size:10px;color:#6b7280;padding:6px 18px;ba
               </div>
             )}
             <div style={{ marginTop:8 }}>
-              <LinhaDetalhe codigo="0101" descricao="INSS"            valor={h.inss}            cor="#dc2626"/>
-              <LinhaDetalhe codigo="0102" descricao="IRRF"            valor={h.irrf}            cor="#f97316"/>
-              <LinhaDetalhe codigo="0103" descricao="Vale Transporte" valor={h.desconto_vt}     cor="#8b5cf6"/>
-              <LinhaDetalhe codigo="0104" descricao="Adiantamento"    valor={h.desconto_adiant} cor="#ec4899"/>
-              <LinhaDetalhe codigo="0105" descricao="Cesta Básica"    valor={h.cesta_basica}    cor="#14b8a6"/>
-              {!h.inss&&!h.irrf&&descontos>0&&<LinhaDetalhe codigo="0101" descricao="Total Descontos" valor={descontos} cor="#dc2626"/>}
+              <LinhaDetalhe codigo={empresa?.codigos?.inss??'0101'} descricao="INSS"            valor={h.inss}            cor="#dc2626"/>
+              <LinhaDetalhe codigo={empresa?.codigos?.irrf??'0102'} descricao="IRRF"            valor={h.irrf}            cor="#f97316"/>
+              <LinhaDetalhe codigo={empresa?.codigos?.vt??'0103'} descricao="Vale Transporte" valor={h.desconto_vt}     cor="#8b5cf6"/>
+              <LinhaDetalhe codigo={empresa?.codigos?.adiantamento??'0104'} descricao="Adiantamento"    valor={h.desconto_adiant} cor="#ec4899"/>
+              <LinhaDetalhe codigo={empresa?.codigos?.cesta_basica??'0105'} descricao="Cesta Básica"    valor={h.cesta_basica}    cor="#14b8a6"/>
+              {!h.inss&&!h.irrf&&descontos>0&&<LinhaDetalhe codigo={empresa?.codigos?.inss??'0101'} descricao="Total Descontos" valor={descontos} cor="#dc2626"/>}
               <div style={{ display:'flex', justifyContent:'space-between', padding:'10px 16px', background:'#fff1f2', borderTop:'2px solid #fecaca' }}>
                 <span style={{ fontWeight:700, fontSize:13, color:'#dc2626' }}>Total Descontos</span>
                 <span style={{ fontWeight:800, fontSize:14, color:'#dc2626' }}>- {fmtR(descontos)}</span>
@@ -396,7 +415,16 @@ ${h.fgts&&h.fgts>0?`<div style="font-size:10px;color:#6b7280;padding:6px 18px;ba
             </div>
           </Secao>
         </div>
-        <div style={{ margin:'16px 16px 0', background:'#1a56a0', borderRadius:12, padding:'16px 20px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+        {h.fgts && h.fgts > 0 && (
+          <div style={{ margin:'12px 16px 0', background:'#dcfce7', border:'1px solid #86efac', borderRadius:12, padding:'12px 16px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+            <div>
+              <div style={{ fontSize:11, color:'#15803d', fontWeight:700, marginBottom:2 }}>🏦 FGTS depositado pela empresa</div>
+              <div style={{ fontSize:10, color:'#16a34a' }}>Valor não deduzido do seu salário</div>
+            </div>
+            <span style={{ color:'#15803d', fontSize:18, fontWeight:900 }}>{fmtR(h.fgts)}</span>
+          </div>
+        )}
+        <div style={{ margin:'12px 16px 0', background:'#1a56a0', borderRadius:12, padding:'16px 20px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
           <span style={{ color:'rgba(255,255,255,.85)', fontSize:13, fontWeight:600 }}>💰 Líquido a Receber</span>
           <span style={{ color:'#fff', fontSize:22, fontWeight:900, letterSpacing:-.5 }}>{fmtR(liquido)}</span>
         </div>
@@ -449,7 +477,7 @@ function AbaContracheque({ sessao, holerites, lancamentos, colab, empresa, onSel
     return { texto:'Pendente', cor:'#92400e', bg:'#fef3c7', border:'#fde68a' }
   }
 
-  const mesesOptions = mesesDisponiveis()
+  const mesesOptions = mesesDesdeAdmissao(colab?.data_admissao ?? null)
 
   return (
     <div style={{ paddingBottom: 90 }}>
@@ -507,6 +535,15 @@ function AbaContracheque({ sessao, holerites, lancamentos, colab, empresa, onSel
               <CardResumo bruto={bruto} descontos={descontos} liquido={liquido}/>
             </div>
 
+            {hAtual.fgts && hAtual.fgts > 0 && (
+              <div style={{ background:'#dcfce7', border:'1px solid #86efac', borderRadius:10, padding:'9px 14px', display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+                <div>
+                  <div style={{ fontSize:11, color:'#15803d', fontWeight:700 }}>🏦 FGTS depositado pela empresa</div>
+                  <div style={{ fontSize:10, color:'#16a34a' }}>Não deduzido do salário</div>
+                </div>
+                <span style={{ color:'#15803d', fontSize:16, fontWeight:900 }}>{fmtR(hAtual.fgts)}</span>
+              </div>
+            )}
             {/* Botão Ver Detalhes */}
             <button onClick={()=>onSelecionar(hAtual)}
               style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'center', gap:8, padding:'12px', borderRadius:10, border:'none', background:'#1a56a0', cursor:'pointer', fontSize:14, color:'#fff', fontWeight:700, marginBottom:12, boxShadow:'0 2px 8px rgba(26,86,160,.3)' }}>
@@ -619,12 +656,12 @@ function AbaContracheque({ sessao, holerites, lancamentos, colab, empresa, onSel
 
 // ─── ABA FOLHA DE PONTO ───────────────────────────────────────────────────────
 // Mês padrão = mês atual. Busca lançamentos do portal_ponto_diario.
-function AbaFolhaPonto({ sessao }: { sessao: Sessao }) {
+function AbaFolhaPonto({ sessao, dataAdmissao }: { sessao: Sessao; dataAdmissao: string | null }) {
   const [mesSel, setMesSel]       = useState(mesAtualStr)
   const [registros, setRegistros] = useState<RegistroPonto[]>([])
   const [loading, setLoading]     = useState(false)
 
-  const opcoesMes = mesesDisponiveis()
+  const opcoesMes = mesesDesdeAdmissao(dataAdmissao)
 
   const carregarPonto = useCallback(async (mes: string) => {
     setLoading(true)
@@ -634,6 +671,7 @@ function AbaFolhaPonto({ sessao }: { sessao: Sessao }) {
       .from('portal_ponto_diario')
       .select('id,data,hora_entrada,hora_saida,horas_trabalhadas,horas_extra,horas_falta,status,observacoes')
       .eq('colaborador_id', sessao.colaborador_id)
+      .not('status', 'is', null)
       .gte('data', inicio)
       .lte('data', fim)
       .order('data', { ascending: true })
@@ -1076,7 +1114,7 @@ export default function PortalContracheque() {
       const [holRes, colRes, empRes, pontRes] = await Promise.all([
         supabase.from('contracheques').select('*').eq('colaborador_id',colaboradorId).eq('publicado',true).order('competencia',{ascending:false}),
         supabase.from('colaboradores').select('nome,chapa,cpf,funcao_id,tipo_contrato,data_admissao,salario,funcoes(nome)').eq('id',colaboradorId).single(),
-        supabase.from('configuracoes').select('chave,valor').in('chave',['empresa_nome','empresa_cnpj','empresa_cidade','empresa_logo_url']),
+        supabase.from('configuracoes').select('chave,valor').in('chave',['empresa_nome','empresa_cnpj','empresa_cidade','empresa_logo_url','codigos_contracheque']),
         supabase.from('ponto_lancamentos')
           .select('id,mes_referencia,data_inicio,data_fim,status,data_pagamento,snap_horas_normais,snap_horas_extras,snap_valor_horas,snap_valor_producao,snap_valor_dsr,snap_valor_premio,snap_valor_total,snap_faltas,snap_desconto_vt,snap_desconto_adiant,snap_inss,snap_ir,snap_liquido')
           .eq('colaborador_id',colaboradorId)
@@ -1090,7 +1128,9 @@ export default function PortalContracheque() {
       setColab((rawColab as ColabInfo) ?? null)
       const map: Record<string,string> = {}
       ;(empRes.data??[]).forEach((r:any)=>{ map[r.chave]=r.valor })
-      setEmpresa({ nome:map['empresa_nome']??'', cnpj:map['empresa_cnpj']??'', cidade:map['empresa_cidade']??'', logo_url:map['empresa_logo_url']??'' })
+      const codsRaw = map['codigos_contracheque']
+      const codsContabeis = codsRaw ? (() => { try { return JSON.parse(codsRaw) } catch { return {} } })() : {}
+      setEmpresa({ nome:map['empresa_nome']??'', cnpj:map['empresa_cnpj']??'', cidade:map['empresa_cidade']??'', logo_url:map['empresa_logo_url']??'', codigos:codsContabeis })
     } finally { setLoading(false) }
   }, [])
 
@@ -1119,7 +1159,7 @@ export default function PortalContracheque() {
       {aba==='contracheque' && (
         <AbaContracheque sessao={sessao} holerites={holerites} lancamentos={lancamentos} colab={colab} empresa={empresa} onSelecionar={setSelecionado}/>
       )}
-      {aba==='ponto' && <AbaFolhaPonto sessao={sessao}/>}
+      {aba==='ponto' && <AbaFolhaPonto sessao={sessao} dataAdmissao={colab?.data_admissao ?? null}/>}
       {aba==='documentos' && <AbaMeusDocumentos sessao={sessao}/>}
     </PortalLayout>
   )
