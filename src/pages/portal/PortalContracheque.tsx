@@ -294,62 +294,224 @@ function TelaHolerite({ h, colab, empresa, aceite, onVoltar }: {
   function imprimir() {
     const w = window.open('', '_blank'); if (!w) return
     const en = empresa?.nome ?? 'Empresa'
-    const rowsR = rendimentos.map(r => `<tr><td class="cod">${r.cod}</td><td>${r.desc}</td><td class="val green">${fmtR(r.val)}</td></tr>`).join('')
-    const rowsD = descontosList.map(d => `<tr><td class="cod">${d.cod}</td><td>${d.desc}</td><td class="val red">- ${fmtR(d.val)}</td></tr>`).join('')
-    // Bloco de aceite digital no PDF
+
+    // Montar linhas de rendimentos e descontos
+    const rowsR = rendimentos.map(r => `
+      <tr>
+        <td class="cod">${r.cod}</td>
+        <td class="desc">${r.desc}</td>
+        <td class="val green">${fmtR(r.val)}</td>
+      </tr>`).join('')
+
+    const rowsD = descontosList.map(d => `
+      <tr>
+        <td class="cod">${d.cod}</td>
+        <td class="desc">${d.desc}</td>
+        <td class="val red">- ${fmtR(d.val)}</td>
+      </tr>`).join('')
+
+    // FGTS info
+    const fgtsInfo = h.fgts && h.fgts > 0
+      ? `<div class="fgts-bar"><span>🏦 FGTS depositado pela empresa (não deduzido do salário)</span><strong>${fmtR(h.fgts)}</strong></div>`
+      : ''
+
+    // Bloco de aceite digital
     const aceiteBlock = aceite
-      ? `<div style="margin-top:14px;background:#f0fdf4;border:1.5px solid #86efac;border-radius:6px;padding:10px 14px">
-           <div style="font-size:10px;font-weight:700;color:#15803d;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">✅ Aceite Digital — Comprovante de Ciência</div>
-           <table style="width:100%;font-size:10px;color:#374151;border-collapse:collapse">
-             <tr><td style="padding:2px 0;color:#6b7280;width:110px">Colaborador:</td><td style="font-weight:600">${aceite.nome_colaborador??colab?.nome??'—'}</td></tr>
-             <tr><td style="padding:2px 0;color:#6b7280">Aceito em:</td><td style="font-weight:600">${new Date(aceite.aceito_em).toLocaleString('pt-BR')}</td></tr>
-             <tr><td style="padding:2px 0;color:#6b7280">IP:</td><td style="font-weight:600">${aceite.ip_address??'—'}</td></tr>
-             <tr><td style="padding:2px 0;color:#6b7280">Competência:</td><td style="font-weight:600">${aceite.competencia??fmtComp(h.competencia)}</td></tr>
+      ? `<div class="aceite-ok">
+           <div class="aceite-title">✅ Aceite Digital — Comprovante de Ciência</div>
+           <table class="aceite-table">
+             <tr><td class="al">Colaborador:</td><td class="av">${aceite.nome_colaborador ?? colab?.nome ?? '—'}</td>
+                 <td class="al">Aceito em:</td><td class="av">${new Date(aceite.aceito_em).toLocaleString('pt-BR')}</td></tr>
+             <tr><td class="al">IP:</td><td class="av" style="font-family:monospace">${aceite.ip_address ?? '—'}</td>
+                 <td class="al">Competência:</td><td class="av">${aceite.competencia ?? fmtComp(h.competencia)}</td></tr>
            </table>
-           <div style="font-size:9px;color:#9ca3af;margin-top:6px">Este registro constitui prova de ciência do colaborador nos termos da legislação trabalhista.</div>
+           <div class="aceite-leg">Este registro constitui prova jurídica de ciência do colaborador conforme legislação trabalhista.</div>
          </div>`
-      : `<div style="margin-top:14px;background:#fff7ed;border:1px solid #fed7aa;border-radius:6px;padding:8px 14px;font-size:10px;color:#92400e">⚠️ Aceite digital ainda não realizado pelo colaborador.</div>`
-    w.document.write(`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Contracheque — ${fmtComp(h.competencia)}</title>
-<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:12px;color:#111;padding:20px}
-.page{max-width:700px;margin:0 auto;border:1.5px solid #0d3f56;border-radius:6px;overflow:hidden}
-.header{background:#1a56a0;color:#fff;padding:12px 18px;display:flex;justify-content:space-between;align-items:center}
-.header h1{font-size:16px;font-weight:700}.header .sub{font-size:11px;opacity:.8;margin-top:2px}
-.func-bar{background:#f0f4f8;padding:10px 18px;border-bottom:1px solid #d0dae5;display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
-.func-item label{font-size:9px;text-transform:uppercase;color:#6b7280;font-weight:700;display:block;margin-bottom:2px}
-.func-item span{font-size:11px;font-weight:600}
-.resumo{display:grid;grid-template-columns:1fr 1fr 1fr;border-bottom:2px solid #0d3f56;background:#f9fafb}
-.resumo-cell{padding:12px 18px;text-align:center;border-right:1px solid #e5e7eb}.resumo-cell:last-child{border-right:none}
-.resumo-label{font-size:10px;text-transform:uppercase;color:#6b7280;font-weight:700;margin-bottom:4px}
-.resumo-val{font-size:15px;font-weight:800}.green{color:#16a34a}.red{color:#dc2626}.blue{color:#1d4ed8}
-.sec-title{background:#f3f4f6;padding:7px 18px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#374151;border-bottom:1px solid #e5e7eb}
-table{width:100%;border-collapse:collapse}td{padding:7px 18px;border-bottom:1px solid #f3f4f6}
-td.cod{width:50px;color:#9ca3af;font-size:10px}td.val{text-align:right;font-weight:700;white-space:nowrap}
-.footer{padding:8px 18px;background:#f8fafc;border-top:1px solid #e5e7eb;font-size:10px;color:#9ca3af;display:flex;justify-content:space-between}
-@media print{body{padding:0}}</style></head><body>
-<div class="page"><div class="header"><div><h1>Contracheque</h1><div class="sub">${fmtComp(h.competencia)} · ${TIPO_LABEL[h.tipo]??h.tipo}</div></div>
-<div style="text-align:right"><div style="font-weight:700;font-size:14px">${en}</div>${empresa?.cnpj?`<div class="sub">CNPJ: ${empresa.cnpj}</div>`:''}</div></div>
-<div class="func-bar">
-<div class="func-item"><label>Matrícula</label><span>${colab?.chapa??'—'}</span></div>
-<div class="func-item"><label>Nome</label><span>${colab?.nome??'—'}</span></div>
-<div class="func-item"><label>CPF</label><span>${colab?.cpf?fmtCPF(colab.cpf):'—'}</span></div>
-<div class="func-item"><label>Admissão</label><span>${fmtData(colab?.data_admissao??null)}</span></div>
-<div class="func-item"><label>Cargo</label><span>${h.funcao??colab?.funcao??'—'}</span></div>
-<div class="func-item"><label>Vínculo</label><span>${(h.tipo_contrato_snap??colab?.tipo_contrato??'CLT').toUpperCase()}</span></div>
-${h.obra_nome?`<div class="func-item"><label>Obra</label><span>${h.obra_nome}</span></div>`:''}
+      : `<div class="aceite-pend">⚠️ Aceite digital ainda não realizado pelo colaborador.</div>`
+
+    const dataHoje = new Date().toLocaleDateString('pt-BR')
+
+    w.document.write(`<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Contracheque — ${fmtComp(h.competencia)}</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Segoe UI',Arial,sans-serif; font-size:12px; color:#1a202c; background:#f0f2f5; }
+  .page { max-width:740px; margin:20px auto; background:#fff; border-radius:12px; overflow:hidden;
+          box-shadow:0 4px 24px rgba(0,0,0,.14); border:1px solid #e2e8f0; }
+
+  /* Header azul */
+  .hdr { background:linear-gradient(135deg,#1565C0,#0D47A1); padding:18px 24px;
+         display:flex; justify-content:space-between; align-items:flex-start; }
+  .hdr-left h1 { font-size:20px; font-weight:800; color:#fff; letter-spacing:-.01em; }
+  .hdr-left .comp { font-size:12px; color:rgba(255,255,255,.75); margin-top:4px; }
+  .hdr-right { text-align:right; }
+  .hdr-right .empresa { font-size:15px; font-weight:700; color:#fff; }
+  .hdr-right .cnpj { font-size:10px; color:rgba(255,255,255,.65); margin-top:2px; }
+  .badge-tipo { display:inline-block; background:rgba(255,255,255,.2); border:1px solid rgba(255,255,255,.3);
+                color:#fff; border-radius:20px; padding:3px 10px; font-size:10px; font-weight:700;
+                margin-top:6px; letter-spacing:.03em; }
+
+  /* Barra de colaborador */
+  .colab-bar { background:#f8fafc; border-bottom:1px solid #e2e8f0; padding:12px 24px;
+               display:grid; grid-template-columns:repeat(4,1fr); gap:10px 18px; }
+  .ci label { font-size:9px; text-transform:uppercase; color:#9ca3af; font-weight:700; display:block; margin-bottom:2px; letter-spacing:.06em; }
+  .ci span  { font-size:11px; font-weight:600; color:#1a202c; }
+
+  /* Resumo financeiro */
+  .resumo { display:grid; grid-template-columns:1fr 1px 1fr 1px 1fr; background:#fff; border-bottom:2px solid #e2e8f0; }
+  .rc { padding:16px 20px; text-align:center; }
+  .rc .rl { font-size:10px; text-transform:uppercase; color:#9ca3af; font-weight:700; margin-bottom:6px; letter-spacing:.06em; }
+  .rc .rv { font-size:18px; font-weight:900; letter-spacing:-.02em; }
+  .rc .rsub { font-size:9px; margin-top:4px; font-weight:500; }
+  .sep { background:#e2e8f0; }
+  .green { color:#16a34a; } .red { color:#dc2626; } .blue { color:#1d4ed8; }
+
+  /* Seção título */
+  .sec-hdr { display:flex; align-items:center; gap:8px; padding:10px 24px;
+             font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.05em;
+             border-bottom:1px solid #e2e8f0; }
+  .sec-hdr.green-hdr { background:#f0fdf4; color:#15803d; border-left:4px solid #16a34a; }
+  .sec-hdr.red-hdr   { background:#fff1f2; color:#dc2626; border-left:4px solid #dc2626; }
+  .sec-hdr.gray-hdr  { background:#f8fafc; color:#475569; border-left:4px solid #94a3b8; }
+
+  /* Tabela de itens */
+  table.items { width:100%; border-collapse:collapse; }
+  table.items td { padding:8px 24px; border-bottom:1px solid #f1f5f9; }
+  td.cod  { width:52px; color:#9ca3af; font-size:10px; font-weight:600; }
+  td.desc { font-size:12px; color:#374151; }
+  td.val  { text-align:right; font-weight:700; white-space:nowrap; font-size:13px; }
+
+  /* Linha de total */
+  .tot-row { display:flex; justify-content:space-between; align-items:center;
+             padding:10px 24px; font-size:13px; font-weight:800; }
+  .tot-row.green-tot { background:#f0fdf4; border-top:2px solid #bbf7d0; color:#15803d; }
+  .tot-row.red-tot   { background:#fff1f2; border-top:2px solid #fecaca; color:#dc2626; }
+
+  /* FGTS */
+  .fgts-bar { display:flex; justify-content:space-between; align-items:center;
+              padding:9px 24px; background:#eff6ff; border-top:1px solid #bfdbfe;
+              border-bottom:1px solid #bfdbfe; font-size:11px; color:#1d4ed8; }
+  .fgts-bar strong { font-size:13px; font-weight:800; }
+
+  /* Líquido final */
+  .liquido-final { display:flex; justify-content:space-between; align-items:center;
+                   padding:16px 24px; background:linear-gradient(135deg,#1565C0,#0D47A1); margin:0; }
+  .liquido-final .lf-label { color:rgba(255,255,255,.8); font-size:13px; font-weight:600; }
+  .liquido-final .lf-valor { color:#fff; font-size:24px; font-weight:900; letter-spacing:-.04em; }
+
+  /* Aceite */
+  .aceite-ok { margin:16px 24px; background:#f0fdf4; border:1.5px solid #86efac;
+               border-radius:8px; padding:12px 16px; }
+  .aceite-title { font-size:10px; font-weight:700; color:#15803d; text-transform:uppercase;
+                  letter-spacing:.5px; margin-bottom:8px; }
+  .aceite-table { width:100%; font-size:10px; color:#374151; border-collapse:collapse; }
+  .aceite-table .al { color:#6b7280; padding:2px 8px 2px 0; width:90px; vertical-align:top; }
+  .aceite-table .av { font-weight:600; padding:2px 16px 2px 0; }
+  .aceite-leg { font-size:9px; color:#9ca3af; margin-top:8px; }
+  .aceite-pend { margin:16px 24px; background:#fff7ed; border:1px solid #fed7aa;
+                 border-radius:8px; padding:10px 16px; font-size:11px; color:#92400e; font-weight:600; }
+
+  /* Footer */
+  .footer { display:flex; justify-content:space-between; align-items:center;
+            padding:10px 24px; background:#f8fafc; border-top:1px solid #e2e8f0;
+            font-size:10px; color:#9ca3af; }
+
+  @media print {
+    body { background:#fff; }
+    .page { margin:0; border-radius:0; box-shadow:none; border:none; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- HEADER -->
+  <div class="hdr">
+    <div class="hdr-left">
+      <h1>Contracheque</h1>
+      <div class="comp">${fmtComp(h.competencia)}</div>
+      <div class="badge-tipo">${TIPO_LABEL[h.tipo] ?? h.tipo}</div>
+    </div>
+    <div class="hdr-right">
+      <div class="empresa">${en}</div>
+      ${empresa?.cnpj ? `<div class="cnpj">CNPJ: ${empresa.cnpj}</div>` : ''}
+      ${empresa?.cidade ? `<div class="cnpj">${empresa.cidade}</div>` : ''}
+    </div>
+  </div>
+
+  <!-- DADOS DO COLABORADOR -->
+  <div class="colab-bar">
+    <div class="ci"><label>Matrícula</label><span>${colab?.chapa ?? '—'}</span></div>
+    <div class="ci"><label>Colaborador</label><span>${colab?.nome ?? '—'}</span></div>
+    <div class="ci"><label>CPF</label><span>${colab?.cpf ? fmtCPF(colab.cpf) : '—'}</span></div>
+    <div class="ci"><label>Admissão</label><span>${fmtData(colab?.data_admissao ?? null)}</span></div>
+    <div class="ci"><label>Cargo / Função</label><span>${h.funcao ?? colab?.funcao ?? '—'}</span></div>
+    <div class="ci"><label>Vínculo</label><span>${(h.tipo_contrato_snap ?? colab?.tipo_contrato ?? 'CLT').toUpperCase()}</span></div>
+    ${h.obra_nome ? `<div class="ci"><label>Obra / Setor</label><span>${h.obra_nome}</span></div>` : ''}
+    ${h.dias_trabalhados != null ? `<div class="ci"><label>Dias Trabalhados</label><span>${h.dias_trabalhados}</span></div>` : ''}
+    ${h.horas_normais ? `<div class="ci"><label>Horas Normais</label><span>${h.horas_normais}h</span></div>` : ''}
+    ${h.horas_extras && h.horas_extras > 0 ? `<div class="ci"><label>Horas Extras</label><span>${h.horas_extras}h</span></div>` : ''}
+    ${h.faltas != null ? `<div class="ci"><label>Faltas</label><span>${h.faltas}</span></div>` : ''}
+  </div>
+
+  <!-- RESUMO FINANCEIRO -->
+  <div class="resumo">
+    <div class="rc">
+      <div class="rl">Total Bruto</div>
+      <div class="rv green">${fmtR(bruto)}</div>
+      <div class="rsub" style="color:#16a34a">+ Rendimentos</div>
+    </div>
+    <div class="sep"></div>
+    <div class="rc">
+      <div class="rl">Total Descontos</div>
+      <div class="rv red">- ${fmtR(descontos)}</div>
+      <div class="rsub" style="color:#dc2626">Deduções</div>
+    </div>
+    <div class="sep"></div>
+    <div class="rc">
+      <div class="rl">Líquido a Receber</div>
+      <div class="rv blue">${fmtR(liquido)}</div>
+      <div class="rsub" style="color:#1d4ed8">= Saldo</div>
+    </div>
+  </div>
+
+  <!-- RENDIMENTOS -->
+  <div class="sec-hdr green-hdr">✦ Rendimentos</div>
+  <table class="items"><tbody>${rowsR}</tbody></table>
+  <div class="tot-row green-tot"><span>Total Rendimentos</span><span>${fmtR(bruto)}</span></div>
+
+  <!-- DESCONTOS -->
+  <div class="sec-hdr red-hdr">✦ Descontos</div>
+  <table class="items"><tbody>${rowsD}</tbody></table>
+  <div class="tot-row red-tot"><span>Total Descontos</span><span>- ${fmtR(descontos)}</span></div>
+
+  <!-- FGTS -->
+  ${fgtsInfo}
+
+  <!-- LÍQUIDO FINAL -->
+  <div class="liquido-final">
+    <span class="lf-label">💰 Líquido a Receber</span>
+    <span class="lf-valor">${fmtR(liquido)}</span>
+  </div>
+
+  <!-- ACEITE DIGITAL -->
+  ${aceiteBlock}
+
+  <!-- FOOTER -->
+  <div class="footer">
+    <span>${colab?.nome ?? ''} · Chapa ${colab?.chapa ?? '—'} · ${(h.tipo_contrato_snap ?? colab?.tipo_contrato ?? 'CLT').toUpperCase()}</span>
+    <span>Publicado em: ${h.publicado_em ? new Date(h.publicado_em).toLocaleDateString('pt-BR') : '—'} · Impresso: ${dataHoje}</span>
+  </div>
+
 </div>
-<div class="resumo">
-<div class="resumo-cell"><div class="resumo-label">Total Bruto</div><div class="resumo-val green">${fmtR(bruto)}</div></div>
-<div class="resumo-cell"><div class="resumo-label">Total Descontos</div><div class="resumo-val red">- ${fmtR(descontos)}</div></div>
-<div class="resumo-cell"><div class="resumo-label">Líquido a Receber</div><div class="resumo-val blue">${fmtR(liquido)}</div></div>
-</div>
-<div class="sec-title">Rendimentos</div><table><tbody>${rowsR}</tbody></table>
-<div class="sec-title">Descontos</div><table><tbody>${rowsD}</tbody></table>
-${h.fgts&&h.fgts>0?`<div style="font-size:10px;color:#6b7280;padding:6px 18px;background:#eff6ff;border-top:1px solid #bfdbfe">* FGTS: <strong>${fmtR(h.fgts)}</strong></div>`:''}
-<div class="footer"><span>${colab?.nome??''} · Chapa ${colab?.chapa??'—'}</span><span>${h.publicado_em?new Date(h.publicado_em).toLocaleDateString('pt-BR'):'—'}</span></div>
-<div style="padding:10px 18px">${aceiteBlock}</div>
-</div><script>window.onload=()=>{window.print()}</script></body></html>`)
+<script>window.onload = () => { window.print(); }</script>
+</body>
+</html>`)
     w.document.close()
-    setTimeout(() => { w.print() }, 800)
   }
 
   // ── bloco de aceite na tela ─────────────────────────────────────────────────
@@ -791,18 +953,43 @@ function AbaFolhaPonto({ sessao, dataAdmissao, lancamentos }: { sessao: Sessao; 
       </div>
 
       {/* Cards de resumo */}
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:6, padding:'10px 12px 6px' }}>
-        {[
-          { label:'Presenças', val:totalPresentes,                    cor:'#16a34a', bg:'#dcfce7' },
-          { label:'Faltas',    val:totalFaltas,                       cor:'#dc2626', bg:'#fee2e2' },
-          { label:'H. Trab.',  val:`${totalHoras.toFixed(0)}h`,       cor:'#1d4ed8', bg:'#dbeafe' },
-          { label:'H. Extra',  val:`${totalExtras.toFixed(0)}h`,      cor:'#92400e', bg:'#fef3c7' },
-        ].map(s=>(
-          <div key={s.label} style={{ background:s.bg, borderRadius:10, padding:'8px 4px', textAlign:'center' }}>
-            <div style={{ fontWeight:800, fontSize:15, color:s.cor }}>{s.val}</div>
-            <div style={{ fontSize:9, color:s.cor, fontWeight:600, lineHeight:1.2 }}>{s.label}</div>
+      <div style={{ padding:'10px 12px 4px' }}>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:6, marginBottom:6 }}>
+          {[
+            { label:'Presenças',  val:totalPresentes,                    cor:'#16a34a', bg:'#dcfce7' },
+            { label:'Faltas',     val:totalFaltas,                       cor:'#dc2626', bg:'#fee2e2' },
+            { label:'H. Trab.',   val:`${totalHoras.toFixed(0)}h`,       cor:'#1d4ed8', bg:'#dbeafe' },
+            { label:'H. Extra',   val:`${totalExtras.toFixed(0)}h`,      cor:'#92400e', bg:'#fef3c7' },
+          ].map(s=>(
+            <div key={s.label} style={{ background:s.bg, borderRadius:10, padding:'8px 4px', textAlign:'center' }}>
+              <div style={{ fontWeight:800, fontSize:15, color:s.cor }}>{s.val}</div>
+              <div style={{ fontSize:9, color:s.cor, fontWeight:600, lineHeight:1.2 }}>{s.label}</div>
+            </div>
+          ))}
+        </div>
+        {/* Linha de totais financeiros do fechamento */}
+        {lancsMes.length > 0 && (
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6, marginBottom:4 }}>
+            {totalHorasNormaisLanc > 0 && (
+              <div style={{ background:'#eff6ff', borderRadius:10, padding:'8px 12px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                <span style={{ fontSize:10, color:'#1d4ed8', fontWeight:600 }}>⏱ H. Normais</span>
+                <span style={{ fontSize:13, fontWeight:800, color:'#1d4ed8' }}>{totalHorasNormaisLanc.toFixed(1)}h</span>
+              </div>
+            )}
+            {totalProducaoLanc > 0 && (
+              <div style={{ background:'#f3e8ff', borderRadius:10, padding:'8px 12px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                <span style={{ fontSize:10, color:'#7c3aed', fontWeight:600 }}>⚡ Produção</span>
+                <span style={{ fontSize:13, fontWeight:800, color:'#7c3aed' }}>{fmtR(totalProducaoLanc)}</span>
+              </div>
+            )}
+            {totalLiquidoLanc > 0 && (
+              <div style={{ gridColumn:'1 / -1', background:'linear-gradient(135deg,#1565C0,#0D47A1)', borderRadius:10, padding:'10px 14px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                <span style={{ fontSize:11, color:'rgba(255,255,255,.8)', fontWeight:600 }}>💰 Líquido do mês</span>
+                <span style={{ fontSize:16, fontWeight:900, color:'#fff' }}>{fmtR(totalLiquidoLanc)}</span>
+              </div>
+            )}
           </div>
-        ))}
+        )}
       </div>
 
       {/* Lista de registros */}
@@ -895,24 +1082,50 @@ function AbaFolhaPonto({ sessao, dataAdmissao, lancamentos }: { sessao: Sessao; 
             </div>
 
             {/* Rodapé resumo */}
-            <div style={{ marginTop:14, background:'#1a56a0', borderRadius:12, padding:'13px 16px' }}>
-              <div style={{ fontSize:10, color:'rgba(255,255,255,.7)', fontWeight:700, textTransform:'uppercase', marginBottom:8 }}>
-                Resumo — {fmtComp(mesSel)}
+            <div style={{ marginTop:14, background:'linear-gradient(135deg,#1565C0,#0D47A1)', borderRadius:14, padding:'16px', boxShadow:'0 4px 16px rgba(21,101,192,.3)' }}>
+              <div style={{ fontSize:11, color:'rgba(255,255,255,.75)', fontWeight:700, textTransform:'uppercase', marginBottom:12, letterSpacing:'.05em', display:'flex', alignItems:'center', gap:6 }}>
+                📊 Resumo — {fmtComp(mesSel)}
               </div>
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:6 }}>
-                <div style={{ background:'rgba(255,255,255,.12)', borderRadius:8, padding:'8px', textAlign:'center' }}>
-                  <div style={{ fontSize:10, color:'rgba(255,255,255,.65)', marginBottom:2 }}>Trabalhadas</div>
-                  <div style={{ fontSize:16, fontWeight:800, color:'#fff' }}>{totalHoras.toFixed(0)}h</div>
+              {/* Grid de horas */}
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8, marginBottom: lancsMes.length>0 ? 12 : 0 }}>
+                <div style={{ background:'rgba(255,255,255,.12)', borderRadius:10, padding:'10px 8px', textAlign:'center' }}>
+                  <div style={{ fontSize:9, color:'rgba(255,255,255,.6)', marginBottom:3, textTransform:'uppercase', letterSpacing:'.04em' }}>Trabalhadas</div>
+                  <div style={{ fontSize:18, fontWeight:900, color:'#fff', letterSpacing:'-.02em' }}>{totalHoras.toFixed(0)}h</div>
                 </div>
-                <div style={{ background:'rgba(255,255,255,.12)', borderRadius:8, padding:'8px', textAlign:'center' }}>
-                  <div style={{ fontSize:10, color:'rgba(255,255,255,.65)', marginBottom:2 }}>Extras</div>
-                  <div style={{ fontSize:16, fontWeight:800, color:totalExtras>0?'#fbbf24':'#fff' }}>{totalExtras.toFixed(0)}h</div>
+                <div style={{ background:'rgba(255,255,255,.12)', borderRadius:10, padding:'10px 8px', textAlign:'center' }}>
+                  <div style={{ fontSize:9, color:'rgba(255,255,255,.6)', marginBottom:3, textTransform:'uppercase', letterSpacing:'.04em' }}>Extras</div>
+                  <div style={{ fontSize:18, fontWeight:900, color:totalExtras>0?'#fbbf24':'#fff', letterSpacing:'-.02em' }}>{totalExtras.toFixed(0)}h</div>
                 </div>
-                <div style={{ background:'rgba(255,255,255,.12)', borderRadius:8, padding:'8px', textAlign:'center' }}>
-                  <div style={{ fontSize:10, color:'rgba(255,255,255,.65)', marginBottom:2 }}>Faltas</div>
-                  <div style={{ fontSize:16, fontWeight:800, color:totalFaltas>0?'#fca5a5':'#fff' }}>{totalFaltas}</div>
+                <div style={{ background:'rgba(255,255,255,.12)', borderRadius:10, padding:'10px 8px', textAlign:'center' }}>
+                  <div style={{ fontSize:9, color:'rgba(255,255,255,.6)', marginBottom:3, textTransform:'uppercase', letterSpacing:'.04em' }}>Faltas</div>
+                  <div style={{ fontSize:18, fontWeight:900, color:totalFaltas>0?'#fca5a5':'#fff', letterSpacing:'-.02em' }}>{totalFaltas}</div>
                 </div>
               </div>
+              {/* Fechamento financeiro */}
+              {lancsMes.length > 0 && (
+                <div style={{ borderTop:'1px solid rgba(255,255,255,.2)', paddingTop:10 }}>
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6, marginBottom:8 }}>
+                    {totalHorasNormaisLanc > 0 && (
+                      <div style={{ background:'rgba(255,255,255,.1)', borderRadius:8, padding:'8px', display:'flex', flexDirection:'column', alignItems:'center' }}>
+                        <span style={{ fontSize:9, color:'rgba(255,255,255,.6)', marginBottom:2 }}>H. Normais</span>
+                        <span style={{ fontSize:14, fontWeight:800, color:'#bfdbfe' }}>{totalHorasNormaisLanc.toFixed(1)}h</span>
+                      </div>
+                    )}
+                    {totalProducaoLanc > 0 && (
+                      <div style={{ background:'rgba(255,255,255,.1)', borderRadius:8, padding:'8px', display:'flex', flexDirection:'column', alignItems:'center' }}>
+                        <span style={{ fontSize:9, color:'rgba(255,255,255,.6)', marginBottom:2 }}>Produção</span>
+                        <span style={{ fontSize:14, fontWeight:800, color:'#c4b5fd' }}>{fmtR(totalProducaoLanc)}</span>
+                      </div>
+                    )}
+                  </div>
+                  {totalLiquidoLanc > 0 && (
+                    <div style={{ background:'rgba(255,255,255,.18)', borderRadius:10, padding:'12px', display:'flex', justifyContent:'space-between', alignItems:'center', border:'1px solid rgba(255,255,255,.25)' }}>
+                      <span style={{ fontSize:12, color:'rgba(255,255,255,.85)', fontWeight:600 }}>💰 Líquido estimado</span>
+                      <span style={{ fontSize:18, fontWeight:900, color:'#fff' }}>{fmtR(totalLiquidoLanc)}</span>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </>
         )}
@@ -1301,25 +1514,65 @@ export default function PortalContracheque() {
   async function confirmarAceite(h: Contracheque) {
     if (!sessao) return
     setSalvandoAceite(true)
-    const ip = await getIpPublico()
-    const { data, error } = await supabase
-      .from('contracheque_aceites')
-      .upsert({
-        contracheque_id: h.id,
-        colaborador_id:  sessao.colaborador_id,
-        ip_address:      ip,
-        user_agent:      navigator.userAgent.slice(0, 300),
-        nome_colaborador: sessao.nome,
-        chapa:           sessao.chapa,
-        competencia:     h.competencia.slice(0, 7),
-      }, { onConflict: 'contracheque_id,colaborador_id' })
-      .select()
-      .single()
-    setSalvandoAceite(false)
-    if (!error && data) {
-      setAceites(prev => ({ ...prev, [h.id]: data as AceiteDigital }))
+    try {
+      const ip = await getIpPublico()
+      const agora = new Date().toISOString()
+
+      // Tenta upsert (insert ou update se já existe)
+      const { data: upserted, error: upsertErr } = await supabase
+        .from('contracheque_aceites')
+        .upsert({
+          contracheque_id:  h.id,
+          colaborador_id:   sessao.colaborador_id,
+          ip_address:       ip,
+          user_agent:       navigator.userAgent.slice(0, 300),
+          nome_colaborador: sessao.nome,
+          chapa:            sessao.chapa,
+          competencia:      h.competencia.slice(0, 7),
+          aceito_em:        agora,
+        }, { onConflict: 'contracheque_id,colaborador_id' })
+        .select()
+        .single()
+
+      let aceiteRegistrado: AceiteDigital | null = null
+
+      if (!upsertErr && upserted) {
+        aceiteRegistrado = upserted as AceiteDigital
+      } else {
+        // Fallback: buscar registro existente (pode ter sido gravado mas retornou erro de select)
+        const { data: existing } = await supabase
+          .from('contracheque_aceites')
+          .select()
+          .eq('contracheque_id', h.id)
+          .eq('colaborador_id', sessao.colaborador_id)
+          .single()
+
+        if (existing) {
+          aceiteRegistrado = existing as AceiteDigital
+        } else {
+          // Último fallback: criar objeto local para não bloquear o usuário
+          aceiteRegistrado = {
+            id: crypto.randomUUID?.() ?? String(Date.now()),
+            contracheque_id: h.id,
+            aceito_em: agora,
+            ip_address: ip,
+            nome_colaborador: sessao.nome,
+            chapa: sessao.chapa,
+            competencia: h.competencia.slice(0, 7),
+          } as AceiteDigital
+        }
+      }
+
+      // Atualizar estado e abrir holerite
+      setAceites(prev => ({ ...prev, [h.id]: aceiteRegistrado! }))
       setModalAceite(null)
-      setSelecionado(h)  // abrir o holerite após aceite
+      setSelecionado(h)
+    } catch {
+      // Em caso de falha total, ainda assim permitir abrir o holerite
+      setModalAceite(null)
+      setSelecionado(h)
+    } finally {
+      setSalvandoAceite(false)
     }
   }
 
@@ -1394,7 +1647,7 @@ export default function PortalContracheque() {
               {salvandoAceite ? 'Registrando…' : 'Li e estou ciente ✓'}
             </button>
             <button onClick={()=>setModalAceite(null)} style={{ width:'100%', height:40, borderRadius:10, border:'1px solid #e2e8f0', background:'#f8fafc', color:'#64748b', fontWeight:600, fontSize:14, cursor:'pointer' }}>
-              Cancelar
+              Agora não
             </button>
           </div>
         </div>

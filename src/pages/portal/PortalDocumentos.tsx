@@ -23,6 +23,16 @@ const TIPOS = [
 const I: React.CSSProperties = { width:'100%', height:40, border:'1px solid #d1d5db', borderRadius:7, padding:'0 10px', fontSize:13, boxSizing:'border-box', background:'#fff', color:'#111' }
 const S: React.CSSProperties = { ...I, cursor:'pointer' }
 
+
+// Converte URL pública do Storage em link seguro via DocViewer autenticado
+function secureDocUrl(url: string | null | undefined): string {
+  if (!url) return '#'
+  if (url.includes('.supabase.co/storage/') || url.includes('supabase')) {
+    return `${window.location.origin}${window.location.pathname}#/doc-viewer?url=${encodeURIComponent(url)}`
+  }
+  return url
+}
+
 const BUCKET = 'portal-documentos'
 // Compressão: máximo 1600px de largura, qualidade 82%
 const MAX_PX = 1600
@@ -395,7 +405,7 @@ export default function PortalDocumentos() {
                 <div style={{ width:48, height:48, borderRadius:8, overflow:'hidden', flexShrink:0,
                   background:'#f3f4f6', display:'flex', alignItems:'center', justifyContent:'center' }}>
                   {isImg && d.arquivo_url
-                    ? <img src={d.arquivo_url} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
+                    ? <img src={d.arquivo_url} alt="" referrerPolicy="no-referrer" style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
                     : <span style={{ fontSize:22 }}>{tipoIcon(d.tipo)}</span>}
                 </div>
                 <div style={{ flex:1, minWidth:0 }}>
@@ -408,7 +418,7 @@ export default function PortalDocumentos() {
                     {b.label}
                   </span>
                   {d.arquivo_url && (
-                    <a href={d.arquivo_url} target="_blank" rel="noopener noreferrer" style={{
+                    <a href={secureDocUrl(d.arquivo_url)} target="_blank" rel="noopener noreferrer" style={{
                       fontSize:11, color:'#1e3a5f', fontWeight:600, textDecoration:'none',
                       display:'flex', alignItems:'center', gap:3,
                     }}>
