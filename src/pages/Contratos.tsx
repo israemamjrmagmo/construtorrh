@@ -697,9 +697,15 @@ export default function Contratos() {
     if (empData.logoUrl)
       logoBlock = `<img src="${empData.logoUrl}" class="logo" alt="Logo" onerror="this.style.display='none'" />`
 
-    const paginaHtml = (m: Modelo, idx: number) => {
+    const paginaHtml = async (m: Modelo, idx: number) => {
       const cat    = CATEGORIAS[m.categoria] ?? CATEGORIAS.outro
       const varMap = buildVarMap(colab, empData)
+      if (m.conteudo.includes('{{EPIs da Função}}') || m.conteudo.includes('{{Tabela EPIs}}')) {
+        const fid = (colab as any)?.funcao_id ?? null
+        const epiHtml = await buscarEpisDaFuncao(fid, supabase)
+        varMap['EPIs da Função'] = epiHtml
+        varMap['Tabela EPIs'] = epiHtml
+      }
       let html = m.conteudo
       if (html.trimStart().startsWith('#') || (!html.includes('<') && html.includes('\n')))
         html = markdownToHtml(html)
@@ -795,7 +801,7 @@ export default function Contratos() {
 </style>
 </head>
 <body>
-${kitModelos.map((m, i) => paginaHtml(m, i)).join('')}
+${(await Promise.all(kitModelos.map((m, i) => paginaHtml(m, i)))).join('')}
 <button class="btn-imprimir" onclick="window.print()">🖨️ Imprimir Kit (${kitModelos.length} docs)</button>
 <script>window.onload=()=>setTimeout(()=>window.print(),500)<\/script>
 </body></html>`
@@ -2054,28 +2060,21 @@ table th { background:#f8fafc; font-weight:700; }
             if (htmlConteudo.trimStart().startsWith('#') || (!htmlConteudo.includes('<') && htmlConteudo.includes('\n')))
               htmlConteudo = markdownToHtml(htmlConteudo)
             htmlConteudo = aplicarVariaveis(htmlConteudo, varMap)
-            const cat = CATEGORIAS[avulsoModelo.categoria] ?? CATEGORIAS.outro
             const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"/>
 <title>${avulsoModelo.titulo} — ${avulsoColab.nome}</title>
-<style>* { box-sizing:border-box;margin:0;padding:0; } body{background:#525659;font-family:'Times New Roman',Georgia,serif;padding:24px;}
-.page{max-width:700px;margin:0 auto 24px;background:#fff;border-radius:6px;padding:0;box-shadow:0 2px 16px rgba(0,0,0,.3);}
-.header{background:#1e3a5f;color:#fff;padding:10px 20px;display:flex;align-items:center;gap:10px;border-radius:6px 6px 0 0;}
-.header-logo{font-size:22px;}
-.header-nome{font-size:13px;font-weight:800;letter-spacing:.04em;}
-.header-cnpj{font-size:9px;color:#93c5fd;}
-.header-line{height:3px;background:#1e3a5f;border-bottom:1px solid #93c5fd;}
-.content{padding:24px 28px;font-size:12pt;line-height:1.6;color:#1a1a1a;}
+<style>
+@page{size:A4 portrait;margin:20mm 20mm 20mm 20mm;}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Times New Roman',Georgia,serif;font-size:12pt;color:#1a1a1a;}
 table{width:100%;border-collapse:collapse;margin:10px 0;font-size:11px;}
 table td,table th{border:1px solid #d1d5db;padding:5px 8px;}
 table th{background:#f8fafc;font-weight:700;}
-@media print{body{background:#fff;padding:0;}.page{border-radius:0;box-shadow:none;margin:0;}}
+@media screen{body{background:#525659;padding:24px;}
+.pagina{background:#fff;margin:0 auto 24px;max-width:700px;box-shadow:0 2px 16px rgba(0,0,0,.3);border-radius:6px;padding:24px 28px;}}
+@media print{body{background:#fff;padding:0;}.pagina{padding:0;}}
 </style></head><body>
-<div class="page">
-  <div class="header"><span class="header-logo">🏗️</span>
-    <div><div class="header-nome">${empData.nome || 'EMPRESA'}</div>${empData.cnpj ? `<div class="header-cnpj">CNPJ: ${empData.cnpj}</div>` : ''}</div>
-  </div>
-  <div class="header-line"></div>
-  <div class="content">${htmlConteudo}</div>
+<div class="pagina">
+${htmlConteudo}
 </div>
 </body></html>`
             const win = window.open('', '_blank', 'width=900,height=750')
