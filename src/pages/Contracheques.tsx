@@ -140,12 +140,12 @@ function ModalHolerite({ open, onClose, colaborador, onSaved }: {
       // 1 – Dados do colaborador
       const { data: colab } = await supabase
         .from('colaboradores')
-        .select('salario_base, funcao_id, tipo_contrato, data_admissao, funcoes(nome)')
+        .select('salario, funcao_id, tipo_contrato, data_admissao, funcoes(nome)')
         .eq('id', colaborador.id)
         .single()
       // normaliza campos
       if (colab) {
-        ;(colab as any).salario = (colab as any).salario_base ?? null
+        ;(colab as any).salario = (colab as any).salario ?? null
         ;(colab as any).funcao  = (colab as any).funcoes?.nome ?? colaborador.funcao ?? '—'
       }
 
@@ -572,14 +572,14 @@ export default function Contracheques() {
   const carregarColaboradores = useCallback(async () => {
     setLoadingList(true)
     const { data, error: colErr } = await supabase.from('colaboradores')
-      .select('id,nome,chapa,cpf,funcao_id,tipo_contrato,status,salario_base,funcoes(nome)')
+      .select('id,nome,chapa,cpf,funcao_id,tipo_contrato,status,salario,funcoes(nome)')
       .in('status', ['ativo', 'afastado'])
       .order('nome')
     if (colErr) console.error('[Contracheques] erro ao carregar colaboradores:', colErr.message)
     const mapped = ((data ?? []) as any[]).map(c => ({
       ...c,
       funcao: c.funcoes?.nome ?? c.funcao_id ?? '—',
-      salario: c.salario_base ?? null,
+      salario: c.salario ?? null,
     })) as Colaborador[]
     setColaboradores(mapped)
     const { data: portData } = await supabase.from('colaborador_acessos')

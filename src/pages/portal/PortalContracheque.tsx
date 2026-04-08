@@ -28,7 +28,7 @@ type Contracheque = {
 type ColabInfo = {
   nome: string; chapa: string | null; cpf: string | null
   funcao: string | null; tipo_contrato: string | null
-  data_admissao: string | null; salario_base: number | null
+  data_admissao: string | null; salario: number | null
 }
 
 type EmpresaInfo = {
@@ -958,14 +958,14 @@ export default function PortalContracheque() {
           .eq('publicado', true)
           .order('competencia', { ascending: false }),
         supabase.from('colaboradores')
-          .select('nome,chapa,cpf,funcao_id,tipo_contrato,data_admissao,salario_base,funcoes(nome)')
+          .select('nome,chapa,cpf,funcao_id,tipo_contrato,data_admissao,salario,funcoes(nome)')
           .eq('id', colaboradorId).single(),
         supabase.from('configuracoes')
           .select('chave,valor')
           .in('chave', ['empresa_nome','empresa_cnpj','empresa_endereco','empresa_cidade','empresa_telefone','empresa_logo_url']),
       ])
       setHolerites((holRes.data as Contracheque[]) ?? [])
-      // Normalizar: mapear funcoes(nome) → funcao e manter salario_base
+      // Normalizar: mapear funcoes(nome) → funcao
       const rawColab = colRes.data as any
       if (rawColab) {
         rawColab.funcao = rawColab.funcoes?.nome ?? null
