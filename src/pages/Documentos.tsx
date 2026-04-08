@@ -1460,12 +1460,15 @@ export default function Documentos() {
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <div>
+                <div>
                 <Label className="text-xs font-semibold">Tipo *</Label>
-                <Select value={form.tipo} onValueChange={v=>setForm(p=>({...p,tipo:v}))}>
-                  <SelectTrigger className="h-9 mt-1"><SelectValue placeholder="Selecione…"/></SelectTrigger>
-                  <SelectContent>{tiposDoc.map(t=><SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
-                </Select>
+                <SearchSelect
+                  options={tiposDoc}
+                  value={form.tipo}
+                  onChange={v => setForm(p => ({ ...p, tipo: v }))}
+                  placeholder="Selecione o tipo…"
+                  style={{ marginTop: 4 }}
+                />
               </div>
               <div>
                 <Label className="text-xs font-semibold">Data *</Label>

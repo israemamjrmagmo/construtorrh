@@ -8,7 +8,7 @@ import {
   Receipt, Search, Plus, Trash2, ExternalLink, Copy,
   Eye, EyeOff, RefreshCw, User, Key, CheckCircle2,
   Upload, X, FileText, Sparkles, Loader2, Info,
-  TrendingUp, TrendingDown, Wallet, ChevronDown, ChevronUp,
+  TrendingUp, TrendingDown, Wallet, ChevronDown, ChevronUp, ShieldCheck,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -561,6 +561,7 @@ export default function Contracheques() {
   const [portais, setPortais]             = useState<Portal[]>([])
   const [selected, setSelected]           = useState<Colaborador | null>(null)
   const [contracheques, setContracheques] = useState<Contracheque[]>([])
+  const [aceites, setAceites]             = useState<Record<string,any>>({})
   const [busca, setBusca]                 = useState('')
   const [loadingList, setLoadingList]     = useState(true)
   const [loadingH, setLoadingH]           = useState(false)
@@ -594,7 +595,18 @@ export default function Contracheques() {
     setLoadingH(true)
     const { data } = await supabase.from('contracheques').select('*')
       .eq('colaborador_id', id).order('competencia', { ascending: false })
-    setContracheques((data as Contracheque[]) ?? [])
+    const hols = (data as Contracheque[]) ?? []
+    setContracheques(hols)
+    // Carregar aceites para exibir status no admin
+    if (hols.length > 0) {
+      const { data: acData } = await supabase
+        .from('contracheque_aceites').select('*')
+        .eq('colaborador_id', id)
+        .in('contracheque_id', hols.map(h => h.id))
+      const m: Record<string,any> = {}
+      for (const a of (acData ?? []) as any[]) m[a.contracheque_id] = a
+      setAceites(m)
+    } else { setAceites({}) }
     setLoadingH(false)
   }, [])
 
@@ -837,7 +849,7 @@ export default function Contracheques() {
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                     <thead>
                       <tr style={{ borderBottom: '2px solid #f1f5f9' }}>
-                        {['Competência','Tipo','Bruto','Líquido','Origem','Status','Ações'].map(h => (
+                        {['Competência','Tipo','Bruto','Líquido','Origem','Status','Aceite','Ações'].map(h => (
                           <th key={h} style={{ textAlign: 'left', padding: '8px 10px', color: '#64748b', fontWeight: 600, fontSize: 12, whiteSpace: 'nowrap' }}>{h}</th>
                         ))}
                       </tr>
@@ -862,6 +874,16 @@ export default function Contracheques() {
                               color: h.publicado ? '#15803d' : '#854d0e' }}>
                               {h.publicado ? '✓ Publicado' : 'Rascunho'}
                             </span>
+                          </td>
+                          {/* Coluna Aceite */}
+                          <td style={{ padding: '10px' }}>
+                            {aceites[h.id]
+                              ? <span title={`Aceito em ${new Date(aceites[h.id].aceito_em).toLocaleString('pt-BR')} · IP: ${aceites[h.id].ip_address??'—'}`}
+                                  style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:11, background:'#dcfce7', color:'#15803d', padding:'2px 8px', borderRadius:8, fontWeight:700, cursor:'help' }}>
+                                  <ShieldCheck size={11}/> Ciente
+                                </span>
+                              : <span style={{ fontSize:11, background:'#fef3c7', color:'#92400e', padding:'2px 8px', borderRadius:8, fontWeight:600 }}>⏳ Pendente</span>
+                            }
                           </td>
                           <td style={{ padding: '10px' }}>
                             <div style={{ display: 'flex', gap: 5 }}>

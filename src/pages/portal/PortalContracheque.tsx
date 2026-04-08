@@ -1,10 +1,10 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import {
   Receipt, LogOut, AlertCircle, Key, Eye, EyeOff, Loader2,
   ChevronDown, ChevronUp, ChevronLeft, ChevronRight,
   Download, Printer, Plus, Minus, Info, CalendarDays,
-  Clock, FolderOpen, FileCheck, FileX,
+  Clock, FolderOpen, FileCheck, FileX, CheckCircle2, ShieldCheck,
 } from 'lucide-react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -24,6 +24,20 @@ type Contracheque = {
   funcao: string | null; tipo_contrato_snap: string | null; obra_nome: string | null
   dias_trabalhados: number | null; faltas: number | null
   gerado_do_sistema: boolean | null; publicado_em: string | null
+}
+
+type AceiteDigital = {
+  id: string; contracheque_id: string; aceito_em: string
+  ip_address: string | null; nome_colaborador: string | null; chapa: string | null; competencia: string | null
+}
+
+// Busca o IP público via API externa (fallback: 'desconhecido')
+async function getIpPublico(): Promise<string> {
+  try {
+    const r = await fetch('https://api.ipify.org?format=json', { signal: AbortSignal.timeout(3000) })
+    const j = await r.json()
+    return j.ip ?? 'desconhecido'
+  } catch { return 'desconhecido' }
 }
 
 type PontoLancamento = {
@@ -241,8 +255,9 @@ function CardResumo({ bruto, descontos, liquido }: { bruto: number; descontos: n
 }
 
 // ─── Detalhe do Contracheque (tela completa) ──────────────────────────────────
-function TelaHolerite({ h, colab, empresa, onVoltar }: {
-  h: Contracheque; colab: ColabInfo | null; empresa: EmpresaInfo | null; onVoltar: () => void
+function TelaHolerite({ h, colab, empresa, aceite, onVoltar }: {
+  h: Contracheque; colab: ColabInfo | null; empresa: EmpresaInfo | null
+  aceite: AceiteDigital | null; onVoltar: () => void
 }) {
   const [secAberta, setSecAberta] = useState<'rendimentos'|'descontos'|'infos'|null>('rendimentos')
   const bruto     = h.bruto ?? 0
@@ -271,6 +286,19 @@ function TelaHolerite({ h, colab, empresa, onVoltar }: {
     const en = empresa?.nome ?? 'Empresa'
     const rowsR = rendimentos.map(r => `<tr><td class="cod">${r.cod}</td><td>${r.desc}</td><td class="val green">${fmtR(r.val)}</td></tr>`).join('')
     const rowsD = descontosList.map(d => `<tr><td class="cod">${d.cod}</td><td>${d.desc}</td><td class="val red">- ${fmtR(d.val)}</td></tr>`).join('')
+    // Bloco de aceite digital no PDF
+    const aceiteBlock = aceite
+      ? `<div style="margin-top:14px;background:#f0fdf4;border:1.5px solid #86efac;border-radius:6px;padding:10px 14px">
+           <div style="font-size:10px;font-weight:700;color:#15803d;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">✅ Aceite Digital — Comprovante de Ciência</div>
+           <table style="width:100%;font-size:10px;color:#374151;border-collapse:collapse">
+             <tr><td style="padding:2px 0;color:#6b7280;width:110px">Colaborador:</td><td style="font-weight:600">${aceite.nome_colaborador??colab?.nome??'—'}</td></tr>
+             <tr><td style="padding:2px 0;color:#6b7280">Aceito em:</td><td style="font-weight:600">${new Date(aceite.aceito_em).toLocaleString('pt-BR')}</td></tr>
+             <tr><td style="padding:2px 0;color:#6b7280">IP:</td><td style="font-weight:600">${aceite.ip_address??'—'}</td></tr>
+             <tr><td style="padding:2px 0;color:#6b7280">Competência:</td><td style="font-weight:600">${aceite.competencia??fmtComp(h.competencia)}</td></tr>
+           </table>
+           <div style="font-size:9px;color:#9ca3af;margin-top:6px">Este registro constitui prova de ciência do colaborador nos termos da legislação trabalhista.</div>
+         </div>`
+      : `<div style="margin-top:14px;background:#fff7ed;border:1px solid #fed7aa;border-radius:6px;padding:8px 14px;font-size:10px;color:#92400e">⚠️ Aceite digital ainda não realizado pelo colaborador.</div>`
     w.document.write(`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Contracheque — ${fmtComp(h.competencia)}</title>
 <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:12px;color:#111;padding:20px}
 .page{max-width:700px;margin:0 auto;border:1.5px solid #0d3f56;border-radius:6px;overflow:hidden}
@@ -308,9 +336,27 @@ ${h.obra_nome?`<div class="func-item"><label>Obra</label><span>${h.obra_nome}</s
 <div class="sec-title">Descontos</div><table><tbody>${rowsD}</tbody></table>
 ${h.fgts&&h.fgts>0?`<div style="font-size:10px;color:#6b7280;padding:6px 18px;background:#eff6ff;border-top:1px solid #bfdbfe">* FGTS: <strong>${fmtR(h.fgts)}</strong></div>`:''}
 <div class="footer"><span>${colab?.nome??''} · Chapa ${colab?.chapa??'—'}</span><span>${h.publicado_em?new Date(h.publicado_em).toLocaleDateString('pt-BR'):'—'}</span></div>
+<div style="padding:10px 18px">${aceiteBlock}</div>
 </div><script>window.onload=()=>{window.print()}</script></body></html>`)
     w.document.close()
   }
+
+  // ── bloco de aceite na tela ─────────────────────────────────────────────────
+  const aceiteBlock = aceite ? (
+    <div style={{ margin:'12px 16px 0', background:'#f0fdf4', border:'1.5px solid #86efac', borderRadius:12, padding:'12px 16px' }}>
+      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
+        <ShieldCheck size={16} color="#16a34a"/>
+        <span style={{ fontSize:13, fontWeight:700, color:'#15803d' }}>Aceite Digital Registrado</span>
+      </div>
+      <div style={{ display:'grid', gridTemplateColumns:'auto 1fr', gap:'3px 10px', fontSize:12 }}>
+        <span style={{ color:'#6b7280' }}>Aceito em:</span>
+        <span style={{ fontWeight:600, color:'#1e293b' }}>{new Date(aceite.aceito_em).toLocaleString('pt-BR')}</span>
+        <span style={{ color:'#6b7280' }}>IP:</span>
+        <span style={{ fontWeight:600, color:'#1e293b', fontFamily:'monospace' }}>{aceite.ip_address??'—'}</span>
+      </div>
+      <div style={{ fontSize:10, color:'#9ca3af', marginTop:6 }}>Registro jurídico de ciência do colaborador.</div>
+    </div>
+  ) : null
 
   return (
     <div style={{ minHeight:'100vh', background:'#f3f4f6', display:'flex', flexDirection:'column' }}>
@@ -428,6 +474,8 @@ ${h.fgts&&h.fgts>0?`<div style="font-size:10px;color:#6b7280;padding:6px 18px;ba
           <span style={{ color:'rgba(255,255,255,.85)', fontSize:13, fontWeight:600 }}>💰 Líquido a Receber</span>
           <span style={{ color:'#fff', fontSize:22, fontWeight:900, letterSpacing:-.5 }}>{fmtR(liquido)}</span>
         </div>
+        {/* Bloco de aceite digital */}
+        {aceiteBlock}
       </div>
     </div>
   )
@@ -435,9 +483,10 @@ ${h.fgts&&h.fgts>0?`<div style="font-size:10px;color:#6b7280;padding:6px 18px;ba
 
 // ─── ABA CONTRACHEQUE ─────────────────────────────────────────────────────────
 // Mês padrão = mês atual. Sem carrossel de botões no topo, sem histórico de lista.
-function AbaContracheque({ sessao, holerites, lancamentos, colab, empresa, onSelecionar }: {
+function AbaContracheque({ sessao, holerites, lancamentos, colab, empresa, aceites, onSelecionar }: {
   sessao: Sessao; holerites: Contracheque[]; lancamentos: PontoLancamento[]
   colab: ColabInfo | null; empresa: EmpresaInfo | null
+  aceites: Record<string, AceiteDigital>
   onSelecionar: (h: Contracheque) => void
 }) {
   // Inicia sempre no mês atual (ou o primeiro disponível se não houver do mês atual)
@@ -526,11 +575,16 @@ function AbaContracheque({ sessao, holerites, lancamentos, colab, empresa, onSel
           <>
             {/* Card resumo */}
             <div style={{ background:'#fff', borderRadius:14, padding:'14px 14px 10px', border:'1px solid #e5e7eb', marginBottom:12, boxShadow:'0 2px 8px rgba(0,0,0,.06)' }}>
-              <div style={{ fontSize:14, fontWeight:700, color:'#111827', marginBottom:10 }}>
+              <div style={{ fontSize:14, fontWeight:700, color:'#111827', marginBottom:10, display:'flex', alignItems:'center', flexWrap:'wrap', gap:6 }}>
                 {fmtComp(hAtual.competencia)}
-                <span style={{ fontSize:11, background:'#eff6ff', color:'#1d4ed8', padding:'2px 8px', borderRadius:10, marginLeft:8, fontWeight:600 }}>
+                <span style={{ fontSize:11, background:'#eff6ff', color:'#1d4ed8', padding:'2px 8px', borderRadius:10, fontWeight:600 }}>
                   {TIPO_LABEL[hAtual.tipo]??hAtual.tipo}
                 </span>
+                {/* Badge aceite digital */}
+                {aceites[hAtual.id]
+                  ? <span style={{ fontSize:10, background:'#dcfce7', color:'#15803d', padding:'2px 8px', borderRadius:10, fontWeight:700, display:'flex', alignItems:'center', gap:3 }}><CheckCircle2 size={10}/> Ciente</span>
+                  : <span style={{ fontSize:10, background:'#fef3c7', color:'#92400e', padding:'2px 8px', borderRadius:10, fontWeight:700 }}>⚠ Pendente aceite</span>
+                }
               </div>
               <CardResumo bruto={bruto} descontos={descontos} liquido={liquido}/>
             </div>
@@ -546,8 +600,13 @@ function AbaContracheque({ sessao, holerites, lancamentos, colab, empresa, onSel
             )}
             {/* Botão Ver Detalhes */}
             <button onClick={()=>onSelecionar(hAtual)}
-              style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'center', gap:8, padding:'12px', borderRadius:10, border:'none', background:'#1a56a0', cursor:'pointer', fontSize:14, color:'#fff', fontWeight:700, marginBottom:12, boxShadow:'0 2px 8px rgba(26,86,160,.3)' }}>
-              Ver Detalhes Completos <ChevronRight size={16}/>
+              style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'center', gap:8, padding:'12px', borderRadius:10, border:'none',
+                background: aceites[hAtual.id] ? '#1a56a0' : 'linear-gradient(135deg,#1d4ed8,#1a56a0)',
+                cursor:'pointer', fontSize:14, color:'#fff', fontWeight:700, marginBottom:12, boxShadow:'0 2px 8px rgba(26,86,160,.3)' }}>
+              {aceites[hAtual.id]
+                ? <><Receipt size={15}/> Ver Contracheque Completo <ChevronRight size={16}/></>
+                : <><ShieldCheck size={15}/> Li e estou ciente — Abrir Holerite <ChevronRight size={16}/></>
+              }
             </button>
 
             {/* Preview seções */}
@@ -1105,6 +1164,9 @@ export default function PortalContracheque() {
   const [empresa, setEmpresa]       = useState<EmpresaInfo|null>(null)
   const [loading, setLoading]       = useState(false)
   const [selecionado, setSelecionado] = useState<Contracheque|null>(null)
+  const [aceites, setAceites]       = useState<Record<string, AceiteDigital>>({})
+  const [modalAceite, setModalAceite] = useState<Contracheque|null>(null)
+  const [salvandoAceite, setSalvandoAceite] = useState(false)
   const [aba, setAba]               = useState<Aba>('contracheque')
 
   const carregar = useCallback(async (colaboradorId: string) => {
@@ -1120,7 +1182,8 @@ export default function PortalContracheque() {
           .in('status',['pago','aprovado','liberado'])
           .order('mes_referencia',{ascending:false}).order('data_inicio',{ascending:true}),
       ])
-      setHolerites((holRes.data as Contracheque[]) ?? [])
+      const hols = (holRes.data as Contracheque[]) ?? []
+      setHolerites(hols)
       setLancamentos((pontRes.data as PontoLancamento[]) ?? [])
       const rawColab = colRes.data as any
       if (rawColab) { rawColab.funcao=rawColab.funcoes?.nome??null; delete rawColab.funcoes; delete rawColab.funcao_id }
@@ -1130,14 +1193,64 @@ export default function PortalContracheque() {
       const codsRaw = map['codigos_contracheque']
       const codsContabeis = codsRaw ? (() => { try { return JSON.parse(codsRaw) } catch { return {} } })() : {}
       setEmpresa({ nome:map['empresa_nome']??'', cnpj:map['empresa_cnpj']??'', cidade:map['empresa_cidade']??'', logo_url:map['empresa_logo_url']??'', codigos:codsContabeis })
+      // Carregar aceites dos holerites do colaborador
+      if (hols.length > 0) {
+        const ids = hols.map(h => h.id)
+        const { data: acData } = await supabase
+          .from('contracheque_aceites')
+          .select('*')
+          .eq('colaborador_id', colaboradorId)
+          .in('contracheque_id', ids)
+        if (acData) {
+          const m: Record<string, AceiteDigital> = {}
+          for (const a of acData as AceiteDigital[]) m[a.contracheque_id] = a
+          setAceites(m)
+        }
+      }
     } finally { setLoading(false) }
   }, [])
 
   useEffect(()=>{ if (sessao) carregar(sessao.colaborador_id) }, [sessao, carregar])
 
+  // ── Registrar aceite digital ───────────────────────────────────────────────
+  async function confirmarAceite(h: Contracheque) {
+    if (!sessao) return
+    setSalvandoAceite(true)
+    const ip = await getIpPublico()
+    const { data, error } = await supabase
+      .from('contracheque_aceites')
+      .upsert({
+        contracheque_id: h.id,
+        colaborador_id:  sessao.colaborador_id,
+        ip_address:      ip,
+        user_agent:      navigator.userAgent.slice(0, 300),
+        nome_colaborador: sessao.nome,
+        chapa:           sessao.chapa,
+        competencia:     h.competencia.slice(0, 7),
+      }, { onConflict: 'contracheque_id,colaborador_id' })
+      .select()
+      .single()
+    setSalvandoAceite(false)
+    if (!error && data) {
+      setAceites(prev => ({ ...prev, [h.id]: data as AceiteDigital }))
+      setModalAceite(null)
+      setSelecionado(h)  // abrir o holerite após aceite
+    }
+  }
+
+  // Quando o colaborador clica em "Ver Detalhes" / card do holerite:
+  // Se já tem aceite → abrir direto. Se não → exibir modal de aceite primeiro.
+  function abrirHolerite(h: Contracheque) {
+    if (aceites[h.id]) {
+      setSelecionado(h)
+    } else {
+      setModalAceite(h)
+    }
+  }
+
   function sair() {
     localStorage.removeItem(SESSION_KEY)
-    setSessao(null); setHolerites([]); setLancamentos([]); setSelecionado(null); setAba('contracheque')
+    setSessao(null); setHolerites([]); setLancamentos([]); setSelecionado(null); setAba('contracheque'); setAceites({}); setModalAceite(null)
   }
 
   if (!sessao) return <TelaLogin onLogin={setSessao}/>
@@ -1150,16 +1263,58 @@ export default function PortalContracheque() {
   )
 
   if (selecionado) return (
-    <TelaHolerite h={selecionado} colab={colab} empresa={empresa} onVoltar={()=>setSelecionado(null)}/>
+    <TelaHolerite h={selecionado} colab={colab} empresa={empresa} aceite={aceites[selecionado.id]??null} onVoltar={()=>setSelecionado(null)}/>
   )
 
   return (
     <PortalLayout sessao={sessao} aba={aba} onAba={setAba} onSair={sair}>
       {aba==='contracheque' && (
-        <AbaContracheque sessao={sessao} holerites={holerites} lancamentos={lancamentos} colab={colab} empresa={empresa} onSelecionar={setSelecionado}/>
+        <AbaContracheque sessao={sessao} holerites={holerites} lancamentos={lancamentos} colab={colab} empresa={empresa} aceites={aceites} onSelecionar={abrirHolerite}/>
       )}
       {aba==='ponto' && <AbaFolhaPonto sessao={sessao} dataAdmissao={colab?.data_admissao ?? null}/>}
       {aba==='documentos' && <AbaMeusDocumentos sessao={sessao}/>}
+
+      {/* ══ MODAL ACEITE DIGITAL ══ */}
+      {modalAceite && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.6)', zIndex:100, display:'flex', alignItems:'flex-end', justifyContent:'center' }}>
+          <div style={{ background:'#fff', borderRadius:'16px 16px 0 0', padding:'24px 20px 36px', width:'100%', maxWidth:480, animation:'slideUp .22s ease' }}>
+            <div style={{ display:'flex', justifyContent:'center', marginBottom:14 }}>
+              <span style={{ width:44, height:44, borderRadius:'50%', background:'#dbeafe', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                <ShieldCheck size={22} color="#1d4ed8"/>
+              </span>
+            </div>
+            <h2 style={{ textAlign:'center', fontSize:18, fontWeight:800, color:'#0f172a', margin:'0 0 6px' }}>Aceite Digital</h2>
+            <p style={{ textAlign:'center', fontSize:13, color:'#6b7280', lineHeight:1.6, margin:'0 0 18px' }}>
+              Ao confirmar, você declara que <strong>leu e está ciente</strong> do conteúdo do seu contracheque de 
+              <strong>{fmtComp(modalAceite.competencia)}</strong>.
+            </p>
+            {/* Resumo do holerite */}
+            <div style={{ background:'#f8fafc', borderRadius:10, padding:'12px 14px', marginBottom:18, display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:4 }}>
+              {[['Bruto','#16a34a',modalAceite.bruto],['Descontos','#dc2626',modalAceite.descontos??((modalAceite.inss??0)+(modalAceite.irrf??0))],['Líquido','#1d4ed8',modalAceite.liquido]].map(([label,cor,val])=>(
+                <div key={String(label)} style={{ textAlign:'center' }}>
+                  <div style={{ fontSize:9, color:'#9ca3af', fontWeight:700, textTransform:'uppercase', marginBottom:3 }}>{String(label)}</div>
+                  <div style={{ fontSize:13, fontWeight:800, color:String(cor) }}>{fmtR(val as number|null)}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ fontSize:11, color:'#9ca3af', background:'#f8fafc', borderRadius:8, padding:'8px 12px', marginBottom:18, lineHeight:1.7 }}>
+              🛡️ Serão registrados: <strong>data/hora</strong>, <strong>IP do dispositivo</strong> e <strong>identificação do usuário</strong> para fins jurídicos.
+            </div>
+            <button
+              onClick={() => confirmarAceite(modalAceite)}
+              disabled={salvandoAceite}
+              style={{ width:'100%', height:50, borderRadius:12, border:'none', background: salvandoAceite ? '#93c5fd' : 'linear-gradient(135deg,#1d4ed8,#0d3f56)', color:'#fff', fontWeight:800, fontSize:16, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:10, marginBottom:10, boxShadow:'0 4px 16px rgba(29,78,216,.3)' }}
+            >
+              {salvandoAceite ? <Loader2 size={18} className="animate-spin"/> : <CheckCircle2 size={18}/>}
+              {salvandoAceite ? 'Registrando…' : 'Li e estou ciente ✓'}
+            </button>
+            <button onClick={()=>setModalAceite(null)} style={{ width:'100%', height:40, borderRadius:10, border:'1px solid #e2e8f0', background:'#f8fafc', color:'#64748b', fontWeight:600, fontSize:14, cursor:'pointer' }}>
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+      <style>{`@keyframes slideUp{from{transform:translateY(100%);opacity:0}to{transform:translateY(0);opacity:1}}`}</style>
     </PortalLayout>
   )
 }
