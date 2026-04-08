@@ -48,6 +48,7 @@ const PortalMensagens    = React.lazy(() => import('@/pages/portal/PortalMensage
 const PortalProjetos     = React.lazy(() => import('@/pages/portal/PortalProjetos'))
 const PortalLancamentos  = React.lazy(() => import('@/pages/portal/PortalLancamentos'))
 const PortalClima        = React.lazy(() => import('@/pages/portal/PortalClima'))
+const DocViewer          = React.lazy(() => import('@/pages/DocViewer'))
 const MensagensAdmin     = React.lazy(() => import('@/pages/MensagensAdmin'))
 const CestaBasica        = React.lazy(() => import('@/pages/CestaBasica'))
 const Contracheques      = React.lazy(() => import('@/pages/Contracheques'))
@@ -435,6 +436,7 @@ export default function App() {
                 }
               />
               <Route path="/portal/contracheque" element={<PortalContracheque />} />
+              <Route path="/doc-viewer" element={<DocViewer />} />
 
               <Route
                 path="/acesso-colaboradores"

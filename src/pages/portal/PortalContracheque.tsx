@@ -123,6 +123,16 @@ function fmtHora(h: string | null): string {
   if (!h) return '—'
   return h.slice(0, 5)
 }
+
+// Converte URL pública do Storage em link seguro /doc-viewer
+function secureDocUrl(url: string | null | undefined): string {
+  if (!url) return '#'
+  // Se já é do supabase storage, passa pelo viewer seguro
+  if (url.includes('.supabase.co/storage/')) {
+    return `${window.location.origin}${window.location.pathname}#/doc-viewer?url=${encodeURIComponent(url)}`
+  }
+  return url
+}
 function fmtDiaSemana(d: string): string {
   const [y, m, day] = d.split('-')
   const dt = new Date(parseInt(y), parseInt(m) - 1, parseInt(day))
@@ -370,7 +380,7 @@ ${h.fgts&&h.fgts>0?`<div style="font-size:10px;color:#6b7280;padding:6px 18px;ba
             <Printer size={13}/> Imprimir
           </button>
           {h.arquivo_url && (
-            <a href={h.arquivo_url} target="_blank" rel="noreferrer" style={{ background:'rgba(255,255,255,.15)', border:'1px solid rgba(255,255,255,.3)', borderRadius:7, padding:'5px 10px', color:'#fff', textDecoration:'none', display:'flex', alignItems:'center', gap:5, fontSize:12 }}>
+            <a href={secureDocUrl(h.arquivo_url)} target="_blank" rel="noreferrer" style={{ background:'rgba(255,255,255,.15)', border:'1px solid rgba(255,255,255,.3)', borderRadius:7, padding:'5px 10px', color:'#fff', textDecoration:'none', display:'flex', alignItems:'center', gap:5, fontSize:12 }}>
               <Download size={13}/> PDF
             </a>
           )}
@@ -755,6 +765,13 @@ function AbaFolhaPonto({ sessao, dataAdmissao }: { sessao: Sessao; dataAdmissao:
     return { texto:status??'—', cor:'#6b7280', bg:'#f3f4f6', border:'#e5e7eb', emoji:'📅' }
   }
 
+  // Lançamentos de ponto do mês selecionado (fallback quando não há registros diários)
+  const lancsMes = lancamentos.filter(l => l.mes_referencia === mesSel || l.mes_referencia.startsWith(mesSel))
+  const totalHorasNormaisLanc = lancsMes.reduce((s,l)=>s+(l.snap_horas_normais??0),0)
+  const totalHorasExtrasLanc  = lancsMes.reduce((s,l)=>s+(l.snap_horas_extras??0),0)
+  const totalProducaoLanc     = lancsMes.reduce((s,l)=>s+(l.snap_valor_producao??0),0)
+  const totalLiquidoLanc      = lancsMes.reduce((s,l)=>s+(l.snap_liquido??0),0)
+
   return (
     <div style={{ paddingBottom: 90 }}>
       {/* Seletor de mês */}
@@ -768,6 +785,7 @@ function AbaFolhaPonto({ sessao, dataAdmissao }: { sessao: Sessao; dataAdmissao:
           style={{ width:'100%', height:42, borderRadius:10, border:'1.5px solid #e5e7eb', padding:'0 12px', fontSize:14, fontWeight:600, color:'#1a56a0', background:'#fff', cursor:'pointer', outline:'none' }}
         >
           {opcoesMes.map(o=><option key={o.val} value={o.val}>{o.label}</option>)}
+          {lancamentos.map(l=>l.mes_referencia.slice(0,7)).filter((m,i,arr)=>arr.indexOf(m)===i&&!opcoesMes.find(o=>o.val===m)).map(m=><option key={m} value={m}>{fmtComp(m)}</option>)}
         </select>
       </div>
 
@@ -794,15 +812,43 @@ function AbaFolhaPonto({ sessao, dataAdmissao }: { sessao: Sessao; dataAdmissao:
             <span style={{ fontSize:13, color:'#6b7280' }}>Carregando registros…</span>
           </div>
         ) : registros.length === 0 ? (
-          <div style={{ background:'#fff', borderRadius:14, padding:'36px 20px', textAlign:'center', border:'1px solid #e5e7eb' }}>
-            <div style={{ width:52, height:52, borderRadius:'50%', background:'#f3f4f6', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 14px' }}>
+          <div style={{ background:'#fff', borderRadius:14, padding:'28px 16px', textAlign:'center', border:'1px solid #e5e7eb' }}>
+            <div style={{ width:52, height:52, borderRadius:'50%', background:'#f3f4f6', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 12px' }}>
               <CalendarDays size={26} strokeWidth={1.5} color="#9ca3af"/>
             </div>
-            <div style={{ fontSize:15, fontWeight:700, color:'#374151', marginBottom:6 }}>Nenhum registro de ponto</div>
-            <div style={{ fontSize:12, color:'#6b7280', lineHeight:1.7 }}>
-              Não há lançamentos para <strong>{fmtComp(mesSel)}</strong>.<br/>
-              Selecione outro mês ou aguarde o lançamento pelo encarregado.
+            <div style={{ fontSize:15, fontWeight:700, color:'#374151', marginBottom:4 }}>Registro diário não disponível</div>
+            <div style={{ fontSize:12, color:'#6b7280', lineHeight:1.7, marginBottom: lancsMes.length>0?14:0 }}>
+              Registros por dia não foram lançados para <strong>{fmtComp(mesSel)}</strong>.
             </div>
+            {/* Fallback: mostrar resumo do lançamento de ponto (snap_) se disponível */}
+            {lancsMes.length > 0 && (
+              <div style={{ background:'#eff6ff', borderRadius:12, padding:'14px 16px', border:'1px solid #bfdbfe', textAlign:'left' }}>
+                <div style={{ fontSize:11, fontWeight:700, color:'#1d4ed8', marginBottom:10, textTransform:'uppercase', letterSpacing:.5 }}>📊 Resumo do Fechamento de Ponto</div>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:10 }}>
+                  {[
+                    { label:'Horas Normais', val:`${totalHorasNormaisLanc.toFixed(1)}h`, cor:'#1d4ed8' },
+                    { label:'Horas Extras',  val:`${totalHorasExtrasLanc.toFixed(1)}h`,  cor:'#92400e' },
+                    { label:'Produção',      val:fmtR(totalProducaoLanc),                cor:'#7c3aed' },
+                    { label:'Líquido',       val:fmtR(totalLiquidoLanc),                 cor:'#15803d' },
+                  ].map(item=>(
+                    <div key={item.label} style={{ background:'#fff', borderRadius:8, padding:'8px 10px' }}>
+                      <div style={{ fontSize:10, color:'#6b7280', fontWeight:600 }}>{item.label}</div>
+                      <div style={{ fontSize:14, fontWeight:800, color:item.cor }}>{item.val}</div>
+                    </div>
+                  ))}
+                </div>
+                {lancsMes.map((l,idx)=>(
+                  <div key={l.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', background:'#fff', borderRadius:8, padding:'7px 10px', border:'1px solid #dbeafe', fontSize:12, marginBottom:4 }}>
+                    <span style={{ color:'#374151', fontWeight:600 }}>Período {idx+1}: {fmtData(l.data_inicio)} → {fmtData(l.data_fim)}</span>
+                    <span style={{ fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:8,
+                      background: l.status==='pago'?'#dcfce7':l.status==='aprovado'?'#dbeafe':'#fef3c7',
+                      color: l.status==='pago'?'#15803d':l.status==='aprovado'?'#1d4ed8':'#92400e' }}>
+                      {l.status}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         ) : (
           <>
@@ -955,7 +1001,7 @@ function AbaMeusDocumentos({ sessao }: { sessao: Sessao }) {
                   <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 14px 12px', borderTop:'1px solid #f3f4f6' }}>
                     <span style={{ fontSize:10, color:'#9ca3af' }}>📅 {fmtData(doc.criado_em?.slice(0,10)??null)}</span>
                     {doc.arquivo_url ? (
-                      <a href={doc.arquivo_url} target="_blank" rel="noreferrer" style={{ display:'flex', alignItems:'center', gap:5, padding:'6px 14px', borderRadius:8, background:'#1a56a0', color:'#fff', fontSize:12, fontWeight:700, textDecoration:'none' }}>
+                      <a href={secureDocUrl(doc.arquivo_url)} target="_blank" rel="noreferrer" style={{ display:'flex', alignItems:'center', gap:5, padding:'6px 14px', borderRadius:8, background:'#1a56a0', color:'#fff', fontSize:12, fontWeight:700, textDecoration:'none' }}>
                         <Download size={13}/> Baixar
                       </a>
                     ) : (
@@ -1271,12 +1317,12 @@ export default function PortalContracheque() {
       {aba==='contracheque' && (
         <AbaContracheque sessao={sessao} holerites={holerites} lancamentos={lancamentos} colab={colab} empresa={empresa} aceites={aceites} onSelecionar={abrirHolerite}/>
       )}
-      {aba==='ponto' && <AbaFolhaPonto sessao={sessao} dataAdmissao={colab?.data_admissao ?? null}/>}
+      {aba==='ponto' && <AbaFolhaPonto sessao={sessao} dataAdmissao={colab?.data_admissao ?? null} lancamentos={lancamentos}/>}
       {aba==='documentos' && <AbaMeusDocumentos sessao={sessao}/>}
 
       {/* ══ MODAL ACEITE DIGITAL ══ */}
       {modalAceite && (
-        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.6)', zIndex:100, display:'flex', alignItems:'flex-end', justifyContent:'center' }}>
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.6)', zIndex:9999, display:'flex', alignItems:'flex-end', justifyContent:'center' }}>
           <div style={{ background:'#fff', borderRadius:'16px 16px 0 0', padding:'24px 20px 36px', width:'100%', maxWidth:480, animation:'slideUp .22s ease' }}>
             <div style={{ display:'flex', justifyContent:'center', marginBottom:14 }}>
               <span style={{ width:44, height:44, borderRadius:'50%', background:'#dbeafe', display:'flex', alignItems:'center', justifyContent:'center' }}>
