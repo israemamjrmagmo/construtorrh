@@ -2638,8 +2638,14 @@ ${crachaCardHTML(c, empNome, logoUrl)}
                               <Field label="Nome completo *" span={2}>
                                 <Input value={form.nome} onChange={e => set('nome', e.target.value)} placeholder="Nome completo" />
                               </Field>
-                              <Field label="CPF">
-                                <Input value={form.cpf} onChange={e => { const v = maskCPF(e.target.value); set('cpf', v); verificarListaNegra(v) }} placeholder="000.000.000-00" inputMode="numeric" />
+                              <Field label={editId && trocandoFuncao && form.funcao_id !== funcaoOriginal ? "CPF (protegido)" : "CPF"}>
+                                {editId && trocandoFuncao && form.funcao_id !== funcaoOriginal ? (
+                                  <Input value={form.cpf.replace(/\d/g, '*')} readOnly disabled style={{ background:'#f8fafc', color:'#94a3b8', cursor:'not-allowed' }} />
+                                ) : !editId ? (
+                                  <Input value={form.cpf.replace(/\D/g,'')} onChange={e => { const v=e.target.value.replace(/\D/g,'').slice(0,11); set('cpf',v); verificarListaNegra(v) }} placeholder="Somente números (11 dígitos)" inputMode="numeric" maxLength={11} />
+                                ) : (
+                                  <Input value={form.cpf} onChange={e => { const v = maskCPF(e.target.value); set('cpf', v); verificarListaNegra(v) }} placeholder="000.000.000-00" inputMode="numeric" />
+                                )}
                                 {alertaListaNegra && (
                                   <div style={{ marginTop: 6, background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: 8, padding: '8px 12px', display: 'flex', gap: 8, alignItems: 'flex-start' }}>
                                     <span style={{ fontSize: 16, flexShrink: 0 }}>🚫</span>
@@ -3292,8 +3298,14 @@ ${crachaCardHTML(c, empNome, logoUrl)}
                     <Field label="Nome completo *" span={2}>
                       <Input value={form.nome} onChange={e => set('nome', e.target.value)} placeholder="Nome completo" />
                     </Field>
-                    <Field label="CPF">
-                      <Input value={form.cpf} onChange={e => { const v = maskCPF(e.target.value); set('cpf', v); verificarListaNegra(v) }} placeholder="000.000.000-00" inputMode="numeric" />
+                    <Field label={editId && trocandoFuncao && form.funcao_id !== funcaoOriginal ? "CPF (protegido)" : "CPF"}>
+                      {editId && trocandoFuncao && form.funcao_id !== funcaoOriginal ? (
+                        <Input value={form.cpf.replace(/\d/g, '*')} readOnly disabled style={{ background:'#f8fafc', color:'#94a3b8', cursor:'not-allowed' }} />
+                      ) : !editId ? (
+                        <Input value={form.cpf.replace(/\D/g,'')} onChange={e => { const v=e.target.value.replace(/\D/g,'').slice(0,11); set('cpf',v); verificarListaNegra(v) }} placeholder="Somente números (11 dígitos)" inputMode="numeric" maxLength={11} />
+                      ) : (
+                        <Input value={form.cpf} onChange={e => { const v = maskCPF(e.target.value); set('cpf', v); verificarListaNegra(v) }} placeholder="000.000.000-00" inputMode="numeric" />
+                      )}
                       {alertaListaNegra && (
                         <div style={{ marginTop: 6, background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: 8, padding: '8px 12px', display: 'flex', gap: 8, alignItems: 'flex-start' }}>
                           <span style={{ fontSize: 16, flexShrink: 0 }}>🚫</span>
