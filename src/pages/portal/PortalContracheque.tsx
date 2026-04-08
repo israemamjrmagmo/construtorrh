@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase'
 import {
   Receipt, LogOut, AlertCircle, Key, Eye, EyeOff, Loader2,
   ChevronDown, ChevronUp, ChevronLeft, ChevronRight,
-  Download, Printer, Plus, Minus, Info,
+  Download, Printer, Plus, Minus, Info, CalendarDays,
 } from 'lucide-react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -46,6 +46,19 @@ type EmpresaInfo = {
   nome: string; cnpj: string; cidade: string; logo_url: string
 }
 
+// ─── NOVO: RegistroPonto ──────────────────────────────────────────────────────
+type RegistroPonto = {
+  id: string
+  data: string
+  hora_entrada: string | null
+  hora_saida: string | null
+  horas_trabalhadas: number | null
+  horas_extra: number | null
+  horas_falta: number | null
+  status: string | null
+  observacoes: string | null
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 async function sha256(msg: string): Promise<string> {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(msg))
@@ -55,6 +68,7 @@ async function sha256(msg: string): Promise<string> {
 const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho',
                'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
 const MESES_ABR = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
+const DIAS_SEMANA = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb']
 
 function fmtComp(d: string) {
   const [y, m] = d.slice(0, 7).split('-')
@@ -85,6 +99,32 @@ function formatarCPF(v: string) {
   return `${d.slice(0,3)}.${d.slice(3,6)}.${d.slice(6,9)}-${d.slice(9,11)}`
 }
 
+/** Formata "07:00:00" → "07:00", null → "—" */
+function fmtHora(h: string | null): string {
+  if (!h) return '—'
+  return h.slice(0, 5)
+}
+
+/** Formata "2026-03-26" → "Qui, 26/03" */
+function fmtDiaSemana(d: string): string {
+  const [y, m, day] = d.split('-')
+  const dt = new Date(parseInt(y), parseInt(m) - 1, parseInt(day))
+  return `${DIAS_SEMANA[dt.getDay()]}, ${day}/${m}`
+}
+
+/** "YYYY-MM" → lista de opções de mês [{val, label}] dos últimos 6 meses */
+function mesesDisponiveis(): { val: string; label: string }[] {
+  const result = []
+  const now = new Date()
+  for (let i = 0; i < 6; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    const label = `${MESES[d.getMonth()]} ${d.getFullYear()}`
+    result.push({ val, label })
+  }
+  return result
+}
+
 const TIPO_LABEL: Record<string, string> = {
   mensal:'Mensal', '13o_1a':'13º Salário — 1ª Parcela',
   '13o_2a':'13º Salário — 2ª Parcela', ferias:'Férias', adiantamento:'Adiantamento',
@@ -105,7 +145,7 @@ function DonutChart({ slices, size = 120 }: {
   const cy = size / 2
   const strokeW = 22
 
-  let acum = -90 // começa do topo
+  let acum = -90
   const arcos = slices.map(sl => {
     const pct = sl.valor / total
     const deg = pct * 360
@@ -123,7 +163,6 @@ function DonutChart({ slices, size = 120 }: {
 
   return (
     <svg width={size} height={size} style={{ display: 'block', margin: '0 auto' }}>
-      {/* Fundo */}
       <circle cx={cx} cy={cy} r={r} fill="none" stroke="#e5e7eb" strokeWidth={strokeW} />
       {arcos.map((a, i) => (
         <path key={i} d={a.path} fill="none" stroke={a.cor} strokeWidth={strokeW}
@@ -208,7 +247,6 @@ function CardResumo({ bruto, descontos, liquido }: {
       boxShadow: '0 2px 8px rgba(0,0,0,.06)',
       margin: '0 0 4px',
     }}>
-      {/* Bruto */}
       <div style={{ padding: '14px 12px', textAlign: 'center' }}>
         <div style={{ fontSize: 11, color: '#6b7280', fontWeight: 600, marginBottom: 6, textTransform: 'uppercase', letterSpacing: .4 }}>Bruto</div>
         <div style={{ fontSize: 16, fontWeight: 800, color: '#16a34a' }}>{fmtR(bruto)}</div>
@@ -221,7 +259,6 @@ function CardResumo({ bruto, descontos, liquido }: {
 
       <div style={{ background: '#e5e7eb' }}/>
 
-      {/* Descontos */}
       <div style={{ padding: '14px 12px', textAlign: 'center' }}>
         <div style={{ fontSize: 11, color: '#6b7280', fontWeight: 600, marginBottom: 6, textTransform: 'uppercase', letterSpacing: .4 }}>Descontos</div>
         <div style={{ fontSize: 16, fontWeight: 800, color: '#dc2626' }}>{fmtR(descontos)}</div>
@@ -234,7 +271,6 @@ function CardResumo({ bruto, descontos, liquido }: {
 
       <div style={{ background: '#e5e7eb' }}/>
 
-      {/* Líquido */}
       <div style={{ padding: '14px 12px', textAlign: 'center' }}>
         <div style={{ fontSize: 11, color: '#6b7280', fontWeight: 600, marginBottom: 6, textTransform: 'uppercase', letterSpacing: .4 }}>Líquido</div>
         <div style={{ fontSize: 16, fontWeight: 800, color: '#1d4ed8' }}>{fmtR(liquido)}</div>
@@ -243,6 +279,233 @@ function CardResumo({ bruto, descontos, liquido }: {
             <svg width="12" height="12" viewBox="0 0 12 12"><circle cx="6" cy="6" r="5" fill="none" stroke="#1d4ed8" strokeWidth="2"/><path d="M3 6l2 2 4-4" stroke="#1d4ed8" strokeWidth="2" fill="none" strokeLinecap="round"/></svg>
           </span>
         </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── TelaPonto: Histórico dia a dia ──────────────────────────────────────────
+function TelaPonto({ sessao, mesPontoSel, onVoltar }: {
+  sessao: Sessao
+  mesPontoSel: string   // YYYY-MM inicial passado pelo chamador
+  onVoltar: () => void
+}) {
+  const [mesSel, setMesSel]           = useState(mesPontoSel)
+  const [registros, setRegistros]     = useState<RegistroPonto[]>([])
+  const [loading, setLoading]         = useState(false)
+
+  const opcoesMes = mesesDisponiveis()
+
+  const carregarPonto = useCallback(async (mes: string) => {
+    setLoading(true)
+    const inicio = mes + '-01'
+    const fim    = mes + '-31'
+    const { data } = await supabase
+      .from('portal_ponto_diario')
+      .select('id,data,hora_entrada,hora_saida,horas_trabalhadas,horas_extra,horas_falta,status,observacoes')
+      .eq('colaborador_id', sessao.colaborador_id)
+      .gte('data', inicio)
+      .lte('data', fim)
+      .order('data', { ascending: true })
+    setRegistros((data as RegistroPonto[]) ?? [])
+    setLoading(false)
+  }, [sessao.colaborador_id])
+
+  useEffect(() => { carregarPonto(mesSel) }, [mesSel, carregarPonto])
+
+  // Totais
+  const totalHoras   = registros.reduce((s, r) => s + (r.horas_trabalhadas ?? 0), 0)
+  const totalExtras  = registros.reduce((s, r) => s + (r.horas_extra ?? 0), 0)
+  const totalFaltas  = registros.filter(r => r.status === 'falta' || r.status === 'ausente').length
+
+  function badgeStatus(status: string | null) {
+    const s = (status ?? '').toLowerCase()
+    if (s === 'presente') return { texto: '✅ Presente', cor: '#16a34a', bg: '#dcfce7', border: '#86efac' }
+    if (s === 'falta' || s === 'ausente') return { texto: '❌ Falta', cor: '#dc2626', bg: '#fee2e2', border: '#fca5a5' }
+    if (s === 'medio_dia' || s === 'meio_dia') return { texto: '🟡 Meio dia', cor: '#92400e', bg: '#fef3c7', border: '#fde68a' }
+    if (s === 'folga') return { texto: '🔵 Folga', cor: '#1d4ed8', bg: '#dbeafe', border: '#93c5fd' }
+    return { texto: status ?? '—', cor: '#6b7280', bg: '#f3f4f6', border: '#e5e7eb' }
+  }
+
+  return (
+    <div style={{ minHeight: '100vh', background: '#f3f4f6', display: 'flex', flexDirection: 'column' }}>
+      {/* Header azul */}
+      <div style={{ background: '#1a56a0', padding: '0 16px', position: 'sticky', top: 0, zIndex: 10 }}>
+        <div style={{ maxWidth: 500, margin: '0 auto', display: 'flex', alignItems: 'center', height: 52, gap: 10 }}>
+          <button onClick={onVoltar}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#fff', display: 'flex', alignItems: 'center', padding: 4 }}>
+            <ChevronLeft size={22} />
+          </button>
+          <span style={{ color: '#fff', fontWeight: 700, fontSize: 17, flex: 1 }}>Meu Ponto</span>
+          {/* Seletor de mês */}
+          <select
+            value={mesSel}
+            onChange={e => setMesSel(e.target.value)}
+            style={{
+              background: 'rgba(255,255,255,.15)', border: '1px solid rgba(255,255,255,.4)',
+              borderRadius: 8, padding: '5px 10px', color: '#fff', fontSize: 12,
+              fontWeight: 600, cursor: 'pointer', outline: 'none',
+            }}
+          >
+            {opcoesMes.map(o => (
+              <option key={o.val} value={o.val} style={{ background: '#1a56a0', color: '#fff' }}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Sub-info colaborador */}
+        <div style={{ maxWidth: 500, margin: '0 auto', paddingBottom: 12 }}>
+          <div style={{ background: 'rgba(255,255,255,.12)', borderRadius: 8, padding: '7px 12px' }}>
+            <div style={{ fontSize: 10, color: 'rgba(255,255,255,.65)', marginBottom: 1 }}>Colaborador</div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#fff' }}>{sessao.nome}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Conteúdo */}
+      <div style={{ maxWidth: 500, margin: '0 auto', width: '100%', padding: '16px 16px 32px' }}>
+        {loading ? (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '64px 0', gap: 12 }}>
+            <Loader2 size={32} className="animate-spin" color="#1a56a0" />
+            <span style={{ fontSize: 13, color: '#6b7280' }}>Carregando registros…</span>
+          </div>
+        ) : registros.length === 0 ? (
+          <div style={{ background: '#fff', borderRadius: 14, padding: '36px 24px', textAlign: 'center', border: '1px solid #e5e7eb' }}>
+            <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+              <CalendarDays size={28} strokeWidth={1.5} color="#9ca3af" />
+            </div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: '#374151', marginBottom: 8 }}>Nenhum registro de ponto</div>
+            <div style={{ fontSize: 13, color: '#6b7280', lineHeight: 1.7 }}>
+              Não há registros para <strong>{fmtComp(mesSel)}</strong>.<br/>
+              Selecione outro mês ou aguarde o lançamento pelo RH.
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* Cards por dia */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {registros.map(reg => {
+                const badge = badgeStatus(reg.status)
+                const isFalta = (reg.status ?? '').toLowerCase() === 'falta' || (reg.status ?? '').toLowerCase() === 'ausente'
+                const htrab = reg.horas_trabalhadas ?? 0
+                const hext  = reg.horas_extra ?? 0
+                return (
+                  <div key={reg.id} style={{
+                    background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb',
+                    overflow: 'hidden', boxShadow: '0 2px 6px rgba(0,0,0,.04)',
+                  }}>
+                    {/* Linha de status + data */}
+                    <div style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      padding: '11px 14px', borderBottom: isFalta ? 'none' : '1px solid #f3f4f6',
+                    }}>
+                      <span style={{ fontSize: 14, fontWeight: 700, color: '#111827' }}>
+                        📅 {fmtDiaSemana(reg.data)}
+                      </span>
+                      <span style={{
+                        fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20,
+                        color: badge.cor, background: badge.bg, border: `1px solid ${badge.border}`,
+                        whiteSpace: 'nowrap',
+                      }}>
+                        {badge.texto}
+                      </span>
+                    </div>
+
+                    {/* Observação se falta */}
+                    {isFalta && reg.observacoes && (
+                      <div style={{ padding: '6px 14px 10px', fontSize: 12, color: '#6b7280', fontStyle: 'italic' }}>
+                        {reg.observacoes}
+                      </div>
+                    )}
+
+                    {/* Horários (só se não for falta pura) */}
+                    {!isFalta && (
+                      <div style={{ padding: '10px 14px' }}>
+                        {/* Linha de horários */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap', marginBottom: 8 }}>
+                          <span style={{ fontSize: 11, color: '#6b7280', fontWeight: 600, minWidth: 52 }}>Entrada:</span>
+                          <span style={{
+                            fontSize: 13, fontWeight: 700, color: reg.hora_entrada ? '#16a34a' : '#9ca3af',
+                            background: reg.hora_entrada ? '#dcfce7' : '#f3f4f6',
+                            padding: '2px 9px', borderRadius: 8,
+                          }}>
+                            🟢 {fmtHora(reg.hora_entrada)}
+                          </span>
+                          <span style={{ color: '#e5e7eb', margin: '0 2px' }}>→</span>
+                          <span style={{ fontSize: 11, color: '#6b7280', fontWeight: 600, minWidth: 44 }}>Saída:</span>
+                          <span style={{
+                            fontSize: 13, fontWeight: 700, color: reg.hora_saida ? '#dc2626' : '#9ca3af',
+                            background: reg.hora_saida ? '#fee2e2' : '#f3f4f6',
+                            padding: '2px 9px', borderRadius: 8,
+                          }}>
+                            🔴 {fmtHora(reg.hora_saida)}
+                          </span>
+                        </div>
+
+                        {/* Linha de horas */}
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                          <span style={{
+                            display: 'flex', alignItems: 'center', gap: 4, fontSize: 12,
+                            color: '#1a56a0', fontWeight: 700,
+                            background: '#eff6ff', padding: '3px 10px', borderRadius: 8,
+                          }}>
+                            ⏱ {htrab.toFixed(2).replace('.', ',')}h trabalhadas
+                          </span>
+                          {hext > 0 && (
+                            <span style={{
+                              display: 'flex', alignItems: 'center', gap: 4, fontSize: 12,
+                              color: '#92400e', fontWeight: 700,
+                              background: '#fef3c7', padding: '3px 10px', borderRadius: 8,
+                            }}>
+                              ⚡ {hext.toFixed(2).replace('.', ',')}h extras
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Observação */}
+                        {reg.observacoes && (
+                          <div style={{ marginTop: 6, fontSize: 11, color: '#6b7280', fontStyle: 'italic' }}>
+                            📝 {reg.observacoes}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Rodapé totais */}
+            <div style={{
+              marginTop: 16, background: '#1a56a0', borderRadius: 12,
+              padding: '14px 18px',
+            }}>
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,.7)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: .5, marginBottom: 10 }}>
+                Totais do Mês — {fmtComp(mesSel)}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
+                <div style={{ background: 'rgba(255,255,255,.12)', borderRadius: 8, padding: '8px 10px', textAlign: 'center' }}>
+                  <div style={{ fontSize: 10, color: 'rgba(255,255,255,.65)', marginBottom: 3 }}>Trabalhadas</div>
+                  <div style={{ fontSize: 16, fontWeight: 800, color: '#fff' }}>{totalHoras.toFixed(1).replace('.', ',')}h</div>
+                </div>
+                <div style={{ background: 'rgba(255,255,255,.12)', borderRadius: 8, padding: '8px 10px', textAlign: 'center' }}>
+                  <div style={{ fontSize: 10, color: 'rgba(255,255,255,.65)', marginBottom: 3 }}>Extras</div>
+                  <div style={{ fontSize: 16, fontWeight: 800, color: totalExtras > 0 ? '#fbbf24' : '#fff' }}>
+                    {totalExtras.toFixed(1).replace('.', ',')}h
+                  </div>
+                </div>
+                <div style={{ background: 'rgba(255,255,255,.12)', borderRadius: 8, padding: '8px 10px', textAlign: 'center' }}>
+                  <div style={{ fontSize: 10, color: 'rgba(255,255,255,.65)', marginBottom: 3 }}>Faltas</div>
+                  <div style={{ fontSize: 16, fontWeight: 800, color: totalFaltas > 0 ? '#fca5a5' : '#fff' }}>
+                    {totalFaltas}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   )
@@ -258,7 +521,6 @@ function TelaHolerite({ h, colab, empresa, onVoltar }: {
   const descontos = (h.inss ?? 0) + (h.irrf ?? 0) + (h.desconto_vt ?? 0) + (h.desconto_adiant ?? 0) + (h.cesta_basica ?? 0) || (h.descontos ?? 0)
   const liquido  = h.liquido  ?? Math.max(0, bruto - descontos)
 
-  // Rendimentos para gráfico
   const rendimentos = [
     { cod:'0001', desc:'Salário / Valor Horas',  val: h.salario_base,   cor:'#3b82f6' },
     { cod:'0002', desc:'Produção',               val: h.valor_producao, cor:'#10b981' },
@@ -266,7 +528,6 @@ function TelaHolerite({ h, colab, empresa, onVoltar }: {
     { cod:'0004', desc:'Prêmios',                val: h.valor_premio,   cor:'#f59e0b' },
   ].filter(r => r.val && r.val > 0)
 
-  // Se sem detalhes mas tem bruto, mostra total genérico
   if (!rendimentos.length && bruto > 0) {
     rendimentos.push({ cod:'0001', desc:'Total Rendimentos', val: bruto, cor:'#3b82f6' })
   }
@@ -283,7 +544,6 @@ function TelaHolerite({ h, colab, empresa, onVoltar }: {
     descontosList.push({ cod:'0101', desc:'Total Descontos', val: descontos, cor:'#ef4444' })
   }
 
-  // Slices para o gráfico dos rendimentos
   const slicesRend = rendimentos.map(r => ({ valor: r.val!, cor: r.cor, label: r.desc }))
   const slicesDesc = descontosList.map(d => ({ valor: d.val!, cor: d.cor, label: d.desc }))
 
@@ -394,12 +654,10 @@ function TelaHolerite({ h, colab, empresa, onVoltar }: {
         {/* Info da competência */}
         <div style={{ background: '#1a56a0', padding: '0 16px 16px', color: '#fff' }}>
           <div style={{ maxWidth: 480, margin: '0 auto' }}>
-            {/* Órgão / Matrícula */}
             <div style={{ background: 'rgba(255,255,255,.12)', borderRadius: 8, padding: '8px 12px', marginBottom: 8 }}>
               <div style={{ fontSize: 10, color: 'rgba(255,255,255,.7)', marginBottom: 1 }}>Empresa · Matrícula</div>
               <div style={{ fontSize: 13, fontWeight: 600 }}>{empresa?.nome ?? '—'} · {colab?.chapa ?? '—'}</div>
             </div>
-            {/* Cargo */}
             <div style={{ background: 'rgba(255,255,255,.12)', borderRadius: 8, padding: '8px 12px' }}>
               <div style={{ fontSize: 10, color: 'rgba(255,255,255,.7)', marginBottom: 1 }}>Cargo / Função</div>
               <div style={{ fontSize: 13, fontWeight: 600 }}>{h.funcao ?? colab?.funcao ?? '—'}</div>
@@ -434,7 +692,6 @@ function TelaHolerite({ h, colab, empresa, onVoltar }: {
             aberto={secAberta === 'rendimentos'}
             onToggle={() => setSecAberta(s => s === 'rendimentos' ? null : 'rendimentos')}
           >
-            {/* Gráfico */}
             {slicesRend.length > 0 && (
               <div style={{ padding: '16px 0 8px' }}>
                 <DonutChart slices={slicesRend} size={140} />
@@ -451,7 +708,6 @@ function TelaHolerite({ h, colab, empresa, onVoltar }: {
                 </div>
               </div>
             )}
-            {/* Linhas */}
             <div style={{ marginTop: 8 }}>
               <LinhaDetalhe codigo="0001" descricao="Salário / Valor Horas"  valor={h.salario_base}   cor="#16a34a" />
               <LinhaDetalhe codigo="0002" descricao="Produção"               valor={h.valor_producao} cor="#16a34a" />
@@ -460,7 +716,6 @@ function TelaHolerite({ h, colab, empresa, onVoltar }: {
               {!h.salario_base && !h.valor_producao && bruto > 0 && (
                 <LinhaDetalhe codigo="0001" descricao="Total Rendimentos" valor={bruto} cor="#16a34a" />
               )}
-              {/* Total */}
               <div style={{ display:'flex', justifyContent:'space-between', padding:'10px 16px', background:'#f0fdf4', borderTop:'2px solid #bbf7d0' }}>
                 <span style={{ fontWeight:700, fontSize:13, color:'#15803d' }}>Total Rendimentos</span>
                 <span style={{ fontWeight:800, fontSize:14, color:'#15803d' }}>{fmtR(bruto)}</span>
@@ -682,7 +937,6 @@ function TelaLogin({ onLogin }: { onLogin: (s: Sessao) => void }) {
 
   return (
     <div style={{ minHeight:'100vh', background:'linear-gradient(160deg,#1a56a0,#0d3f56)', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:20 }}>
-      {/* Logo SOU-GOV style */}
       <div style={{ textAlign:'center', marginBottom:28 }}>
         <div style={{ width:72, height:72, borderRadius:18, background:'rgba(255,255,255,.15)', border:'2px solid rgba(255,255,255,.3)', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 14px', backdropFilter:'blur(4px)' }}>
           <Receipt size={32} color="#fff"/>
@@ -733,17 +987,17 @@ function TelaLogin({ onLogin }: { onLogin: (s: Sessao) => void }) {
 }
 
 // ─── Tela de lista de contracheques (carrossel de meses) ─────────────────────
-function TelaLista({ sessao, holerites, lancamentos, colab, empresa, onSelecionar, onSair }: {
+function TelaLista({ sessao, holerites, lancamentos, colab, empresa, onSelecionar, onVerPonto, onSair }: {
   sessao: Sessao; holerites: Contracheque[]; lancamentos: PontoLancamento[]
   colab: ColabInfo | null; empresa: EmpresaInfo | null
-  onSelecionar: (h: Contracheque) => void; onSair: () => void
+  onSelecionar: (h: Contracheque) => void
+  onVerPonto: (mes: string) => void
+  onSair: () => void
 }) {
-  // Índice do mês ativo (mais recente = 0)
   const [idxAtivo, setIdxAtivo] = useState(0)
   const [pontoAberto, setPontoAberto] = useState<string | null>(null)
   const carrosselRef = useRef<HTMLDivElement>(null)
 
-  // Agrupar lancamentos por mes_referencia
   const pontoAgrupado = lancamentos.reduce((acc, l) => {
     if (!acc[l.mes_referencia]) acc[l.mes_referencia] = []
     acc[l.mes_referencia].push(l)
@@ -764,7 +1018,6 @@ function TelaLista({ sessao, holerites, lancamentos, colab, empresa, onSeleciona
     return `${d}/${m}`
   }
 
-  // Scroll automático quando troca de índice
   useEffect(() => {
     if (!carrosselRef.current) return
     const btns = carrosselRef.current.querySelectorAll('button[data-idx]')
@@ -991,16 +1244,31 @@ function TelaLista({ sessao, holerites, lancamentos, colab, empresa, onSeleciona
                         {/* Linha divisória */}
                         <div style={{ height:1, background:'#e5e7eb', margin:'0 14px' }}/>
 
-                        {/* Total bruto + qtd pagamentos */}
-                        <div style={{ padding:'9px 14px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                        {/* Total bruto + botão Ver dias */}
+                        <div style={{ padding:'9px 14px', display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:6 }}>
                           <div style={{ fontSize:12, color:'#374151' }}>
                             <span>📊 </span>
                             <span style={{ color:'#6b7280' }}>Total Bruto: </span>
                             <span style={{ fontWeight:800, color:'#111827' }}>{fmtR(totalBruto)}</span>
                           </div>
-                          <span style={{ fontSize:11, fontWeight:600, color:'#6b7280', background:'#f3f4f6', padding:'2px 8px', borderRadius:8 }}>
-                            {grupo.length}x pagamento{grupo.length > 1 ? 's' : ''}
-                          </span>
+                          <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                            <span style={{ fontSize:11, fontWeight:600, color:'#6b7280', background:'#f3f4f6', padding:'2px 8px', borderRadius:8 }}>
+                              {grupo.length}x pagamento{grupo.length > 1 ? 's' : ''}
+                            </span>
+                            {/* ── BOTÃO: Ver dias trabalhados ── */}
+                            <button
+                              onClick={() => onVerPonto(mes)}
+                              style={{
+                                display:'flex', alignItems:'center', gap:4,
+                                padding:'4px 10px', borderRadius:8,
+                                border:'1px solid #1a56a0', background:'#eff6ff',
+                                cursor:'pointer', fontSize:11, color:'#1a56a0', fontWeight:700,
+                                whiteSpace:'nowrap',
+                              }}
+                            >
+                              <CalendarDays size={12}/> Ver dias
+                            </button>
+                          </div>
                         </div>
 
                         {/* Parcelas detalhadas (expansível) */}
@@ -1086,6 +1354,8 @@ export default function PortalContracheque() {
   const [empresa, setEmpresa]       = useState<EmpresaInfo | null>(null)
   const [loading, setLoading]       = useState(false)
   const [selecionado, setSelecionado] = useState<Contracheque | null>(null)
+  // ── NOVO: estado para TelaPonto
+  const [telaPontoMes, setTelaPontoMes] = useState<string | null>(null)
 
   const carregar = useCallback(async (colaboradorId: string) => {
     setLoading(true)
@@ -1111,7 +1381,6 @@ export default function PortalContracheque() {
       ])
       setHolerites((holRes.data as Contracheque[]) ?? [])
       setLancamentos((pontRes.data as PontoLancamento[]) ?? [])
-      // Normalizar: mapear funcoes(nome) → funcao
       const rawColab = colRes.data as any
       if (rawColab) {
         rawColab.funcao = rawColab.funcoes?.nome ?? null
@@ -1134,7 +1403,7 @@ export default function PortalContracheque() {
 
   function sair() {
     localStorage.removeItem(SESSION_KEY)
-    setSessao(null); setHolerites([]); setLancamentos([]); setSelecionado(null)
+    setSessao(null); setHolerites([]); setLancamentos([]); setSelecionado(null); setTelaPontoMes(null)
   }
 
   if (!sessao) return <TelaLogin onLogin={setSessao} />
@@ -1144,6 +1413,15 @@ export default function PortalContracheque() {
       <Loader2 size={40} className="animate-spin" color="#fff"/>
       <span style={{ color:'rgba(255,255,255,.8)', fontSize:14 }}>Carregando contracheques…</span>
     </div>
+  )
+
+  // ── TelaPonto ──
+  if (telaPontoMes !== null) return (
+    <TelaPonto
+      sessao={sessao}
+      mesPontoSel={telaPontoMes}
+      onVoltar={() => setTelaPontoMes(null)}
+    />
   )
 
   if (selecionado) return (
@@ -1163,6 +1441,7 @@ export default function PortalContracheque() {
       colab={colab}
       empresa={empresa}
       onSelecionar={setSelecionado}
+      onVerPonto={mes => setTelaPontoMes(mes)}
       onSair={sair}
     />
   )
