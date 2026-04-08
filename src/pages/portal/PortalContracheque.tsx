@@ -25,6 +25,17 @@ type Contracheque = {
   gerado_do_sistema: boolean | null; publicado_em: string | null
 }
 
+type PontoLancamento = {
+  id: string; mes_referencia: string; data_inicio: string; data_fim: string
+  status: string; data_pagamento: string | null
+  snap_horas_normais: number | null; snap_horas_extras: number | null
+  snap_valor_horas: number | null; snap_valor_producao: number | null
+  snap_valor_dsr: number | null; snap_valor_premio: number | null
+  snap_valor_total: number | null; snap_faltas: number | null
+  snap_desconto_vt: number | null; snap_desconto_adiant: number | null
+  snap_inss: number | null; snap_ir: number | null; snap_liquido: number | null
+}
+
 type ColabInfo = {
   nome: string; chapa: string | null; cpf: string | null
   funcao: string | null; tipo_contrato: string | null
@@ -722,14 +733,36 @@ function TelaLogin({ onLogin }: { onLogin: (s: Sessao) => void }) {
 }
 
 // ─── Tela de lista de contracheques (carrossel de meses) ─────────────────────
-function TelaLista({ sessao, holerites, colab, empresa, onSelecionar, onSair }: {
-  sessao: Sessao; holerites: Contracheque[]
+function TelaLista({ sessao, holerites, lancamentos, colab, empresa, onSelecionar, onSair }: {
+  sessao: Sessao; holerites: Contracheque[]; lancamentos: PontoLancamento[]
   colab: ColabInfo | null; empresa: EmpresaInfo | null
   onSelecionar: (h: Contracheque) => void; onSair: () => void
 }) {
   // Índice do mês ativo (mais recente = 0)
   const [idxAtivo, setIdxAtivo] = useState(0)
+  const [pontoAberto, setPontoAberto] = useState<string | null>(null)
   const carrosselRef = useRef<HTMLDivElement>(null)
+
+  // Agrupar lancamentos por mes_referencia
+  const pontoAgrupado = lancamentos.reduce((acc, l) => {
+    if (!acc[l.mes_referencia]) acc[l.mes_referencia] = []
+    acc[l.mes_referencia].push(l)
+    return acc
+  }, {} as Record<string, PontoLancamento[]>)
+
+  const mesesPonto = Object.keys(pontoAgrupado).sort((a, b) => b.localeCompare(a))
+
+  function statusMes(grupo: PontoLancamento[]): { texto: string; cor: string; bg: string; border: string } {
+    const todos = grupo.map(l => l.status)
+    if (todos.every(s => s === 'pago')) return { texto: 'Pago', cor: '#15803d', bg: '#dcfce7', border: '#86efac' }
+    if (todos.some(s => s === 'aprovado' || s === 'liberado')) return { texto: 'Aprovado', cor: '#1d4ed8', bg: '#dbeafe', border: '#93c5fd' }
+    return { texto: 'Pendente', cor: '#92400e', bg: '#fef3c7', border: '#fde68a' }
+  }
+
+  function fmtDiaMes(data: string) {
+    const [, m, d] = data.split('-')
+    return `${d}/${m}`
+  }
 
   // Scroll automático quando troca de índice
   useEffect(() => {
@@ -896,6 +929,111 @@ function TelaLista({ sessao, holerites, colab, empresa, onSelecionar, onSair }: 
               </button>
             </div>
 
+            {/* ── Histórico de Ponto ── */}
+            {mesesPonto.length > 0 && (
+              <div style={{ marginTop:20 }}>
+                <div style={{ fontSize:12, fontWeight:700, color:'#6b7280', textTransform:'uppercase', letterSpacing:.5, marginBottom:10 }}>
+                  📋 Histórico de Ponto
+                </div>
+                <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                  {mesesPonto.map(mes => {
+                    const grupo = pontoAgrupado[mes]
+                    const st = statusMes(grupo)
+                    const totalHorasNormais = grupo.reduce((s, l) => s + (l.snap_horas_normais ?? 0), 0)
+                    const totalHorasExtras  = grupo.reduce((s, l) => s + (l.snap_horas_extras  ?? 0), 0)
+                    const totalProducao     = grupo.reduce((s, l) => s + (l.snap_valor_producao ?? 0), 0)
+                    const totalPremio       = grupo.reduce((s, l) => s + (l.snap_valor_premio   ?? 0), 0)
+                    const totalBruto        = grupo.reduce((s, l) => s + (l.snap_valor_total    ?? 0), 0)
+                    const aberto            = pontoAberto === mes
+                    return (
+                      <div key={mes} style={{ background:'#fff', borderRadius:12, border:'1px solid #e5e7eb', overflow:'hidden', boxShadow:'0 2px 6px rgba(0,0,0,.05)' }}>
+                        {/* Header do card */}
+                        <button
+                          onClick={() => setPontoAberto(aberto ? null : mes)}
+                          style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'space-between', padding:'13px 14px', background:'none', border:'none', cursor:'pointer', textAlign:'left' }}>
+                          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                            <span style={{ fontSize:16 }}>📅</span>
+                            <span style={{ fontSize:14, fontWeight:700, color:'#111827' }}>{fmtComp(mes)}</span>
+                            <span style={{ fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:10, color: st.cor, background: st.bg, border: `1px solid ${st.border}` }}>
+                              {st.texto}
+                            </span>
+                          </div>
+                          {aberto ? <ChevronUp size={16} color="#6b7280"/> : <ChevronDown size={16} color="#6b7280"/>}
+                        </button>
+
+                        {/* Linha divisória */}
+                        <div style={{ height:1, background:'#e5e7eb', margin:'0 14px' }}/>
+
+                        {/* Resumo horas e valores */}
+                        <div style={{ padding:'10px 14px', display:'grid', gridTemplateColumns:'1fr 1fr', gap:'6px 12px' }}>
+                          <div style={{ display:'flex', alignItems:'center', gap:6, fontSize:12, color:'#374151' }}>
+                            <span>⏱</span>
+                            <span style={{ color:'#6b7280' }}>H. Normais</span>
+                            <span style={{ fontWeight:700, marginLeft:'auto' }}>{totalHorasNormais.toFixed(1)}h</span>
+                          </div>
+                          <div style={{ display:'flex', alignItems:'center', gap:6, fontSize:12, color:'#374151' }}>
+                            <span>⚡</span>
+                            <span style={{ color:'#6b7280' }}>H. Extras</span>
+                            <span style={{ fontWeight:700, marginLeft:'auto' }}>{totalHorasExtras.toFixed(1)}h</span>
+                          </div>
+                          <div style={{ display:'flex', alignItems:'center', gap:6, fontSize:12, color:'#374151' }}>
+                            <span>📦</span>
+                            <span style={{ color:'#6b7280' }}>Produção</span>
+                            <span style={{ fontWeight:700, marginLeft:'auto' }}>{fmtR(totalProducao)}</span>
+                          </div>
+                          <div style={{ display:'flex', alignItems:'center', gap:6, fontSize:12, color:'#374151' }}>
+                            <span>🌟</span>
+                            <span style={{ color:'#6b7280' }}>Prêmio</span>
+                            <span style={{ fontWeight:700, marginLeft:'auto' }}>{fmtR(totalPremio)}</span>
+                          </div>
+                        </div>
+
+                        {/* Linha divisória */}
+                        <div style={{ height:1, background:'#e5e7eb', margin:'0 14px' }}/>
+
+                        {/* Total bruto + qtd pagamentos */}
+                        <div style={{ padding:'9px 14px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                          <div style={{ fontSize:12, color:'#374151' }}>
+                            <span>📊 </span>
+                            <span style={{ color:'#6b7280' }}>Total Bruto: </span>
+                            <span style={{ fontWeight:800, color:'#111827' }}>{fmtR(totalBruto)}</span>
+                          </div>
+                          <span style={{ fontSize:11, fontWeight:600, color:'#6b7280', background:'#f3f4f6', padding:'2px 8px', borderRadius:8 }}>
+                            {grupo.length}x pagamento{grupo.length > 1 ? 's' : ''}
+                          </span>
+                        </div>
+
+                        {/* Parcelas detalhadas (expansível) */}
+                        {aberto && (
+                          <div style={{ borderTop:'1px solid #e5e7eb', background:'#f9fafb', padding:'8px 14px 10px' }}>
+                            {grupo.map((l, idx) => {
+                              const stL = l.status === 'pago' ? { cor:'#15803d', bg:'#dcfce7', border:'#86efac' }
+                                        : l.status === 'aprovado' || l.status === 'liberado' ? { cor:'#1d4ed8', bg:'#dbeafe', border:'#93c5fd' }
+                                        : { cor:'#92400e', bg:'#fef3c7', border:'#fde68a' }
+                              return (
+                                <div key={l.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'6px 10px', marginBottom:4, background:'#fff', borderRadius:8, border:'1px solid #e5e7eb', fontSize:12 }}>
+                                  <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                                    <span style={{ fontWeight:600, color:'#1a56a0', minWidth:16 }}>P{idx+1}</span>
+                                    <span style={{ color:'#374151' }}>{fmtDiaMes(l.data_inicio)}-{fmtDiaMes(l.data_fim)}</span>
+                                  </div>
+                                  <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                                    <span style={{ fontWeight:700, color:'#111827' }}>{fmtR(l.snap_liquido)}</span>
+                                    <span style={{ fontSize:10, fontWeight:700, padding:'1px 7px', borderRadius:8, color: stL.cor, background: stL.bg, border: `1px solid ${stL.border}` }}>
+                                      {l.status}
+                                    </span>
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
             {/* Histórico abaixo */}
             {holerites.length > 1 && (
               <div style={{ marginTop:16 }}>
@@ -943,6 +1081,7 @@ export default function PortalContracheque() {
     catch { return null }
   })
   const [holerites, setHolerites]   = useState<Contracheque[]>([])
+  const [lancamentos, setLancamentos] = useState<PontoLancamento[]>([])
   const [colab, setColab]           = useState<ColabInfo | null>(null)
   const [empresa, setEmpresa]       = useState<EmpresaInfo | null>(null)
   const [loading, setLoading]       = useState(false)
@@ -951,7 +1090,7 @@ export default function PortalContracheque() {
   const carregar = useCallback(async (colaboradorId: string) => {
     setLoading(true)
     try {
-      const [holRes, colRes, empRes] = await Promise.all([
+      const [holRes, colRes, empRes, pontRes] = await Promise.all([
         supabase.from('contracheques')
           .select('*')
           .eq('colaborador_id', colaboradorId)
@@ -963,8 +1102,15 @@ export default function PortalContracheque() {
         supabase.from('configuracoes')
           .select('chave,valor')
           .in('chave', ['empresa_nome','empresa_cnpj','empresa_endereco','empresa_cidade','empresa_telefone','empresa_logo_url']),
+        supabase.from('ponto_lancamentos')
+          .select('id,mes_referencia,data_inicio,data_fim,status,data_pagamento,snap_horas_normais,snap_horas_extras,snap_valor_horas,snap_valor_producao,snap_valor_dsr,snap_valor_premio,snap_valor_total,snap_faltas,snap_desconto_vt,snap_desconto_adiant,snap_inss,snap_ir,snap_liquido')
+          .eq('colaborador_id', colaboradorId)
+          .in('status', ['pago', 'aprovado', 'liberado'])
+          .order('mes_referencia', { ascending: false })
+          .order('data_inicio', { ascending: true }),
       ])
       setHolerites((holRes.data as Contracheque[]) ?? [])
+      setLancamentos((pontRes.data as PontoLancamento[]) ?? [])
       // Normalizar: mapear funcoes(nome) → funcao
       const rawColab = colRes.data as any
       if (rawColab) {
@@ -988,7 +1134,7 @@ export default function PortalContracheque() {
 
   function sair() {
     localStorage.removeItem(SESSION_KEY)
-    setSessao(null); setHolerites([]); setSelecionado(null)
+    setSessao(null); setHolerites([]); setLancamentos([]); setSelecionado(null)
   }
 
   if (!sessao) return <TelaLogin onLogin={setSessao} />
@@ -1013,6 +1159,7 @@ export default function PortalContracheque() {
     <TelaLista
       sessao={sessao}
       holerites={holerites}
+      lancamentos={lancamentos}
       colab={colab}
       empresa={empresa}
       onSelecionar={setSelecionado}
