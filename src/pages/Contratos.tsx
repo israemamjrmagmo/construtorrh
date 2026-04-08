@@ -1477,6 +1477,19 @@ body { font-family:Calibri,Arial,sans-serif; font-size:12pt; color:#1a1a1a; }
                     <div style={{ height: 3, background: '#1e3a5f', borderBottom: '1px solid #93c5fd' }} />
                     <div style={{ padding: '24px 28px', fontFamily: "'Times New Roman',Georgia,serif", fontSize: '12pt', lineHeight: 1.6, color: '#1a1a1a' }}
                       dangerouslySetInnerHTML={{ __html: previewHtml }} />
+                    {/* Bloco de assinaturas padrão — sempre visível no preview */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 28, margin: '28px 28px 24px', paddingTop: 0 }}>
+                      <div style={{ borderTop: '1px solid #0f172a', paddingTop: 6, fontSize: '10pt', fontWeight: 700, textAlign: 'center', lineHeight: 1.5, fontFamily: 'Calibri, Arial, sans-serif' }}>
+                        {empData.nome || 'Empresa'}<br/>
+                        <span style={{ fontSize: '8.5pt', fontWeight: 400, color: '#555' }}>Representante Legal</span>
+                      </div>
+                      <div style={{ borderTop: '1px solid #0f172a', paddingTop: 6, fontSize: '10pt', fontWeight: 700, textAlign: 'center', lineHeight: 1.5, fontFamily: 'Calibri, Arial, sans-serif' }}>
+                        {colabSel?.nome ?? 'Colaborador(a)'}<br/>
+                        <span style={{ fontSize: '8.5pt', fontWeight: 400, color: '#555' }}>
+                          {(colabSel?.funcoes as any)?.nome ?? 'Assinatura'}
+                        </span>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </>
@@ -2055,6 +2068,19 @@ body { font-family:Calibri,Arial,sans-serif; font-size:12pt; color:#1a1a1a; }
                   <div style={{ height:3, background:'#1e3a5f', borderBottom:'1px solid #93c5fd' }}/>
                   <div style={{ padding:'24px 28px', fontFamily:"'Times New Roman',Georgia,serif", fontSize:'12pt', lineHeight:1.6, color:'#1a1a1a' }}
                     dangerouslySetInnerHTML={{ __html: previewHtmlLocal }}/>
+                  {/* Bloco de assinaturas padrão */}
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:28, margin:'28px 28px 24px' }}>
+                    <div style={{ borderTop:'1pt solid #0f172a', paddingTop:6, fontSize:'10pt', fontWeight:700, textAlign:'center', lineHeight:1.5, fontFamily:'Calibri, Arial, sans-serif' }}>
+                      {empData.nome || 'Empresa'}<br/>
+                      <span style={{ fontSize:'8.5pt', fontWeight:400, color:'#555' }}>Representante Legal</span>
+                    </div>
+                    <div style={{ borderTop:'1pt solid #0f172a', paddingTop:6, fontSize:'10pt', fontWeight:700, textAlign:'center', lineHeight:1.5, fontFamily:'Calibri, Arial, sans-serif' }}>
+                      {pvColab?.nome ?? 'Colaborador(a)'}<br/>
+                      <span style={{ fontSize:'8.5pt', fontWeight:400, color:'#555' }}>
+                        {(pvColab?.funcoes as any)?.nome ?? 'Assinatura'}
+                      </span>
+                    </div>
+                  </div>
                 </div>
                 <div style={{ marginTop:12, textAlign:'center', fontSize:11, color:'rgba(255,255,255,.4)' }}>
                   Variáveis em amarelo = não preenchidas no cadastro do colaborador
