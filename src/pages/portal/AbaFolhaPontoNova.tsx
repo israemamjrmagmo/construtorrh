@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Loader2, CalendarDays, Download, Eye } from 'lucide-react'
+import { Loader2, CalendarDays, Download } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 
 interface Sessao { colaborador_id: string; nome: string; chapa?: string }
@@ -67,7 +67,6 @@ export default function AbaFolhaPontoNova({
   const [producoes, setProducoes] = useState<any[]>([])
   const [loading, setLoading]   = useState(false)
   const [erro, setErro]         = useState<string|null>(null)
-  const [showPreview, setShowPreview] = useState(false)
   const [periodoReal, setPeriodoReal] = useState<{inicio:string; fim:string} | null>(null)
 
   const opcoesMes = useCallback((): {val:string; label:string}[] => {
@@ -187,35 +186,92 @@ export default function AbaFolhaPontoNova({
       </tr>`
     }).join('')
 
-    const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
-<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:sans-serif;font-size:12px}@page{size:A4 landscape;margin:10mm}</style></head>
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head><meta charset="UTF-8"><title>Folha de Ponto — ${sessao.nome} — ${mesLabel}</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box }
+  body { font-family:'Segoe UI',Arial,sans-serif; font-size:12px; color:#111; background:#fff }
+  @page { size:A4 portrait; margin:0 }
+  .page { width:210mm; min-height:297mm; background:#fff; margin:0 auto }
+  table { width:100%; border-collapse:collapse }
+</style>
+</head>
 <body>
-  <div style="background:#1e3a5f;padding:15px;color:#fff;border-radius:6px;margin-bottom:10px;display:flex;justify-content:space-between">
-    <div><div style="font-size:16px;font-weight:bold">${sessao.nome.toUpperCase()}</div><div style="font-size:11px;opacity:0.8">Chapa: ${sessao.chapa||'—'}</div></div>
-    <div style="text-align:right"><div style="font-size:14px;font-weight:bold">Folha de Ponto</div><div style="font-size:12px">${mesLabel}</div></div>
+<div class="page">
+  <!-- HEADER AZUL IGUAL AO CONTRACHEQUE -->
+  <div style="background:#1a56a0;padding:16px 20px;display:flex;justify-content:space-between;align-items:center">
+    <div>
+      <div style="color:#fff;font-size:18px;font-weight:800;letter-spacing:-.3px">Folha de Ponto</div>
+      <div style="color:rgba(255,255,255,.7);font-size:11px;margin-top:2px">${mesLabel}</div>
+    </div>
+    <div style="text-align:right">
+      <div style="color:#fff;font-size:13px;font-weight:700">ConstrutorRH</div>
+      <div style="color:rgba(255,255,255,.65);font-size:10px">Registro Digital</div>
+    </div>
   </div>
-  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px">
-    <div style="background:#dcfce7;padding:10px;border-radius:6px;text-align:center"><div style="font-size:18px;font-weight:bold;color:#16a34a">${totalPresentes}</div><div style="font-size:10px;color:#16a34a">Presenças</div></div>
-    <div style="background:#fee2e2;padding:10px;border-radius:6px;text-align:center"><div style="font-size:18px;font-weight:bold;color:#dc2626">${totalFaltas}</div><div style="font-size:10px;color:#dc2626">Faltas</div></div>
-    <div style="background:#dbeafe;padding:10px;border-radius:6px;text-align:center"><div style="font-size:18px;font-weight:bold;color:#1d4ed8">${totalHoras.toFixed(0)}h</div><div style="font-size:10px;color:#1d4ed8">Trabalhadas</div></div>
-    <div style="background:#fef9c3;padding:10px;border-radius:6px;text-align:center"><div style="font-size:18px;font-weight:bold;color:#92400e">${totalExtras.toFixed(0)}h</div><div style="font-size:10px;color:#92400e">Extras</div></div>
+  <!-- DADOS DO COLABORADOR -->
+  <div style="background:#f0f4f8;padding:10px 20px;border-bottom:1px solid #d0dae5">
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px 16px">
+      <div><div style="font-size:9px;text-transform:uppercase;color:#6b7280;font-weight:700;margin-bottom:2px">Colaborador</div><div style="font-size:12px;font-weight:700">${sessao.nome}</div></div>
+      <div><div style="font-size:9px;text-transform:uppercase;color:#6b7280;font-weight:700;margin-bottom:2px">Chapa</div><div style="font-size:12px;font-weight:700">${sessao.chapa||'—'}</div></div>
+      <div><div style="font-size:9px;text-transform:uppercase;color:#6b7280;font-weight:700;margin-bottom:2px">Competência</div><div style="font-size:12px;font-weight:700">${mesLabel}</div></div>
+    </div>
   </div>
-  <table style="width:100%;border-collapse:collapse;border:1px solid #eee">
-    <thead><tr style="background:#1e3a5f;color:#fff">${['Data','Entrada','S.Alm','Ret','Saída','Horas','Extra','Status','Obs'].map(h=>`<th style="padding:8px;font-size:10px">${h}</th>`).join('')}</tr></thead>
-    <tbody>${tbodyRows}</tbody>
-    <tfoot><tr style="background:#1e3a5f;color:#fff"><td colspan="5" style="padding:8px;font-weight:bold">TOTAIS</td><td style="text-align:center;font-weight:bold">${totalHoras.toFixed(2)}h</td><td style="text-align:center;font-weight:bold">${totalExtras.toFixed(2)}h</td><td colspan="2" style="text-align:center">${totalFaltas} falta(s)</td></tr></tfoot>
-  </table>
-  <div style="margin-top:30px;display:flex;justify-content:space-between;padding:0 40px">
-    <div style="border-top:1px solid #333;width:200px;text-align:center;padding-top:5px;font-size:10px">Assinatura do Colaborador</div>
-    <div style="border-top:1px solid #333;width:200px;text-align:center;padding-top:5px;font-size:10px">Responsável RH</div>
+  <!-- CARDS RESUMO -->
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding:14px 20px;background:#fff;border-bottom:1px solid #e5e7eb">
+    <div style="background:#dcfce7;border-radius:8px;padding:10px;text-align:center"><div style="font-size:20px;font-weight:800;color:#16a34a">${totalPresentes}</div><div style="font-size:9px;color:#16a34a;font-weight:700;text-transform:uppercase">Presenças</div></div>
+    <div style="background:#fee2e2;border-radius:8px;padding:10px;text-align:center"><div style="font-size:20px;font-weight:800;color:#dc2626">${totalFaltas}</div><div style="font-size:9px;color:#dc2626;font-weight:700;text-transform:uppercase">Faltas</div></div>
+    <div style="background:#dbeafe;border-radius:8px;padding:10px;text-align:center"><div style="font-size:20px;font-weight:800;color:#1d4ed8">${totalHoras.toFixed(0)}h</div><div style="font-size:9px;color:#1d4ed8;font-weight:700;text-transform:uppercase">Trabalhadas</div></div>
+    <div style="background:#fef9c3;border-radius:8px;padding:10px;text-align:center"><div style="font-size:20px;font-weight:800;color:#92400e">${totalExtras.toFixed(0)}h</div><div style="font-size:9px;color:#92400e;font-weight:700;text-transform:uppercase">H. Extras</div></div>
   </div>
-  <script>window.onload=()=>window.print()</script>
+  <!-- TABELA DE REGISTROS -->
+  <div style="padding:16px 20px">
+    <div style="font-size:10px;font-weight:700;color:#1a56a0;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Registros Diários</div>
+    <table style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden">
+      <thead><tr style="background:#1a56a0">
+        ${['Data','Entrada','Saída Alm.','Retorno','Saída','H. Trab.','H. Extra','Status'].map(h=>`<th style="padding:8px 10px;color:#fff;font-size:9px;font-weight:700;text-align:center;white-space:nowrap">${h}</th>`).join('')}
+      </tr></thead>
+      <tbody>${tbodyRows}</tbody>
+      <tfoot><tr style="background:#1a56a0">
+        <td colspan="5" style="padding:8px 10px;color:#fff;font-size:10px;font-weight:700">TOTAIS — ${totalPresentes} dia(s)</td>
+        <td style="padding:8px 10px;color:#fff;font-size:10px;font-weight:700;text-align:center">${totalHoras.toFixed(2)}h</td>
+        <td style="padding:8px 10px;color:#fbbf24;font-size:10px;font-weight:700;text-align:center">${totalExtras.toFixed(2)}h</td>
+        <td style="padding:8px 10px;color:#fca5a5;font-size:10px;text-align:center">${totalFaltas} falta(s)</td>
+      </tr></tfoot>
+    </table>
+  </div>
+  <!-- ASSINATURAS -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:40px;margin:20px 20px 0;padding-top:40px">
+    <div style="border-top:1.5px solid #1a56a0;padding-top:6px;text-align:center">
+      <div style="font-size:11px;color:#374151;font-weight:600">${sessao.nome.toUpperCase()}</div>
+      <div style="font-size:9px;color:#6b7280;margin-top:2px">Colaborador(a) — Assinatura</div>
+    </div>
+    <div style="border-top:1.5px solid #1a56a0;padding-top:6px;text-align:center">
+      <div style="font-size:11px;color:#374151">___________________________</div>
+      <div style="font-size:9px;color:#6b7280;margin-top:2px">Responsável RH / Carimbo</div>
+    </div>
+  </div>
+</div>
+<script>window.onload=()=>window.print()</script>
 </body></html>`
     abrirHtmlComoPdf(html, `Folha de Ponto — ${sessao.nome} — ${mesLabel}`)
   }
 
   return (
     <div style={{ paddingBottom: 100, background: '#f8fafc', minHeight: '100vh' }}>
+      {/* Faixa azul topo - padrão contracheque */}
+      <div style={{ background:'linear-gradient(135deg,#1e3a5f 0%,#1a56a0 100%)', padding:'14px 16px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+        <div>
+          <div style={{ color:'#fff', fontWeight:800, fontSize:15, letterSpacing:'-.2px' }}>{sessao.nome.toUpperCase()}</div>
+          <div style={{ color:'rgba(255,255,255,.7)', fontSize:11, marginTop:2 }}>Folha de Ponto · {fmtComp(mesSel)}</div>
+        </div>
+        <div style={{ background:'rgba(255,255,255,.15)', borderRadius:8, padding:'4px 10px', textAlign:'center' }}>
+          <div style={{ color:'#fff', fontSize:10, fontWeight:700 }}>Chapa</div>
+          <div style={{ color:'#fff', fontSize:13, fontWeight:800 }}>{sessao.chapa ?? '—'}</div>
+        </div>
+      </div>
+
       {/* Seletor */}
       <div style={{ background:'#fff', borderBottom:'1px solid #e5e7eb', padding:'12px 16px' }}>
         <label style={{ fontSize:10, fontWeight:700, color:'#6b7280', textTransform:'uppercase', display:'block', marginBottom:5 }}>Competência</label>
@@ -307,38 +363,13 @@ export default function AbaFolhaPontoNova({
         )}
       </div>
 
-      {!loading && (
-        <div style={{ padding:'12px', display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
-          <button onClick={() => setShowPreview(true)} style={{ height:44, borderRadius:10, border:'1.5px solid #1e3a5f', background:'#fff', color:'#1e3a5f', fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}><Eye size={16}/> Visualizar</button>
-          <button onClick={gerarPdfPonto} style={{ height:44, borderRadius:10, border:'none', background:'#1e3a5f', color:'#fff', fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}><Download size={16}/> Baixar PDF</button>
+      {!loading && registros.length > 0 && (
+        <div style={{ padding:'0 16px 16px' }}>
+          <button onClick={gerarPdfPonto} style={{ width:'100%', height:44, borderRadius:10, border:'none', background:'#1e3a5f', color:'#fff', fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center', gap:8, fontSize:14 }}>
+            <Download size={17}/> Baixar Folha de Ponto
+          </button>
         </div>
       )}
-
-      {showPreview && (
-        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.85)', zIndex:100, display:'flex', flexDirection:'column' }}>
-          <div style={{ background:'#fff', padding:'12px 16px', display:'flex', justifyContent:'space-between', alignItems:'center' }}><span style={{ fontWeight:800 }}>Prévia da Folha</span><button onClick={()=>setShowPreview(false)} style={{ background:'#eee', border:'none', padding:'6px 12px', borderRadius:6 }}>Fechar</button></div>
-          <div style={{ flex:1, overflow:'auto', padding:10 }}><div style={{ background:'#fff', padding:15, maxWidth:800, margin:'0 auto', borderRadius:4 }}>
-            <div dangerouslySetInnerHTML={{ __html: `
-              <div style="font-family:sans-serif">
-                <div style="background:#1e3a5f;color:#fff;padding:12px;border-radius:6px;margin-bottom:10px">
-                  <b>${sessao.nome.toUpperCase()}</b><br/><small>Folha de Ponto · ${fmtComp(mesSel)}</small>
-                </div>
-                <table style="width:100%;border-collapse:collapse;font-size:10px">
-                  <thead><tr style="background:#f1f5f9">
-                    <th style="padding:5px;border:1px solid #ddd">Data</th>
-                    <th style="padding:5px;border:1px solid #ddd">Entrada</th>
-                    <th style="padding:5px;border:1px solid #ddd">Saída</th>
-                    <th style="padding:5px;border:1px solid #ddd">Horas</th>
-                    <th style="padding:5px;border:1px solid #ddd">Status</th>
-                  </tr></thead>
-                  <tbody>
-                    ${registros.map(r=>`<tr>
-                      <td style="padding:5px;border:1px solid #ddd">${fmtData(r.data)}</td>
-                      <td style="padding:5px;border:1px solid #ddd;text-align:center">${fmtHora(r.hora_entrada)}</td>
-                      <td style="padding:5px;border:1px solid #ddd;text-align:center">${fmtHora(r.hora_saida)}</td>
-                      <td style="padding:5px;border:1px solid #ddd;text-align:center;font-weight:bold">${(r.horas_trabalhadas||0).toFixed(1)}h</td>
-                      <td style="padding:5px;border:1px solid #ddd;text-align:center">${r.status||'Presente'}</td>
-                    </tr>`).join('')}
                   </tbody>
                 </table>
               </div>
