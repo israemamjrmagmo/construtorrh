@@ -118,6 +118,42 @@ function ModalHolerite({ open, onClose, colaborador, onSaved }: {
   const [registrosProducao, setRegistrosProducao] = useState<any[]>([])
 
   // Auto-calcular bruto e líquido
+
+  // Reset todos os campos quando o modal abre um NOVO holerite
+  useEffect(() => {
+    if (open) {
+      setCompetencia(() => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}` })
+      setTipo('mensal')
+      setDescricao('')
+      setSalarioBase('')
+      setHorasNormais('')
+      setHorasExtras('')
+      setValorProducao('')
+      setValorDsr('')
+      setValorPremio('')
+      setBruto('')
+      setInss('')
+      setIrrf('')
+      setFgts('')
+      setDescontoVt('')
+      setDescontoAdiant('')
+      setCestaBasica('')
+      setDescontos('')
+      setLiquido('')
+      setObraNome('')
+      setFuncao('')
+      setDiasTrab('')
+      setFaltas('')
+      setLancamentoId('')
+      setGeradoDoSistema(false)
+      setSistemaInfo('')
+      setRegistrosPonto([])
+      setRegistrosProducao([])
+      setArquivo(null)
+      setExpandDetalhes(false)
+    }
+  }, [open])
+
   useEffect(() => {
     const base   = parseFloat(salarioBase)   || 0
     const prod   = parseFloat(valorProducao) || 0
