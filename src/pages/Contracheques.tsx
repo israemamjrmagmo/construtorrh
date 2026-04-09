@@ -358,11 +358,18 @@ function ModalHolerite({ open, onClose, colaborador, onSaved }: {
           lancamento_id:    lancamentoId ?? null,
         }))
         // upsert por colaborador_id + data para não duplicar
+        // Primeiro remove registros existentes do período para evitar duplicata
+        const datas = pontoRows.map((r: any) => r.data)
+        await supabase.from('portal_ponto_diario')
+          .delete()
+          .eq('colaborador_id', colaborador.id)
+          .in('data', datas)
+        // Insere os novos registros com horários
         const { error: ePonto } = await supabase
           .from('portal_ponto_diario')
-          .upsert(pontoRows, { onConflict: 'colaborador_id,data' })
+          .insert(pontoRows)
         if (ePonto) console.warn('Aviso: não foi possível copiar ponto para portal:', ePonto.message)
-        else toast.success(`✅ Holerite publicado com ${pontoRows.length} registros de ponto!`)
+        else toast.success(`✅ Holerite publicado! ${pontoRows.length} registros de ponto sincronizados.`)
       } else {
         toast.success(publicar ? '✅ Holerite publicado!' : 'Rascunho salvo.')
       }
@@ -919,6 +926,31 @@ export default function Contracheques() {
     navigator.clipboard.writeText(txt).then(() => toast.success('Credenciais copiadas!'))
   }
 
+  async function sincronizarPonto(h: Contracheque) {
+    if (!selected) return
+    try {
+      const lancId = h.lancamento_id
+      if (!lancId) { toast.error('Holerite sem lançamento vinculado.'); return }
+      const { data: lanc } = await supabase.from('ponto_lancamentos').select('data_inicio,data_fim').eq('id', lancId).single()
+      if (!lanc) { toast.error('Lançamento não encontrado.'); return }
+      const { data: rps } = await supabase.from('registro_ponto').select('*').eq('lancamento_id', lancId).order('data')
+      const rows2 = (rps||[]).map((r: any) => ({
+        colaborador_id: selected.id, data: r.data,
+        hora_entrada: r.hora_entrada, hora_saida: r.hora_saida,
+        horas_trabalhadas: Number(r.horas_trabalhadas)||0,
+        horas_extra: Number(r.horas_extras ?? r.horas_extra ?? 0),
+        horas_falta: Number(r.horas_falta)||0,
+        status: r.status ?? (r.hora_entrada ? 'presente' : null),
+        observacoes: r.observacoes ?? null, lancamento_id: lancId,
+      }))
+      if (rows2.length === 0) { toast.error('Nenhum registro de ponto encontrado.'); return }
+      const datas = rows2.map((r: any) => r.data)
+      await supabase.from('portal_ponto_diario').delete().eq('colaborador_id', selected.id).in('data', datas)
+      const { error: eI } = await supabase.from('portal_ponto_diario').insert(rows2)
+      if (eI) toast.error('Erro ao sincronizar: ' + eI.message)
+      else toast.success('✅ ' + rows2.length + ' registros sincronizados para o portal!')
+    } catch (e: any) { toast.error('Erro: ' + e.message) }
+  }
   async function togglePublicar(h: Contracheque) {
     const novo = !h.publicado
     const { error } = await supabase.from('contracheques').update({
@@ -1179,6 +1211,13 @@ export default function Contracheques() {
                                 {h.publicado ? <EyeOff size={11} /> : <Eye size={11} />}
                                 {h.publicado ? 'Tirar' : 'Publicar'}
                               </button>
+                              {h.lancamento_id && (
+                                <button onClick={() => sincronizarPonto(h)} title="Sincronizar registros de ponto para o portal"
+                                  style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid #bfdbfe', background: '#eff6ff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#1d4ed8', fontWeight: 600 }}>
+                                  <RefreshCw size={11} />
+                                  Ponto
+                                </button>
+                              )}
                               {h.arquivo_url && (
                                 <a href={h.arquivo_url} target="_blank" rel="noreferrer"
                                   style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid #e2e8f0', background: '#f8fafc', display: 'flex', alignItems: 'center', textDecoration: 'none', color: '#0d3f56' }}>
