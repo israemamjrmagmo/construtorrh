@@ -158,7 +158,7 @@ function ModalHolerite({ open, onClose, colaborador, onSaved }: {
       // 2 – Lançamento de ponto (snapshot)
       const { data: lancs } = await supabase
         .from('ponto_lancamentos')
-        .select(`id, mes_referencia, snap_valor_horas, snap_horas_normais, snap_horas_extras,
+        .select(`id, mes_referencia, tipo_pagamento, snap_valor_horas, snap_horas_normais, snap_horas_extras,
           snap_valor_producao, snap_valor_dsr, snap_valor_premio, snap_valor_total,
           snap_faltas, snap_desconto_vt, snap_desconto_adiant, snap_inss, snap_ir,
           snap_liquido, obras(nome)`)
@@ -228,6 +228,9 @@ function ModalHolerite({ open, onClose, colaborador, onSaved }: {
         setDiasTrab('')
         setFaltas(sumFaltas > 0         ? String(sumFaltas)      : '')
         setLancamentoId(lancs[0]?.id ?? null)
+        // Auto-preencher tipo e competência do lançamento
+        const tipoPag = (lancs[0] as any)?.tipo_pagamento
+        if (tipoPag) setTipo(tipoPag)
         setGeradoDoSistema(true)
 
         const info = `✅ ${lancs.length} lançamento(s) encontrado(s).${totalPremios > 0 ? ` • ${(premios ?? []).length} prêmio(s) adicionado(s).` : ''}${totalAdiant > 0 ? ` • ${(adiantamentos ?? []).length} adiantamento(s) descontado(s).` : ''}`

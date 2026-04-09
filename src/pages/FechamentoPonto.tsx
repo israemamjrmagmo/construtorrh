@@ -79,6 +79,7 @@ interface LancItem {
   snap_fechado_em:    string | null
   // snap imutável da regra de sábado (congelado ao entrar em fechamento)
   snap_considera_sabado_util?: boolean | null
+  tipo_pagamento?: string | null   // mensal | adiantamento | ferias | 13o_1a | 13o_2a | rescisorio
 }
 
 const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho',
@@ -122,6 +123,7 @@ export default function FechamentoPonto() {
   const [modalLiberar, setModalLiberar] = useState<LancItem | null>(null)
   // Estado do desconto -AD dentro do modal de liberar — Set de IDs marcados para descontar
   const [adSelecionados, setAdSelecionados] = useState<Set<string>>(new Set())
+  const [tipoPagamentoSel, setTipoPagamentoSel] = useState('mensal')
   const [adiantsDisponiveis, setAdiantsDisponiveis] = useState<{id:string;valor:number;desconto_tipo:string;desconto_parcelas:number|null;desconto_parcela_atual:number|null;desconto_obs:string|null;desconto_a_partir:string|null}[]>([])
   // AD disponíveis pré-carregados por lançamento (id do lanc → lista de AD)
   const [adPorLanc, setAdPorLanc] = useState<Record<string, {id:string;valor:number;desconto_tipo:string;desconto_parcelas:number|null;desconto_parcela_atual:number|null;desconto_obs:string|null}[]>>({})
@@ -147,6 +149,11 @@ export default function FechamentoPonto() {
   const [loadingEspelho, setLoadingEspelho] = useState(false)
 
   const mesRef = `${ano}-${String(mes).padStart(2, '0')}`
+
+  const TIPOS_PAGAMENTO: Record<string,string> = {
+    mensal:'Mensal', adiantamento:'Adiantamento Salarial',
+    ferias:'Férias', '13o_1a':'13º - 1ª Parcela', '13o_2a':'13º - 2ª Parcela', rescisorio:'Rescisório',
+  }
 
   // ── Debounce no mesRef: aguarda 400ms sem mudança antes de buscar ───────
   const [mesRefDebounced, setMesRefDebounced] = useState(mesRef)
@@ -197,7 +204,7 @@ export default function FechamentoPonto() {
     const { data: lancsRaw, error: lancsErr } = await supabase
       .from('ponto_lancamentos')
       .select(`
-        id, colaborador_id, obra_id, mes_referencia, data_inicio, data_fim, status,
+        id, colaborador_id, obra_id, mes_referencia, data_inicio, data_fim, status, tipo_pagamento,
         valor_hora_snapshot,
         snap_valor_hora, snap_horas_normais, snap_horas_extras, snap_valor_horas,
         snap_valor_producao, snap_valor_dsr, snap_valor_premio, snap_valor_total,
@@ -669,6 +676,7 @@ export default function FechamentoPonto() {
         snap_faltas:         l.snap_faltas         ?? null,
         snap_valor_hora:     l.snap_valor_hora     ?? null,
         snap_fechado_em:     l.snap_fechado_em     ?? null,
+        tipo_pagamento:      l.tipo_pagamento      ?? null,
       }
     })
     setLancamentos(lista.filter(Boolean) as LancItem[])
@@ -883,6 +891,7 @@ export default function FechamentoPonto() {
     setAdiantsDisponiveis(lista)
     // Por padrão, todos os ADs já vêm marcados para descontar
     setAdSelecionados(new Set(lista.map((a: any) => a.id)))
+    setTipoPagamentoSel(lanc.tipo_pagamento ?? 'mensal')
     setModalLiberar(lanc)
   }
 
@@ -911,6 +920,7 @@ export default function FechamentoPonto() {
 
     const { error } = await supabase.from('ponto_lancamentos').update({
       status:               'liberado',
+      tipo_pagamento:       tipoPagamentoSel,
       snap_valor_hora:      lanc.vh_usado,
       snap_horas_normais:   lanc.horas_normais,
       snap_horas_extras:    lanc.horas_extras,
@@ -1294,10 +1304,15 @@ export default function FechamentoPonto() {
                             </TableCell>
                             <TableCell style={{ fontFamily: 'monospace', fontSize: 11, whiteSpace: 'nowrap' }}>
                               <div>{lanc.data_inicio.slice(8)}/{lanc.data_inicio.slice(5,7)} → {lanc.data_fim.slice(8)}/{lanc.data_fim.slice(5,7)}</div>
-                              <div style={{ marginTop:3 }}>
+                              <div style={{ marginTop:3, display:'flex', gap:4, flexWrap:'wrap' }}>
                                 <span style={{ fontSize:9, fontWeight:700, background:'#eff6ff', color:'#1d4ed8', border:'1px solid #bfdbfe', borderRadius:5, padding:'1px 6px', textTransform:'uppercase', letterSpacing:'.03em', fontFamily:'sans-serif' }}>
-                                  📅 Comp. {MESES_ABR[parseInt(lanc.mes_referencia.slice(5,7))-1]}/{lanc.mes_referencia.slice(2,4)}
+                                  📅 {MESES_ABR[parseInt(lanc.mes_referencia.slice(5,7))-1]}/{lanc.mes_referencia.slice(2,4)}
                                 </span>
+                                {lanc.tipo_pagamento && (
+                                  <span style={{ fontSize:9, fontWeight:700, background:'#f3e8ff', color:'#7c3aed', border:'1px solid #ddd6fe', borderRadius:5, padding:'1px 6px', fontFamily:'sans-serif' }}>
+                                    {TIPOS_PAGAMENTO[lanc.tipo_pagamento] ?? lanc.tipo_pagamento}
+                                  </span>
+                                )}
                               </div>
                             </TableCell>
                             <TableCell className="text-center" style={{ fontSize: 12 }}>{lanc.dias_trabalhados}</TableCell>
@@ -1739,9 +1754,30 @@ export default function FechamentoPonto() {
                 <div style={{ fontSize:12, color:'#374151', marginTop:2 }}>
                   {modalLiberar.funcao_nome} · {modalLiberar.tipo_contrato.toUpperCase()} · {modalLiberar.obra_nome}
                 </div>
-                <div style={{ fontSize:11, color:'#6b7280', marginTop:2 }}>
-                  {modalLiberar.mes_referencia} · {modalLiberar.data_inicio} → {modalLiberar.data_fim}
+                <div style={{ display:'flex', gap:6, marginTop:5, flexWrap:'wrap' }}>
+                  <span style={{ fontSize:10, fontWeight:700, background:'#eff6ff', color:'#1d4ed8', padding:'2px 8px', borderRadius:6, border:'1px solid #bfdbfe' }}>
+                    📅 Competência: {MESES[parseInt(modalLiberar.mes_referencia.slice(5,7))-1]}/{modalLiberar.mes_referencia.slice(0,4)}
+                  </span>
+                  <span style={{ fontSize:10, fontWeight:600, color:'#6b7280', padding:'2px 8px', background:'#f3f4f6', borderRadius:6 }}>
+                    {modalLiberar.data_inicio.slice(8)}/{modalLiberar.data_inicio.slice(5,7)} → {modalLiberar.data_fim.slice(8)}/{modalLiberar.data_fim.slice(5,7)}
+                  </span>
                 </div>
+              </div>
+
+              {/* Tipo de pagamento */}
+              <div style={{ marginBottom:14 }}>
+                <label style={{ fontSize:11, fontWeight:700, color:'#374151', display:'block', marginBottom:5, textTransform:'uppercase', letterSpacing:'.04em' }}>
+                  Tipo de Pagamento
+                </label>
+                <select
+                  value={tipoPagamentoSel}
+                  onChange={e => setTipoPagamentoSel(e.target.value)}
+                  style={{ width:'100%', height:40, borderRadius:8, border:'1.5px solid #d1d5db', padding:'0 10px', fontSize:13, fontWeight:600, color:'#1a56a0', background:'#fff', cursor:'pointer', outline:'none' }}
+                >
+                  {Object.entries(TIPOS_PAGAMENTO).map(([v,l]) => (
+                    <option key={v} value={v}>{l}</option>
+                  ))}
+                </select>
               </div>
 
               {/* Tabela de valores */}

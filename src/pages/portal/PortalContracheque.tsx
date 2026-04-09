@@ -1740,7 +1740,11 @@ export default function PortalContracheque() {
   )
 
   if (selecionado) return (
-    <TelaHolerite h={selecionado} colab={colab} empresa={empresa} aceite={aceites[selecionado.id]??null} onVoltar={()=>setSelecionado(null)}/>
+    <TelaHolerite h={selecionado} colab={colab} empresa={empresa} aceite={aceites[selecionado.id]??null} onVoltar={()=>{
+      setSelecionado(null)
+      // Re-sincronizar aceites do banco ao voltar (garante badge atualizado)
+      if (sessao) carregar(sessao.colaborador_id)
+    }}/>
   )
 
   return (
