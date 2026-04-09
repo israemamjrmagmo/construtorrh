@@ -300,23 +300,37 @@ function CardResumo({ bruto, descontos, liquido }: { bruto: number; descontos: n
 // Abre uma janela HTML como PDF-ready em mobile e desktop
 // Em mobile (iOS/Android), usa blob URL para evitar bloqueio de popup
 function abrirHtmlComoPdf(html: string, titulo: string): void {
+  // Estratégia 1: iframe oculto para imprimir (melhor compatibilidade mobile)
+  try {
+    const iframe = document.createElement('iframe')
+    iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;border:none'
+    document.body.appendChild(iframe)
+    const iDoc = iframe.contentDocument || iframe.contentWindow?.document
+    if (iDoc) {
+      iDoc.open(); iDoc.write(html); iDoc.close()
+      setTimeout(() => {
+        try { iframe.contentWindow?.focus(); iframe.contentWindow?.print() } catch {}
+        setTimeout(() => document.body.removeChild(iframe), 2000)
+      }, 500)
+      return
+    }
+    document.body.removeChild(iframe)
+  } catch {}
+  // Estratégia 2: blob URL com download (funciona no Android Chrome)
   try {
     const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
     const url  = URL.createObjectURL(blob)
     const a    = document.createElement('a')
-    a.href     = url
-    a.target   = '_blank'
-    a.rel      = 'noopener noreferrer'
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    // Liberar memória após 60s
-    setTimeout(() => URL.revokeObjectURL(url), 60_000)
-  } catch {
-    // Fallback final: data URI
+    a.href = url; a.download = titulo.replace(/[^a-z0-9]/gi,'_')+'.html'
+    document.body.appendChild(a); a.click(); document.body.removeChild(a)
+    setTimeout(() => URL.revokeObjectURL(url), 5000)
+    return
+  } catch {}
+  // Estratégia 3: data URI fallback
+  try {
     const encoded = encodeURIComponent(html)
     window.location.href = `data:text/html;charset=utf-8,${encoded}`
-  }
+  } catch {}
 }
 
 // ─── Detalhe do Contracheque (tela completa) ──────────────────────────────────
