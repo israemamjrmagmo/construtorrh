@@ -1,3 +1,4 @@
+import React, { useCallback, useEffect, useState, useRef } from 'react'
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useProfile } from '@/hooks/useProfile'
@@ -681,6 +682,8 @@ export default function Contracheques() {
   const [selected, setSelected]           = useState<Colaborador | null>(null)
   const [contracheques, setContracheques] = useState<Contracheque[]>([])
   const [aceites, setAceites]             = useState<Record<string,any>>({})
+  const [refreshingAceites, setRefreshingAceites] = useState(false)
+  const selectedIdRef = React.useRef<string|null>(null)
   const [busca, setBusca]                 = useState('')
   const [loadingList, setLoadingList]     = useState(true)
   const [loadingH, setLoadingH]           = useState(false)
@@ -710,6 +713,18 @@ export default function Contracheques() {
 
   useEffect(() => { carregarColaboradores() }, [carregarColaboradores])
 
+  // Recarrega apenas os aceites (sem rebuscar holerites) — usado no polling e refresh manual
+  const carregarSomenteAceites = useCallback(async (colabId: string, ids: string[]) => {
+    if (!ids.length) { setAceites({}); return }
+    const { data: acData } = await supabase
+      .from('contracheque_aceites').select('*')
+      .eq('colaborador_id', colabId)
+      .in('contracheque_id', ids)
+    const m: Record<string,any> = {}
+    for (const a of (acData ?? []) as any[]) m[a.contracheque_id] = a
+    setAceites(m)
+  }, [])
+
   const carregarHolerites = useCallback(async (id: string) => {
     setLoadingH(true)
     const { data } = await supabase.from('contracheques').select('*')
@@ -717,22 +732,30 @@ export default function Contracheques() {
     const hols = (data as Contracheque[]) ?? []
     setContracheques(hols)
     // Carregar aceites para exibir status no admin
-    if (hols.length > 0) {
-      const { data: acData } = await supabase
-        .from('contracheque_aceites').select('*')
-        .eq('colaborador_id', id)
-        .in('contracheque_id', hols.map(h => h.id))
-      const m: Record<string,any> = {}
-      for (const a of (acData ?? []) as any[]) m[a.contracheque_id] = a
-      setAceites(m)
-    } else { setAceites({}) }
+    await carregarSomenteAceites(id, hols.map(h => h.id))
     setLoadingH(false)
   }, [])
 
   useEffect(() => {
+    selectedIdRef.current = selected?.id ?? null
     if (selected) carregarHolerites(selected.id)
-    else setContracheques([])
+    else { setContracheques([]); setAceites({}) }
   }, [selected, carregarHolerites])
+
+  // Polling de aceites a cada 20s para refletir confirmações feitas no celular
+  useEffect(() => {
+    const tick = setInterval(async () => {
+      const sid = selectedIdRef.current
+      if (!sid) return
+      setRefreshingAceites(true)
+      const { data: hols } = await supabase.from('contracheques').select('id')
+        .eq('colaborador_id', sid)
+      if (hols && hols.length > 0)
+        await carregarSomenteAceites(sid, hols.map((h:any) => h.id))
+      setRefreshingAceites(false)
+    }, 20_000)
+    return () => clearInterval(tick)
+  }, [carregarSomenteAceites])
 
   const colabFiltrados = colaboradores.filter(c => {
     const q = busca.toLowerCase()
@@ -968,6 +991,16 @@ export default function Contracheques() {
                   <Receipt size={15} color="#0d3f56" />
                   <span style={{ fontWeight: 700, fontSize: 14, color: '#0f172a' }}>Holerites</span>
                   <span style={{ fontSize: 11, background: '#e2e8f0', color: '#475569', padding: '2px 7px', borderRadius: 10, fontWeight: 600 }}>{contracheques.length}</span>
+                  <button title="Atualizar aceites" onClick={async () => {
+                    if (!selected) return
+                    setRefreshingAceites(true)
+                    const { data: hols } = await supabase.from('contracheques').select('id').eq('colaborador_id', selected.id)
+                    if (hols?.length) await carregarSomenteAceites(selected.id, hols.map((h:any)=>h.id))
+                    setRefreshingAceites(false)
+                  }} style={{ background:'none', border:'1px solid #e2e8f0', borderRadius:6, cursor:'pointer', padding:'3px 7px', display:'flex', alignItems:'center', gap:4, color:refreshingAceites?'#1d4ed8':'#6b7280', fontSize:11, fontWeight:600 }}>
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ animation:refreshingAceites?'spin 1s linear infinite':'none' }}><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                    {refreshingAceites ? 'atualizando…' : '↻ aceites'}
+                  </button>
                 </div>
                 <Button size="sm" onClick={() => setModalOpen(true)} style={{ background: '#0d3f56', color: '#fff', fontSize: 13, gap: 5 }}>
                   <Plus size={13} /> Adicionar
@@ -1092,3 +1125,5 @@ export default function Contracheques() {
     </div>
   )
 }
+
+// spin keyframe added via inline style
