@@ -928,8 +928,18 @@ function AbaFolhaPonto({ sessao, dataAdmissao, lancamentos }: { sessao: Sessao; 
 
   const carregarPonto = useCallback(async (mes: string) => {
     setLoading(true)
-    const inicio = mes + '-01'
-    const fim    = mes + '-31'
+    // Buscar lançamento do mês para pegar data_inicio/data_fim reais
+    const { data: lancsRef } = await supabase
+      .from('ponto_lancamentos')
+      .select('data_inicio,data_fim')
+      .eq('colaborador_id', sessao.colaborador_id)
+      .eq('mes_referencia', mes)
+      .in('status', ['pago','liberado','aprovado'])
+      .order('data_inicio', { ascending: true })
+      .limit(1)
+    // Usar datas reais do lançamento se disponível, senão usar mês completo
+    const inicio = lancsRef?.[0]?.data_inicio ?? mes + '-01'
+    const fim    = lancsRef?.[0]?.data_fim    ?? mes + '-31'
     const [pontoRes, pontoAltRes, prodRes] = await Promise.all([
       supabase
         .from('portal_ponto_diario')
