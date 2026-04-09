@@ -931,28 +931,36 @@ function AbaFolhaPonto({ sessao, dataAdmissao, lancamentos }: { sessao: Sessao; 
     // Buscar lançamento do mês para pegar data_inicio/data_fim reais
     const { data: lancsRef } = await supabase
       .from('ponto_lancamentos')
-      .select('data_inicio,data_fim')
+      .select('id,data_inicio,data_fim')
       .eq('colaborador_id', sessao.colaborador_id)
       .eq('mes_referencia', mes)
       .in('status', ['pago','liberado','aprovado'])
       .order('data_inicio', { ascending: true })
       .limit(1)
-    // Usar datas reais do lançamento se disponível, senão usar mês completo
-    const inicio = lancsRef?.[0]?.data_inicio ?? mes + '-01'
-    const fim    = lancsRef?.[0]?.data_fim    ?? mes + '-31'
+    const lancId  = lancsRef?.[0]?.id ?? null
+    const inicio  = lancsRef?.[0]?.data_inicio ?? mes + '-01'
+    const fim     = lancsRef?.[0]?.data_fim    ?? mes + '-31'
     const [pontoRes, pontoAltRes, prodRes] = await Promise.all([
+      // portal_ponto_diario — lançado pelo gestor via portal
       supabase
         .from('portal_ponto_diario')
         .select('id,data,hora_entrada,hora_saida,horas_trabalhadas,horas_extra,horas_falta,status,observacoes')
         .eq('colaborador_id', sessao.colaborador_id)
         .gte('data', inicio).lte('data', fim)
         .order('data', { ascending: true }),
-      supabase
-        .from('registro_ponto')
-        .select('id,data,hora_entrada,hora_saida,horas_trabalhadas,horas_extras,horas_falta,status,observacoes')
-        .eq('colaborador_id', sessao.colaborador_id)
-        .gte('data', inicio).lte('data', fim)
-        .order('data', { ascending: true }),
+      // registro_ponto — lançado pelo admin; busca por lancamento_id para evitar RLS
+      lancId
+        ? supabase
+            .from('registro_ponto')
+            .select('id,data,hora_entrada,hora_saida,horas_trabalhadas,horas_extras,horas_falta,status,observacoes')
+            .eq('lancamento_id', lancId)
+            .order('data', { ascending: true })
+        : supabase
+            .from('registro_ponto')
+            .select('id,data,hora_entrada,hora_saida,horas_trabalhadas,horas_extras,horas_falta,status,observacoes')
+            .eq('colaborador_id', sessao.colaborador_id)
+            .gte('data', inicio).lte('data', fim)
+            .order('data', { ascending: true }),
       supabase
         .from('ponto_producao')
         .select('id,data,quantidade,valor_total,observacoes,playbook_itens(descricao,unidade)')
@@ -962,7 +970,7 @@ function AbaFolhaPonto({ sessao, dataAdmissao, lancamentos }: { sessao: Sessao; 
     ])
     const r1 = (!pontoRes.error ? (pontoRes.data as any[]) ?? [] : [])
     const r2 = (!pontoAltRes.error ? (pontoAltRes.data as any[]) ?? [] : [])
-      .map((r:any)=>({...r, horas_extra: r.horas_extras ?? r.horas_extra, status: r.status ?? (r.hora_entrada ? 'presente' : null)}))
+      .map((r:any)=>({...r, horas_extra:r.horas_extras??r.horas_extra, status:r.status??(r.hora_entrada?'presente':null)}))
     const merged = r1.length > 0 ? r1 : r2
     setRegistros(merged as RegistroPonto[])
     setProducoes((prodRes.data as any[]) ?? [])
