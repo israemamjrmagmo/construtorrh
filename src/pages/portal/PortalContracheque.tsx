@@ -910,18 +910,28 @@ function AbaFolhaPonto({ sessao, dataAdmissao, lancamentos }: { sessao: Sessao; 
 
   const opcoesMes = mesesDesdeAdmissao(dataAdmissao)
 
+  const [producoes, setProducoes] = useState<any[]>([])
+
   const carregarPonto = useCallback(async (mes: string) => {
     setLoading(true)
     const inicio = mes + '-01'
     const fim    = mes + '-31'
-    const { data, error } = await supabase
-      .from('portal_ponto_diario')
-      .select('id,data,hora_entrada,hora_saida,horas_trabalhadas,horas_extra,horas_falta,status,observacoes')
-      .eq('colaborador_id', sessao.colaborador_id)
-      .gte('data', inicio)
-      .lte('data', fim)
-      .order('data', { ascending: true })
-    if (!error) setRegistros((data as RegistroPonto[]) ?? [])
+    const [pontoRes, prodRes] = await Promise.all([
+      supabase
+        .from('portal_ponto_diario')
+        .select('id,data,hora_entrada,hora_saida,horas_trabalhadas,horas_extra,horas_falta,status,observacoes')
+        .eq('colaborador_id', sessao.colaborador_id)
+        .gte('data', inicio).lte('data', fim)
+        .order('data', { ascending: true }),
+      supabase
+        .from('ponto_producao')
+        .select('id,data,quantidade,valor_total,observacoes,playbook_itens(descricao,unidade)')
+        .eq('colaborador_id', sessao.colaborador_id)
+        .gte('data', inicio).lte('data', fim)
+        .order('data', { ascending: true }),
+    ])
+    if (!pontoRes.error) setRegistros((pontoRes.data as RegistroPonto[]) ?? [])
+    setProducoes((prodRes.data as any[]) ?? [])
     setLoading(false)
   }, [sessao.colaborador_id])
 
@@ -1234,6 +1244,34 @@ function AbaFolhaPonto({ sessao, dataAdmissao, lancamentos }: { sessao: Sessao; 
                 </div>
               </div>
             </div>
+
+            {/* Produções do mês */}
+            {producoes.length > 0 && (
+              <div style={{ marginTop:14, background:'#fff', borderRadius:14, border:'1px solid #e5e7eb', overflow:'hidden' }}>
+                <div style={{ padding:'10px 14px', background:'#f5f3ff', borderBottom:'1px solid #e5e7eb', display:'flex', alignItems:'center', gap:7 }}>
+                  <span style={{ fontSize:15 }}>⚡</span>
+                  <span style={{ fontSize:12, fontWeight:800, color:'#7c3aed', textTransform:'uppercase', letterSpacing:'.04em' }}>
+                    Produções — {producoes.length} lançamento{producoes.length!==1?'s':''}
+                  </span>
+                  <span style={{ marginLeft:'auto', fontSize:12, fontWeight:800, color:'#7c3aed' }}>
+                    R$ {producoes.reduce((s:number,r:any)=>s+Number(r.valor_total||0),0).toFixed(2)}
+                  </span>
+                </div>
+                <div style={{ display:'flex', flexDirection:'column', gap:0 }}>
+                  {producoes.map((r:any,i:number)=>(
+                    <div key={r.id} style={{ padding:'9px 14px', borderBottom:'1px solid #f3f4f6', background:i%2===0?'#fff':'#faf5ff', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                      <div>
+                        <div style={{ fontSize:12, fontWeight:700, color:'#111827' }}>{r.playbook_itens?.descricao??'Serviço'}</div>
+                        <div style={{ fontSize:11, color:'#6b7280', marginTop:1 }}>
+                          {r.data?.slice(8)}/{r.data?.slice(5,7)} · {r.quantidade} {r.playbook_itens?.unidade??''}
+                        </div>
+                      </div>
+                      <span style={{ fontSize:13, fontWeight:800, color:'#7c3aed' }}>R$ {Number(r.valor_total||0).toFixed(2)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>
