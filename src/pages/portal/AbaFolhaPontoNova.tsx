@@ -105,18 +105,13 @@ export default function AbaFolhaPontoNova({
           .eq('colaborador_id', sessao.colaborador_id)
           .gte('data', inicio).lte('data', fim)
           .order('data', { ascending: true }),
-        lancId
-          ? supabase
-              .from('registro_ponto')
-              .select('id,data,hora_entrada,hora_saida,horas_trabalhadas,horas_extras,horas_falta,status,observacoes')
-              .eq('lancamento_id', lancId)
-              .order('data', { ascending: true })
-          : supabase
-              .from('registro_ponto')
-              .select('id,data,hora_entrada,hora_saida,horas_trabalhadas,horas_extras,horas_falta,status,observacoes')
-              .eq('colaborador_id', sessao.colaborador_id)
-              .gte('data', inicio).lte('data', fim)
-              .order('data', { ascending: true }),
+        // Busca por colaborador_id + período (compatível com RLS anon do portal)
+        supabase
+          .from('registro_ponto')
+          .select('id,data,hora_entrada,hora_saida,horas_trabalhadas,horas_extras,horas_falta,status,observacoes')
+          .eq('colaborador_id', sessao.colaborador_id)
+          .gte('data', inicio).lte('data', fim)
+          .order('data', { ascending: true }),
         supabase
           .from('ponto_producao')
           .select('id,data,quantidade,valor_total,observacoes,playbook_itens(descricao,unidade)')
