@@ -35,16 +35,32 @@ export default function PortalLogin() {
 
     const hash = await sha256(senha.trim())
 
-    const { data, error } = await supabase
+    // Tentar login com campo login, depois com CPF/chapa
+    const loginVal = login.trim()
+    const loginLower = loginVal.toLowerCase()
+    const cpfLimpo = loginVal.replace(/\D/g, '')
+
+    let { data, error } = await supabase
       .from('portal_usuarios')
       .select('id, login, nome, obras_ids, ativo, senha_hash')
-      .eq('login', login.trim().toLowerCase())
+      .eq('login', loginLower)
       .eq('ativo', true)
-      .single()
+      .maybeSingle()
+
+    // fallback: buscar por cpf se o campo existir
+    if (!data && cpfLimpo.length >= 8) {
+      const { data: d2 } = await supabase
+        .from('portal_usuarios')
+        .select('id, login, nome, obras_ids, ativo, senha_hash')
+        .ilike('login', cpfLimpo)
+        .eq('ativo', true)
+        .maybeSingle()
+      if (d2) data = d2
+    }
 
     setLoading(false)
 
-    if (error || !data) { setErro('Login inválido ou usuário inativo'); return }
+    if (!data) { setErro('Login inválido ou usuário inativo'); return }
     if (data.senha_hash !== hash) { setErro('Senha incorreta'); return }
 
     const obrasIds: string[] = data.obras_ids ?? []
