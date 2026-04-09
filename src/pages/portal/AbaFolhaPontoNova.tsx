@@ -68,6 +68,7 @@ export default function AbaFolhaPontoNova({
   const [loading, setLoading]   = useState(false)
   const [erro, setErro]         = useState<string|null>(null)
   const [showPreview, setShowPreview] = useState(false)
+  const [periodoReal, setPeriodoReal] = useState<{inicio:string; fim:string} | null>(null)
 
   const opcoesMes = useCallback((): {val:string; label:string}[] => {
     const opts: {val:string; label:string}[] = []
@@ -97,6 +98,12 @@ export default function AbaFolhaPontoNova({
       const lancId = lancsRef?.[0]?.id ?? null
       const inicio = lancsRef?.[0]?.data_inicio ?? mes + '-01'
       const fim    = lancsRef?.[0]?.data_fim    ?? mes + '-31'
+      // Guardar período real para exibir ao usuário
+      if (lancsRef?.[0]?.data_inicio && lancsRef?.[0]?.data_fim) {
+        setPeriodoReal({ inicio: lancsRef[0].data_inicio, fim: lancsRef[0].data_fim })
+      } else {
+        setPeriodoReal(null)
+      }
 
       const [r1, r2, rp] = await Promise.all([
         supabase
@@ -210,6 +217,22 @@ export default function AbaFolhaPontoNova({
         <select value={mesSel} onChange={e => setMesSel(e.target.value)} style={{ width:'100%', height:42, borderRadius:10, border:'1.5px solid #e5e7eb', padding:'0 12px', fontSize:14, fontWeight:600, color:'#1a56a0', background:'#fff', outline:'none' }}>
           {opcoesMes().map(o => <option key={o.val} value={o.val}>{o.label}</option>)}
         </select>
+        {periodoReal && (() => {
+          const [yi,mi,di] = periodoReal.inicio.split('-')
+          const [yf,mf,df] = periodoReal.fim.split('-')
+          const cruzaMes = mi !== mf
+          return (
+            <div style={{ marginTop:8, display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
+              <span style={{ fontSize:11, color:'#6b7280' }}>Período de trabalho:</span>
+              <span style={{ fontSize:11, fontWeight:700, background: cruzaMes ? '#fef3c7' : '#dbeafe', color: cruzaMes ? '#92400e' : '#1d4ed8', padding:'2px 9px', borderRadius:20 }}>
+                {di}/{mi} → {df}/{mf}/{yf}
+              </span>
+              {cruzaMes && (
+                <span style={{ fontSize:10, color:'#92400e', fontWeight:600 }}>⚠️ Período entre meses</span>
+              )}
+            </div>
+          )
+        })()}
       </div>
 
       {/* Resumo */}
