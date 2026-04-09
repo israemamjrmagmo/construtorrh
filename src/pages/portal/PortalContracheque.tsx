@@ -172,8 +172,25 @@ function mesesDisponiveis(): { val: string; label: string }[] {
 }
 
 const TIPO_LABEL: Record<string, string> = {
-  mensal:'Mensal', '13o_1a':'13º — 1ª Parcela',
-  '13o_2a':'13º — 2ª Parcela', ferias:'Férias', adiantamento:'Adiantamento',
+  mensal:       'Mensal',
+  adiantamento: 'Adiantamento Salarial',
+  ferias:       'Férias',
+  '13o_1a':     '13º — 1ª Parcela',
+  '13o_2a':     '13º — 2ª Parcela',
+  rescisorio:   'Rescisório',
+}
+
+// Cor e emoji por tipo de holerite
+const TIPO_CONFIG: Record<string, { cor: string; bg: string; border: string; emoji: string }> = {
+  mensal:       { cor:'#1d4ed8', bg:'#eff6ff', border:'#bfdbfe', emoji:'💵' },
+  adiantamento: { cor:'#7c3aed', bg:'#f3e8ff', border:'#ddd6fe', emoji:'💳' },
+  ferias:       { cor:'#0369a1', bg:'#e0f2fe', border:'#bae6fd', emoji:'🏖️' },
+  '13o_1a':     { cor:'#92400e', bg:'#fef3c7', border:'#fde68a', emoji:'🎁' },
+  '13o_2a':     { cor:'#92400e', bg:'#fef3c7', border:'#fde68a', emoji:'🎁' },
+  rescisorio:   { cor:'#9f1239', bg:'#fff1f2', border:'#fecdd3', emoji:'📋' },
+}
+function tipoConfig(tipo: string) {
+  return TIPO_CONFIG[tipo] ?? { cor:'#6b7280', bg:'#f3f4f6', border:'#e5e7eb', emoji:'📄' }
 }
 const SESSION_KEY = 'contracheque_session'
 
@@ -574,229 +591,284 @@ function AbaContracheque({ sessao, holerites, lancamentos, colab, empresa, aceit
   aceites: Record<string, AceiteDigital>
   onSelecionar: (h: Contracheque) => void
 }) {
-  // Inicia sempre no mês atual (ou o primeiro disponível se não houver do mês atual)
+  // ── Mês selecionado ──────────────────────────────────────────────────────
   const [mesSel, setMesSel] = useState<string>(() => {
     const atual = mesAtualStr()
-    const temAtual = holerites.some(hl => hl.competencia.startsWith(atual))
-    if (temAtual) return atual
-    return holerites[0]?.competencia?.slice(0, 7) ?? atual
+    return holerites.some(hl => hl.competencia.startsWith(atual))
+      ? atual
+      : holerites[0]?.competencia?.slice(0, 7) ?? atual
   })
 
-  // Atualiza quando holerites carregam
   useEffect(() => {
     const atual = mesAtualStr()
-    const temAtual = holerites.some(hl => hl.competencia.startsWith(atual))
-    if (temAtual) setMesSel(atual)
+    if (holerites.some(hl => hl.competencia.startsWith(atual))) setMesSel(atual)
     else if (holerites.length > 0) setMesSel(holerites[0].competencia.slice(0, 7))
   }, [holerites.length])
 
-  const hAtual = holerites.find(hl => hl.competencia.startsWith(mesSel)) ?? null
+  // ── Todos os holerites do mês — um card por tipo ─────────────────────────
+  const holeritesDoMes = holerites.filter(hl => hl.competencia.startsWith(mesSel))
   const [pontoAberto, setPontoAberto] = useState<string|null>(null)
 
-  const bruto     = hAtual?.bruto ?? 0
-  const descontos = hAtual ? ((hAtual.inss??0)+(hAtual.irrf??0)+(hAtual.desconto_vt??0)+(hAtual.desconto_adiant??0)+(hAtual.cesta_basica??0)) || (hAtual.descontos??0) : 0
-  const liquido   = hAtual?.liquido ?? Math.max(0, bruto - descontos)
+  // Ordem de exibição dos tipos
+  const ORDEM_TIPOS = ['mensal','adiantamento','ferias','13o_1a','13o_2a','rescisorio']
+  const holeritesMesOrdenados = [...holeritesDoMes].sort((a, b) => {
+    const ia = ORDEM_TIPOS.indexOf(a.tipo)
+    const ib = ORDEM_TIPOS.indexOf(b.tipo)
+    return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib)
+  })
 
-  // Lançamentos do mês selecionado
+  // ── Totalizador do mês (soma de todos os tipos) ───────────────────────────
+  const totalBruto = holeritesMesOrdenados.reduce((s, h) => s + (h.bruto ?? 0), 0)
+  const totalDesc  = holeritesMesOrdenados.reduce((s, h) => {
+    const d = ((h.inss??0)+(h.irrf??0)+(h.desconto_vt??0)+(h.desconto_adiant??0)+(h.cesta_basica??0)) || (h.descontos??0)
+    return s + d
+  }, 0)
+  const totalLiq   = holeritesMesOrdenados.reduce((s, h) => s + (h.liquido ?? Math.max(0,(h.bruto??0)-((h.inss??0)+(h.irrf??0)+(h.desconto_vt??0)+(h.desconto_adiant??0)+(h.cesta_basica??0))||(h.descontos??0))), 0)
+  const totalFgts  = holeritesMesOrdenados.reduce((s, h) => s + (h.fgts ?? 0), 0)
+
+  // Ciência total do mês (todos aceitos?)
+  const todosCientes = holeritesMesOrdenados.length > 0 && holeritesMesOrdenados.every(h => !!aceites[h.id])
+  const qtdCientes   = holeritesMesOrdenados.filter(h => !!aceites[h.id]).length
+
+  // Lançamentos ponto
   const lancsMes = lancamentos.filter(l => l.mes_referencia === mesSel || l.mes_referencia.startsWith(mesSel))
   const totalHorasNormais = lancsMes.reduce((s,l)=>s+(l.snap_horas_normais??0),0)
   const totalHorasExtras  = lancsMes.reduce((s,l)=>s+(l.snap_horas_extras??0),0)
   const totalProducao     = lancsMes.reduce((s,l)=>s+(l.snap_valor_producao??0),0)
-  const totalBruto        = lancsMes.reduce((s,l)=>s+(l.snap_valor_total??0),0)
+  const totalBrutoLanc    = lancsMes.reduce((s,l)=>s+(l.snap_valor_total??0),0)
 
   function statusMesLanc(grupo: PontoLancamento[]) {
     const todos = grupo.map(l=>l.status)
-    if (todos.every(s=>s==='pago'))                         return { texto:'Pago',     cor:'#15803d', bg:'#dcfce7', border:'#86efac' }
-    if (todos.some(s=>s==='aprovado'||s==='liberado'))      return { texto:'Aprovado', cor:'#1d4ed8', bg:'#dbeafe', border:'#93c5fd' }
-    return { texto:'Pendente', cor:'#92400e', bg:'#fef3c7', border:'#fde68a' }
+    if (todos.every(s=>s==='pago'))                    return { texto:'Pago',     cor:'#15803d', bg:'#dcfce7', border:'#86efac' }
+    if (todos.some(s=>s==='aprovado'||s==='liberado')) return { texto:'Aprovado', cor:'#1d4ed8', bg:'#dbeafe', border:'#93c5fd' }
+    return                                                    { texto:'Pendente', cor:'#92400e', bg:'#fef3c7', border:'#fde68a' }
   }
 
   const mesesOptions = mesesDesdeAdmissao(colab?.data_admissao ?? null)
 
   return (
     <div style={{ paddingBottom: 90 }}>
-      {/* Faixa azul com empresa/matrícula/cargo */}
+      {/* Header azul */}
       <div style={{ background:'#1a56a0', padding:'10px 16px 14px', color:'#fff' }}>
-        <div style={{ background:'rgba(255,255,255,.12)', borderRadius:8, padding:'7px 12px', marginBottom:8 }}>
-          <div style={{ fontSize:10, color:'rgba(255,255,255,.65)', marginBottom:1 }}>Empresa · Matrícula</div>
-          <div style={{ fontSize:13, fontWeight:600 }}>{empresa?.nome??'—'} · {colab?.chapa??'—'}</div>
-        </div>
-        <div style={{ background:'rgba(255,255,255,.12)', borderRadius:8, padding:'7px 12px' }}>
-          <div style={{ fontSize:10, color:'rgba(255,255,255,.65)', marginBottom:1 }}>Cargo / Função</div>
-          <div style={{ fontSize:13, fontWeight:600 }}>{hAtual?.funcao??colab?.funcao??'—'}</div>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+          <div style={{ background:'rgba(255,255,255,.12)', borderRadius:8, padding:'7px 12px' }}>
+            <div style={{ fontSize:10, color:'rgba(255,255,255,.65)', marginBottom:1 }}>Empresa · Matrícula</div>
+            <div style={{ fontSize:12, fontWeight:600 }}>{empresa?.nome??'—'} · {colab?.chapa??'—'}</div>
+          </div>
+          <div style={{ background:'rgba(255,255,255,.12)', borderRadius:8, padding:'7px 12px' }}>
+            <div style={{ fontSize:10, color:'rgba(255,255,255,.65)', marginBottom:1 }}>Cargo / Função</div>
+            <div style={{ fontSize:12, fontWeight:600 }}>{colab?.funcao??'—'}</div>
+          </div>
         </div>
       </div>
 
-      {/* Seletor de mês — dropdown simples */}
-      <div style={{ padding:'12px 16px 0', background:'#fff', borderBottom:'1px solid #e5e7eb' }}>
-        <label style={{ fontSize:11, fontWeight:700, color:'#6b7280', textTransform:'uppercase', letterSpacing:'.06em', display:'block', marginBottom:6 }}>Mês de Referência</label>
-        <select
-          value={mesSel}
-          onChange={e => setMesSel(e.target.value)}
-          style={{ width:'100%', height:42, borderRadius:10, border:'1.5px solid #e5e7eb', padding:'0 12px', fontSize:14, fontWeight:600, color:'#1a56a0', background:'#fff', cursor:'pointer', outline:'none', marginBottom:12 }}
-        >
+      {/* Seletor de mês */}
+      <div style={{ padding:'10px 16px 0', background:'#fff', borderBottom:'1px solid #e5e7eb' }}>
+        <label style={{ fontSize:11, fontWeight:700, color:'#6b7280', textTransform:'uppercase', letterSpacing:'.06em', display:'block', marginBottom:5 }}>Mês de Referência</label>
+        <select value={mesSel} onChange={e => setMesSel(e.target.value)}
+          style={{ width:'100%', height:42, borderRadius:10, border:'1.5px solid #e5e7eb', padding:'0 12px', fontSize:14, fontWeight:600, color:'#1a56a0', background:'#fff', cursor:'pointer', outline:'none', marginBottom:10 }}>
           {mesesOptions.map(o => <option key={o.val} value={o.val}>{o.label}</option>)}
-          {/* Meses do histórico que não estejam nos 12 últimos */}
-          {holerites
-            .map(hl => hl.competencia.slice(0,7))
-            .filter((m, i, arr) => arr.indexOf(m) === i && !mesesOptions.find(o => o.val === m))
-            .map(m => <option key={m} value={m}>{fmtComp(m)}</option>)
-          }
+          {holerites.map(hl => hl.competencia.slice(0,7))
+            .filter((m,i,arr) => arr.indexOf(m)===i && !mesesOptions.find(o => o.val===m))
+            .map(m => <option key={m} value={m}>{fmtComp(m)}</option>)}
         </select>
       </div>
 
-      <div style={{ padding:'12px 16px 16px' }}>
-        {!hAtual ? (
-          <div style={{ background:'#fff', borderRadius:14, padding:'36px 20px', textAlign:'center', border:'1px solid #e5e7eb', marginBottom:12 }}>
+      <div style={{ padding:'10px 16px 20px' }}>
+
+        {/* ── ESTADO: nenhum holerite no mês ── */}
+        {holeritesMesOrdenados.length === 0 && (
+          <div style={{ background:'#fff', borderRadius:14, padding:'36px 20px', textAlign:'center', border:'1px solid #e5e7eb' }}>
             <div style={{ width:56, height:56, borderRadius:'50%', background:'#f3f4f6', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 14px' }}>
               <Receipt size={28} strokeWidth={1.5} color="#9ca3af"/>
             </div>
-            <div style={{ fontSize:15, fontWeight:700, color:'#374151', marginBottom:6 }}>Nenhum contracheque para {fmtComp(mesSel)}</div>
+            <div style={{ fontSize:15, fontWeight:700, color:'#374151', marginBottom:6 }}>Nenhum holerite para {fmtComp(mesSel)}</div>
             <div style={{ fontSize:12, color:'#6b7280', lineHeight:1.7 }}>
-              Selecione outro mês ou aguarde o RH publicar o holerite.
+              Selecione outro mês ou aguarde o RH publicar.
             </div>
           </div>
-        ) : (
-          <>
-            {/* Card resumo */}
-            <div style={{ background:'#fff', borderRadius:14, padding:'14px 14px 10px', border:'1px solid #e5e7eb', marginBottom:12, boxShadow:'0 2px 8px rgba(0,0,0,.06)' }}>
-              <div style={{ fontSize:14, fontWeight:700, color:'#111827', marginBottom:10, display:'flex', alignItems:'center', flexWrap:'wrap', gap:6 }}>
-                {fmtComp(hAtual.competencia)}
-                <span style={{ fontSize:11, background:'#eff6ff', color:'#1d4ed8', padding:'2px 8px', borderRadius:10, fontWeight:600 }}>
-                  {TIPO_LABEL[hAtual.tipo]??hAtual.tipo}
-                </span>
-                {/* Badge aceite digital */}
-                {aceites[hAtual.id]
-                  ? <span style={{ fontSize:10, background:'#dcfce7', color:'#15803d', padding:'2px 8px', borderRadius:10, fontWeight:700, display:'flex', alignItems:'center', gap:3 }}><CheckCircle2 size={10}/> Ciente</span>
-                  : <span style={{ fontSize:10, background:'#fef3c7', color:'#92400e', padding:'2px 8px', borderRadius:10, fontWeight:700 }}>⚠ Pendente aceite</span>
+        )}
+
+        {/* ── CARDS POR TIPO ── */}
+        {holeritesMesOrdenados.length > 0 && (<>
+
+          {/* Totalizador do mês */}
+          <div style={{ background:'#fff', borderRadius:14, border:'1px solid #e5e7eb', padding:'12px 14px', marginBottom:14, boxShadow:'0 2px 8px rgba(0,0,0,.06)' }}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
+              <div style={{ fontSize:13, fontWeight:800, color:'#111827' }}>
+                📊 {fmtComp(mesSel)} — Resumo Geral
+              </div>
+              <div style={{ display:'flex', alignItems:'center', gap:5 }}>
+                {todosCientes
+                  ? <span style={{ fontSize:10, background:'#dcfce7', color:'#15803d', padding:'2px 8px', borderRadius:10, fontWeight:700, display:'flex', alignItems:'center', gap:3 }}>
+                      <CheckCircle2 size={10}/> {qtdCientes}/{holeritesMesOrdenados.length} Ciente{qtdCientes>1?'s':''}
+                    </span>
+                  : <span style={{ fontSize:10, background:'#fef3c7', color:'#92400e', padding:'2px 8px', borderRadius:10, fontWeight:700 }}>
+                      ⚠ {qtdCientes}/{holeritesMesOrdenados.length} ciente{qtdCientes!==1?'s':''}
+                    </span>
                 }
               </div>
-              <CardResumo bruto={bruto} descontos={descontos} liquido={liquido}/>
             </div>
-
-            {hAtual.fgts && hAtual.fgts > 0 && (
-              <div style={{ background:'#dcfce7', border:'1px solid #86efac', borderRadius:10, padding:'9px 14px', display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
-                <div>
-                  <div style={{ fontSize:11, color:'#15803d', fontWeight:700 }}>🏦 FGTS depositado pela empresa</div>
-                  <div style={{ fontSize:10, color:'#16a34a' }}>Não deduzido do salário</div>
-                </div>
-                <span style={{ color:'#15803d', fontSize:16, fontWeight:900 }}>{fmtR(hAtual.fgts)}</span>
+            <CardResumo bruto={totalBruto} descontos={totalDesc} liquido={totalLiq}/>
+            {totalFgts > 0 && (
+              <div style={{ marginTop:8, background:'#eff6ff', borderRadius:8, padding:'7px 12px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                <span style={{ fontSize:11, color:'#1d4ed8', fontWeight:600 }}>🏦 FGTS total depositado</span>
+                <span style={{ fontSize:13, fontWeight:800, color:'#1d4ed8' }}>{fmtR(totalFgts)}</span>
               </div>
             )}
-            {/* Botão Ver Detalhes */}
-            <button onClick={()=>onSelecionar(hAtual)}
-              style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'center', gap:8, padding:'12px', borderRadius:10, border:'none',
-                background: aceites[hAtual.id] ? '#1a56a0' : 'linear-gradient(135deg,#1d4ed8,#1a56a0)',
-                cursor:'pointer', fontSize:14, color:'#fff', fontWeight:700, marginBottom:12, boxShadow:'0 2px 8px rgba(26,86,160,.3)' }}>
-              {aceites[hAtual.id]
-                ? <><Receipt size={15}/> Ver Contracheque Completo <ChevronRight size={16}/></>
-                : <><ShieldCheck size={15}/> Li e estou ciente — Abrir Holerite <ChevronRight size={16}/></>
-              }
-            </button>
+          </div>
 
-            {/* Preview seções */}
-            <div style={{ background:'#fff', borderRadius:14, border:'1px solid #e5e7eb', overflow:'hidden', marginBottom:14 }}>
-              <button onClick={()=>onSelecionar(hAtual)} style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'space-between', padding:'13px 16px', background:'none', border:'none', cursor:'pointer', borderBottom:'1px solid #e5e7eb' }}>
-                <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-                  <span style={{ width:22, height:22, borderRadius:'50%', background:'#dcfce7', display:'flex', alignItems:'center', justifyContent:'center' }}><Plus size={11} color="#16a34a" strokeWidth={3}/></span>
-                  <span style={{ fontSize:14, fontWeight:600, color:'#111827' }}>Rendimentos</span>
+          {/* Um card por tipo de holerite */}
+          {holeritesMesOrdenados.map(h => {
+            const bruto    = h.bruto ?? 0
+            const desc     = ((h.inss??0)+(h.irrf??0)+(h.desconto_vt??0)+(h.desconto_adiant??0)+(h.cesta_basica??0)) || (h.descontos??0)
+            const liq      = h.liquido ?? Math.max(0, bruto - desc)
+            const tc       = tipoConfig(h.tipo)
+            const ciente   = !!aceites[h.id]
+            return (
+              <div key={h.id} style={{
+                background:'#fff', borderRadius:14,
+                border:`2px solid ${ciente ? tc.border : '#fde68a'}`,
+                marginBottom:12, overflow:'hidden',
+                boxShadow:'0 2px 8px rgba(0,0,0,.05)',
+              }}>
+                {/* Cabeçalho do card */}
+                <div style={{ padding:'11px 14px 9px', background: ciente ? '#f8fafc' : '#fffbeb', borderBottom:'1px solid #f1f5f9', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                    <span style={{ fontSize:20 }}>{tc.emoji}</span>
+                    <div>
+                      <div style={{ fontSize:13, fontWeight:800, color:'#111827' }}>{TIPO_LABEL[h.tipo] ?? h.tipo}</div>
+                      <div style={{ fontSize:10, color:'#6b7280', marginTop:1 }}>{fmtComp(h.competencia)}</div>
+                    </div>
+                  </div>
+                  <div>
+                    {ciente
+                      ? <span style={{ fontSize:10, background:'#dcfce7', color:'#15803d', padding:'3px 9px', borderRadius:10, fontWeight:700, display:'flex', alignItems:'center', gap:3 }}>
+                          <CheckCircle2 size={10}/> Ciente
+                        </span>
+                      : <span style={{ fontSize:10, background:'#fef3c7', color:'#92400e', padding:'3px 9px', borderRadius:10, fontWeight:700, display:'flex', alignItems:'center', gap:3 }}>
+                          <ShieldCheck size={10}/> Pendente
+                        </span>
+                    }
+                  </div>
                 </div>
-                <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                  <span style={{ fontSize:14, fontWeight:700, color:'#16a34a' }}>{fmtR(bruto)}</span>
-                  <ChevronDown size={16} color="#9ca3af"/>
-                </div>
-              </button>
-              <button onClick={()=>onSelecionar(hAtual)} style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'space-between', padding:'13px 16px', background:'none', border:'none', cursor:'pointer', borderBottom:'1px solid #e5e7eb' }}>
-                <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-                  <span style={{ width:22, height:22, borderRadius:'50%', background:'#fee2e2', display:'flex', alignItems:'center', justifyContent:'center' }}><Minus size={11} color="#dc2626" strokeWidth={3}/></span>
-                  <span style={{ fontSize:14, fontWeight:600, color:'#111827' }}>Descontos</span>
-                </div>
-                <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                  <span style={{ fontSize:14, fontWeight:700, color:'#dc2626' }}>- {fmtR(descontos)}</span>
-                  <ChevronDown size={16} color="#9ca3af"/>
-                </div>
-              </button>
-              <button onClick={()=>onSelecionar(hAtual)} style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'space-between', padding:'13px 16px', background:'none', border:'none', cursor:'pointer' }}>
-                <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-                  <span style={{ width:22, height:22, borderRadius:'50%', background:'#f3f4f6', display:'flex', alignItems:'center', justifyContent:'center' }}><Info size={11} color="#6b7280"/></span>
-                  <span style={{ fontSize:14, fontWeight:600, color:'#111827' }}>Informações Adicionais</span>
-                </div>
-                <ChevronDown size={16} color="#9ca3af"/>
-              </button>
-            </div>
 
-            {/* Histórico de fechamento de ponto (para o mês selecionado) */}
-            {lancsMes.length > 0 && (
-              <div>
-                <div style={{ fontSize:11, fontWeight:700, color:'#6b7280', textTransform:'uppercase', letterSpacing:.5, marginBottom:8, display:'flex', alignItems:'center', gap:6 }}>
-                  <CalendarDays size={13}/> HISTÓRICO DE FECHAMENTO DE PONTO
+                {/* Valores resumidos */}
+                <div style={{ padding:'10px 14px' }}>
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:6, marginBottom:10 }}>
+                    <div style={{ textAlign:'center' }}>
+                      <div style={{ fontSize:9, color:'#6b7280', fontWeight:600, textTransform:'uppercase', marginBottom:3 }}>Bruto</div>
+                      <div style={{ fontSize:14, fontWeight:800, color:'#16a34a' }}>{fmtR(bruto)}</div>
+                    </div>
+                    <div style={{ textAlign:'center' }}>
+                      <div style={{ fontSize:9, color:'#6b7280', fontWeight:600, textTransform:'uppercase', marginBottom:3 }}>Descontos</div>
+                      <div style={{ fontSize:14, fontWeight:800, color:'#dc2626' }}>-{fmtR(desc)}</div>
+                    </div>
+                    <div style={{ textAlign:'center' }}>
+                      <div style={{ fontSize:9, color:'#6b7280', fontWeight:600, textTransform:'uppercase', marginBottom:3 }}>Líquido</div>
+                      <div style={{ fontSize:14, fontWeight:800, color:'#1d4ed8' }}>{fmtR(liq)}</div>
+                    </div>
+                  </div>
+
+                  {/* Botão de ação */}
+                  <button onClick={() => onSelecionar(h)} style={{
+                    width:'100%', height:40, borderRadius:10, border:'none',
+                    background: ciente
+                      ? tc.bg
+                      : 'linear-gradient(135deg,#1d4ed8,#1a56a0)',
+                    color: ciente ? tc.cor : '#fff',
+                    fontWeight:700, fontSize:13, cursor:'pointer',
+                    display:'flex', alignItems:'center', justifyContent:'center', gap:7,
+                    boxShadow: ciente ? 'none' : '0 2px 8px rgba(29,78,216,.25)',
+                  }}>
+                    {ciente
+                      ? <><Receipt size={14}/> Ver {TIPO_LABEL[h.tipo] ?? h.tipo} Completo <ChevronRight size={14}/></>
+                      : <><ShieldCheck size={14}/> Li e estou ciente — {TIPO_LABEL[h.tipo] ?? h.tipo} <ChevronRight size={14}/></>
+                    }
+                  </button>
                 </div>
-                <div style={{ background:'#fff', borderRadius:12, border:'1px solid #e5e7eb', overflow:'hidden' }}>
-                  {(() => {
-                    const st = statusMesLanc(lancsMes)
-                    const ab = pontoAberto === mesSel
-                    return (
-                      <>
-                        <button onClick={()=>setPontoAberto(ab?null:mesSel)}
-                          style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'space-between', padding:'12px 14px', background:'none', border:'none', cursor:'pointer' }}>
-                          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                            <span style={{ fontSize:15 }}>📅</span>
-                            <span style={{ fontSize:13, fontWeight:700, color:'#111827' }}>{fmtComp(mesSel)}</span>
-                            <span style={{ fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:10, color:st.cor, background:st.bg, border:`1px solid ${st.border}` }}>{st.texto}</span>
-                          </div>
-                          {ab?<ChevronUp size={16} color="#6b7280"/>:<ChevronDown size={16} color="#6b7280"/>}
-                        </button>
-                        <div style={{ height:1, background:'#e5e7eb', margin:'0 14px' }}/>
-                        <div style={{ padding:'9px 14px', display:'grid', gridTemplateColumns:'1fr 1fr', gap:'4px 10px' }}>
-                          <div style={{ display:'flex', gap:5, fontSize:11, color:'#374151', alignItems:'center' }}>
-                            <span>⏱</span><span style={{ color:'#6b7280' }}>H. Normais:</span>
-                            <span style={{ fontWeight:700 }}>{totalHorasNormais.toFixed(1)}h</span>
-                          </div>
-                          <div style={{ display:'flex', gap:5, fontSize:11, color:'#374151', alignItems:'center' }}>
-                            <span>⚡</span><span style={{ color:'#6b7280' }}>H. Extras:</span>
-                            <span style={{ fontWeight:700 }}>{totalHorasExtras.toFixed(1)}h</span>
-                          </div>
-                          <div style={{ display:'flex', gap:5, fontSize:11, color:'#374151', alignItems:'center' }}>
-                            <span>📦</span><span style={{ color:'#6b7280' }}>Produção:</span>
-                            <span style={{ fontWeight:700 }}>{fmtR(totalProducao)}</span>
-                          </div>
-                          <div style={{ display:'flex', gap:5, fontSize:11, color:'#374151', alignItems:'center' }}>
-                            <span>💰</span><span style={{ color:'#6b7280' }}>Total:</span>
-                            <span style={{ fontWeight:800, color:'#1a56a0' }}>{fmtR(totalBruto)}</span>
-                          </div>
+
+                {/* FGTS individual */}
+                {(h.fgts ?? 0) > 0 && (
+                  <div style={{ padding:'0 14px 10px' }}>
+                    <div style={{ background:'#eff6ff', borderRadius:8, padding:'7px 10px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                      <span style={{ fontSize:11, color:'#1d4ed8', fontWeight:600 }}>🏦 FGTS</span>
+                      <span style={{ fontSize:12, fontWeight:800, color:'#1d4ed8' }}>{fmtR(h.fgts)}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+
+          {/* Histórico de fechamento de ponto */}
+          {lancsMes.length > 0 && (
+            <div style={{ marginTop:4 }}>
+              <div style={{ fontSize:11, fontWeight:700, color:'#6b7280', textTransform:'uppercase', letterSpacing:.5, marginBottom:8, display:'flex', alignItems:'center', gap:6 }}>
+                <CalendarDays size={13}/> FECHAMENTO DE PONTO
+              </div>
+              <div style={{ background:'#fff', borderRadius:12, border:'1px solid #e5e7eb', overflow:'hidden' }}>
+                {(() => {
+                  const st = statusMesLanc(lancsMes)
+                  const ab = pontoAberto === mesSel
+                  return (
+                    <>
+                      <button onClick={()=>setPontoAberto(ab?null:mesSel)}
+                        style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'space-between', padding:'12px 14px', background:'none', border:'none', cursor:'pointer' }}>
+                        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                          <span style={{ fontSize:15 }}>📅</span>
+                          <span style={{ fontSize:13, fontWeight:700, color:'#111827' }}>{fmtComp(mesSel)}</span>
+                          <span style={{ fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:10, color:st.cor, background:st.bg, border:`1px solid ${st.border}` }}>{st.texto}</span>
                         </div>
-                        {ab && (
-                          <div style={{ borderTop:'1px solid #e5e7eb', background:'#f9fafb', padding:'8px 14px 10px' }}>
-                            {lancsMes.map((l,idx)=>{
-                              const stL = l.status==='pago'?{cor:'#15803d',bg:'#dcfce7'}:l.status==='aprovado'||l.status==='liberado'?{cor:'#1d4ed8',bg:'#dbeafe'}:{cor:'#92400e',bg:'#fef3c7'}
-                              const fmtDM = (d:string)=>{ const [,m,day]=d.split('-'); return `${day}/${m}` }
-                              return (
-                                <div key={l.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'6px 10px', marginBottom:4, background:'#fff', borderRadius:8, border:'1px solid #e5e7eb', fontSize:12 }}>
-                                  <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                                    <span style={{ fontWeight:600, color:'#1a56a0', minWidth:16 }}>P{idx+1}</span>
-                                    <span style={{ color:'#374151' }}>{fmtDM(l.data_inicio)}–{fmtDM(l.data_fim)}</span>
-                                  </div>
-                                  <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                                    <span style={{ fontWeight:700, color:'#111827' }}>{fmtR(l.snap_liquido)}</span>
-                                    <span style={{ fontSize:10, fontWeight:700, padding:'1px 7px', borderRadius:8, color:stL.cor, background:stL.bg }}>{l.status}</span>
-                                  </div>
-                                </div>
-                              )
-                            })}
+                        {ab?<ChevronUp size={16} color="#6b7280"/>:<ChevronDown size={16} color="#6b7280"/>}
+                      </button>
+                      <div style={{ height:1, background:'#e5e7eb', margin:'0 14px' }}/>
+                      <div style={{ padding:'9px 14px', display:'grid', gridTemplateColumns:'1fr 1fr', gap:'4px 10px' }}>
+                        {[
+                          { ic:'⏱', label:'H. Normais', val:`${totalHorasNormais.toFixed(1)}h` },
+                          { ic:'⚡', label:'H. Extras',  val:`${totalHorasExtras.toFixed(1)}h` },
+                          { ic:'📦', label:'Produção',   val:fmtR(totalProducao) },
+                          { ic:'💰', label:'Total',      val:fmtR(totalBrutoLanc), bold:true },
+                        ].map(({ ic, label, val, bold }) => (
+                          <div key={label} style={{ display:'flex', gap:5, fontSize:11, color:'#374151', alignItems:'center' }}>
+                            <span>{ic}</span>
+                            <span style={{ color:'#6b7280' }}>{label}:</span>
+                            <span style={{ fontWeight: bold ? 800 : 700, color: bold ? '#1a56a0' : undefined }}>{val}</span>
                           </div>
-                        )}
-                      </>
-                    )
-                  })()}
-                </div>
+                        ))}
+                      </div>
+                      {ab && (
+                        <div style={{ borderTop:'1px solid #e5e7eb', background:'#f9fafb', padding:'8px 14px 10px' }}>
+                          {lancsMes.map((l,idx)=>{
+                            const stL = l.status==='pago'?{cor:'#15803d',bg:'#dcfce7'}:l.status==='aprovado'||l.status==='liberado'?{cor:'#1d4ed8',bg:'#dbeafe'}:{cor:'#92400e',bg:'#fef3c7'}
+                            const fmtDM = (d:string)=>{ const [,m,day]=d.split('-'); return `${day}/${m}` }
+                            return (
+                              <div key={l.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'6px 10px', marginBottom:4, background:'#fff', borderRadius:8, border:'1px solid #e5e7eb', fontSize:12 }}>
+                                <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                                  <span style={{ fontWeight:600, color:'#1a56a0', minWidth:16 }}>P{idx+1}</span>
+                                  <span style={{ color:'#374151' }}>{fmtDM(l.data_inicio)}–{fmtDM(l.data_fim)}</span>
+                                </div>
+                                <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                                  <span style={{ fontWeight:700, color:'#111827' }}>{fmtR(l.snap_liquido)}</span>
+                                  <span style={{ fontSize:10, fontWeight:700, padding:'1px 7px', borderRadius:8, color:stL.cor, background:stL.bg }}>{l.status}</span>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </>
+                  )
+                })()}
               </div>
-            )}
-          </>
-        )}
+            </div>
+          )}
+        </>)}
       </div>
     </div>
   )
 }
+
 
 // ─── ABA FOLHA DE PONTO ───────────────────────────────────────────────────────
 // Mês padrão = mês atual. Busca lançamentos do portal_ponto_diario.

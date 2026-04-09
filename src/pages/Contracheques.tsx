@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useProfile } from '@/hooks/useProfile'
+import { useAuth } from '@/hooks/useAuth'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
@@ -57,9 +58,14 @@ function fmtMoeda(v: number | null) {
 }
 
 const TIPO_LABEL: Record<string, string> = {
-  mensal: 'Mensal', '13o_1a': '13º - 1ª Parcela',
-  '13o_2a': '13º - 2ª Parcela', ferias: 'Férias', adiantamento: 'Adiantamento',
+  mensal:       'Mensal',
+  adiantamento: 'Adiantamento Salarial',
+  ferias:       'Férias',
+  '13o_1a':     '13º - 1ª Parcela',
+  '13o_2a':     '13º - 2ª Parcela',
+  rescisorio:   'Rescisório',
 }
+const MASTER_EMAIL = 'magmodrive@gmail.com'
 const BUCKET = 'ocorrencias-documentos'
 
 async function uploadPdf(file: File) {
@@ -557,6 +563,8 @@ function ModalHolerite({ open, onClose, colaborador, onSaved }: {
 // ─── Página principal ────────────────────────────────────────────────────────
 export default function Contracheques() {
   useProfile()
+  const { user } = useAuth()
+  const isMaster = user?.email === MASTER_EMAIL
   const [colaboradores, setColaboradores] = useState<Colaborador[]>([])
   const [portais, setPortais]             = useState<Portal[]>([])
   const [selected, setSelected]           = useState<Colaborador | null>(null)
@@ -673,9 +681,28 @@ export default function Contracheques() {
 
   async function deletar() {
     if (!deleteId) return
+
+    // Verificar se há aceite registrado
+    const { data: acData } = await supabase
+      .from('contracheque_aceites')
+      .select('id, nome_colaborador, aceito_em')
+      .eq('contracheque_id', deleteId)
+      .limit(1)
+      .single()
+
+    if (acData) {
+      // Holerite já foi lido pelo colaborador
+      if (!isMaster) {
+        toast.error(`🔒 Este holerite já foi visualizado por ${acData.nome_colaborador ?? 'colaborador'} em ${new Date(acData.aceito_em).toLocaleString('pt-BR')} e não pode ser excluído. Apenas o administrador master pode removê-lo em caso de correção.`)
+        setDeleteId(null)
+        return
+      }
+      // Master pode excluir: aviso adicional já foi exibido no modal
+    }
+
     const { error } = await supabase.from('contracheques').delete().eq('id', deleteId)
     if (error) { toast.error(error.message); return }
-    toast.success('Removido.')
+    toast.success(acData ? '⚠️ Holerite com aceite removido pelo master.' : 'Removido.')
     setDeleteId(null)
     if (selected) carregarHolerites(selected.id)
   }
@@ -898,10 +925,20 @@ export default function Contracheques() {
                                   <ExternalLink size={11} />
                                 </a>
                               )}
-                              <button onClick={() => setDeleteId(h.id)}
-                                style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid #fee2e2', background: '#fff1f2', cursor: 'pointer', display: 'flex', alignItems: 'center', color: '#dc2626' }}>
-                                <Trash2 size={11} />
-                              </button>
+                              {aceites[h.id] && !isMaster
+                                ? (
+                                  <div title="Holerite já lido — só o master pode excluir"
+                                    style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid #e5e7eb', background: '#f3f4f6', display: 'flex', alignItems: 'center', color: '#9ca3af', cursor: 'not-allowed' }}>
+                                    🔒
+                                  </div>
+                                ) : (
+                                  <button onClick={() => setDeleteId(h.id)}
+                                    title={aceites[h.id] ? '⚠️ Tem aceite — master pode excluir' : 'Excluir'}
+                                    style={{ padding: '4px 8px', borderRadius: 6, border: `1px solid ${aceites[h.id] ? '#fed7aa' : '#fee2e2'}`, background: aceites[h.id] ? '#fff7ed' : '#fff1f2', cursor: 'pointer', display: 'flex', alignItems: 'center', color: aceites[h.id] ? '#ea580c' : '#dc2626' }}>
+                                    <Trash2 size={11} />
+                                  </button>
+                                )
+                              }
                             </div>
                           </td>
                         </tr>
@@ -928,7 +965,11 @@ export default function Contracheques() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
-            <AlertDialogDescription>Este holerite será removido permanentemente.</AlertDialogDescription>
+            <AlertDialogDescription>
+              {isMaster
+                ? '⚠️ ATENÇÃO (master): Este holerite pode ter aceite registrado. Ao excluir, o histórico jurídico de ciência do colaborador será perdido. Confirma?'
+                : 'Este holerite será removido permanentemente. Se já foi visualizado pelo colaborador, a exclusão será bloqueada.'}
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
