@@ -930,10 +930,16 @@ function AbaFolhaPonto({ sessao, dataAdmissao, lancamentos }: { sessao: Sessao; 
     setLoading(true)
     const inicio = mes + '-01'
     const fim    = mes + '-31'
-    const [pontoRes, prodRes] = await Promise.all([
+    const [pontoRes, pontoAltRes, prodRes] = await Promise.all([
       supabase
         .from('portal_ponto_diario')
         .select('id,data,hora_entrada,hora_saida,horas_trabalhadas,horas_extra,horas_falta,status,observacoes')
+        .eq('colaborador_id', sessao.colaborador_id)
+        .gte('data', inicio).lte('data', fim)
+        .order('data', { ascending: true }),
+      supabase
+        .from('registro_ponto')
+        .select('id,data,hora_entrada,hora_saida,horas_trabalhadas,horas_extras,horas_falta,status,observacoes')
         .eq('colaborador_id', sessao.colaborador_id)
         .gte('data', inicio).lte('data', fim)
         .order('data', { ascending: true }),
@@ -944,7 +950,11 @@ function AbaFolhaPonto({ sessao, dataAdmissao, lancamentos }: { sessao: Sessao; 
         .gte('data', inicio).lte('data', fim)
         .order('data', { ascending: true }),
     ])
-    if (!pontoRes.error) setRegistros((pontoRes.data as RegistroPonto[]) ?? [])
+    const r1 = (!pontoRes.error ? (pontoRes.data as any[]) ?? [] : [])
+    const r2 = (!pontoAltRes.error ? (pontoAltRes.data as any[]) ?? [] : [])
+      .map((r:any)=>({...r, horas_extra: r.horas_extras ?? r.horas_extra}))
+    const merged = r1.length > 0 ? r1 : r2
+    setRegistros(merged as RegistroPonto[])
     setProducoes((prodRes.data as any[]) ?? [])
     setLoading(false)
   }, [sessao.colaborador_id])
