@@ -2203,14 +2203,14 @@ export default function Ponto() {
                                       style={{border:'none',cursor:lancBloq?'default':'pointer',padding:'1px 3px',borderRadius:3,background:d.feriado_remunerado?'#fef3c7':'transparent',color:d.feriado_remunerado?'#92400e':'#d1d5db',fontSize:10,fontWeight:700}}>$</button>
                                   )}
                                 </td>
-                                {/* Campos de hora */}
-                                <td style={{...TDc,borderLeft:'1px solid #e5e7eb'}}><TI disabled={!d.presente||d.falta||d.bloqueado||lancBloq} value={d.hora_entrada} onChange={v=>updDia(lanc.id,idx,'hora_entrada',v)}/></td>
-                                <td style={TDc}><TI disabled={!d.presente||d.falta||d.bloqueado||lancBloq} value={d.saida_almoco} onChange={v=>updDia(lanc.id,idx,'saida_almoco',v)}/></td>
-                                <td style={TDc}><TI disabled={!d.presente||d.falta||d.bloqueado||lancBloq} value={d.retorno_almoco} onChange={v=>updDia(lanc.id,idx,'retorno_almoco',v)}/></td>
-                                <td style={{...TDc,borderRight:'1px solid #e5e7eb'}}><TI disabled={!d.presente||d.falta||d.bloqueado||lancBloq} value={d.hora_saida} onChange={v=>updDia(lanc.id,idx,'hora_saida',v)}/></td>
+                                {/* Campos de hora — padding:0 na célula, input ocupa 100% */}
+                                <td style={{...TDc,padding:0,borderLeft:'2px solid #e2e8f0'}}><TI disabled={!d.presente||d.falta||d.bloqueado||lancBloq} value={d.hora_entrada} onChange={v=>updDia(lanc.id,idx,'hora_entrada',v)}/></td>
+                                <td style={{...TDc,padding:0}}><TI disabled={!d.presente||d.falta||d.bloqueado||lancBloq} value={d.saida_almoco} onChange={v=>updDia(lanc.id,idx,'saida_almoco',v)}/></td>
+                                <td style={{...TDc,padding:0}}><TI disabled={!d.presente||d.falta||d.bloqueado||lancBloq} value={d.retorno_almoco} onChange={v=>updDia(lanc.id,idx,'retorno_almoco',v)}/></td>
+                                <td style={{...TDc,padding:0,borderRight:'2px solid #e2e8f0'}}><TI disabled={!d.presente||d.falta||d.bloqueado||lancBloq} value={d.hora_saida} onChange={v=>updDia(lanc.id,idx,'hora_saida',v)}/></td>
                                 {/* HE */}
-                                <td style={{...TDc,background:'rgba(46,74,138,0.05)',borderLeft:'1px solid #e5e7eb'}}><TI disabled={!d.presente||d.falta||d.bloqueado||lancBloq} value={d.he_entrada} onChange={v=>updDia(lanc.id,idx,'he_entrada',v)}/></td>
-                                <td style={{...TDc,background:'rgba(46,74,138,0.05)',borderRight:'1px solid #e5e7eb'}}><TI disabled={!d.presente||d.falta||d.bloqueado||lancBloq} value={d.he_saida} onChange={v=>updDia(lanc.id,idx,'he_saida',v)}/></td>
+                                <td style={{...TDc,padding:0,background:'#f0f4ff'}}><TI disabled={!d.presente||d.falta||d.bloqueado||lancBloq} value={d.he_entrada} onChange={v=>updDia(lanc.id,idx,'he_entrada',v)}/></td>
+                                <td style={{...TDc,padding:0,background:'#f0f4ff',borderRight:'2px solid #e2e8f0'}}><TI disabled={!d.presente||d.falta||d.bloqueado||lancBloq} value={d.he_saida} onChange={v=>updDia(lanc.id,idx,'he_saida',v)}/></td>
                                 {/* Cálculos */}
                                 <td style={{...TDc,textAlign:'center',fontWeight:600,fontFamily:'monospace',fontSize:11,color:calc.normais>0?'#15803d':'#9ca3af'}}>{calc.normais>0?fmtHHMM(calc.normais):'—'}</td>
                                 <td style={{...TDc,textAlign:'center',fontWeight:600,fontFamily:'monospace',fontSize:11,color:calc.extras100>0?'#dc2626':calc.extras50>0?'#1d4ed8':'#9ca3af'}}>{calc.extras100>0?fmtHHMM(calc.extras100):calc.extras50>0?fmtHHMM(calc.extras50):'—'}</td>
@@ -2236,10 +2236,10 @@ export default function Ponto() {
                                   }
                                 </td>
                                 {/* Obs */}
-                                <td style={{...TDc,paddingLeft:4,fontSize:10,color:'#6b7280',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:80}}>
+                                <td style={{...TDc,paddingLeft:6,fontSize:11,color:'#374151',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
                                   {d.evento==='atestado'&&<span style={{color:'#1d4ed8',fontWeight:600}}>Atestado</span>}
                                   {d.evento==='suspensao'&&<span style={{color:'#b91c1c',fontWeight:600}}>Suspensão</span>}
-                                  {d.evento==='outro_lancamento'&&<span style={{color:'#6b7280'}}>🔒 {d.justificativa||'outra obra'}</span>}
+                                  {d.evento==='outro_lancamento'&&<span style={{color:'#374151'}}>🔒 {d.justificativa||'outra obra'}</span>}
                                 </td>
                               </tr>
                             )
@@ -2888,5 +2888,10 @@ const LBL:React.CSSProperties={display:'block',fontSize:12,fontWeight:600,margin
 const SEL:React.CSSProperties={width:'100%',padding:'8px 10px',fontSize:13,border:'1px solid var(--border)',borderRadius:6,background:'var(--background)',color:'var(--foreground)'}
 
 function TI({value,onChange,disabled}:{value:string;onChange:(v:string)=>void;disabled:boolean}){
-  return<input type="time" value={value} onChange={e=>onChange(e.target.value)} disabled={disabled} style={{width:'100%',padding:'3px 2px',fontSize:12,border:'1px solid',borderColor:disabled?'transparent':'#d1d5db',borderRadius:4,background:disabled?'transparent':'#fff',color:disabled?'#9ca3af':'#111827',fontFamily:'monospace',textAlign:'center',cursor:disabled?'default':'text',outline:'none',boxSizing:'border-box',minWidth:64}}/>
+  // width:100% + padding:0 garante que o input ocupa exatamente a célula sem overflow
+  return<input type="time" value={value} onChange={e=>onChange(e.target.value)} disabled={disabled}
+    style={{display:'block',width:'100%',padding:'4px 0',fontSize:12,border:disabled?'none':'1px solid #d1d5db',borderRadius:4,
+      background:disabled?'transparent':'#fff',color:disabled?'#94a3b8':'#111827',
+      fontFamily:'monospace',textAlign:'center',cursor:disabled?'default':'text',
+      outline:'none',boxSizing:'border-box'}}/>
 }
