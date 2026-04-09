@@ -192,7 +192,17 @@ const TIPO_CONFIG: Record<string, { cor: string; bg: string; border: string; emo
 function tipoConfig(tipo: string) {
   return TIPO_CONFIG[tipo] ?? { cor:'#6b7280', bg:'#f3f4f6', border:'#e5e7eb', emoji:'📄' }
 }
-const SESSION_KEY = 'contracheque_session'
+const SESSION_KEY   = 'contracheque_session'
+const ACEITES_KEY   = (id: string) => `ctrq_aceites_${id}`
+
+// Salva aceite no cache local para sobreviver reload
+function salvarAceiteCache(colaboradorId: string, aceites: Record<string, AceiteDigital>) {
+  try { localStorage.setItem(ACEITES_KEY(colaboradorId), JSON.stringify(aceites)) } catch {}
+}
+// Carrega cache local de aceites
+function carregarAceiteCache(colaboradorId: string): Record<string, AceiteDigital> {
+  try { const s = localStorage.getItem(ACEITES_KEY(colaboradorId)); return s ? JSON.parse(s) : {} } catch { return {} }
+}
 
 // ─── Donut Chart ──────────────────────────────────────────────────────────────
 function DonutChart({ slices, size = 120 }: {
@@ -286,6 +296,29 @@ function CardResumo({ bruto, descontos, liquido }: { bruto: number; descontos: n
   )
 }
 
+
+// Abre uma janela HTML como PDF-ready em mobile e desktop
+// Em mobile (iOS/Android), usa blob URL para evitar bloqueio de popup
+function abrirHtmlComoPdf(html: string, titulo: string): void {
+  try {
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href     = url
+    a.target   = '_blank'
+    a.rel      = 'noopener noreferrer'
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    // Liberar memória após 60s
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  } catch {
+    // Fallback final: data URI
+    const encoded = encodeURIComponent(html)
+    window.location.href = `data:text/html;charset=utf-8,${encoded}`
+  }
+}
+
 // ─── Detalhe do Contracheque (tela completa) ──────────────────────────────────
 function TelaHolerite({ h, colab, empresa, aceite, onVoltar }: {
   h: Contracheque; colab: ColabInfo | null; empresa: EmpresaInfo | null
@@ -314,7 +347,6 @@ function TelaHolerite({ h, colab, empresa, aceite, onVoltar }: {
   if (!descontosList.length && descontos > 0) descontosList.push({ cod:'0101', desc:'Total Descontos', val:descontos, cor:'#ef4444' })
 
   function imprimir() {
-    const w = window.open('', '_blank'); if (!w) return
     const en = empresa?.nome ?? 'Empresa'
     const cnpj = empresa?.cnpj ? `CNPJ: ${empresa.cnpj}` : ''
     const rowsR = rendimentos.map(r => `
@@ -439,8 +471,7 @@ function TelaHolerite({ h, colab, empresa, aceite, onVoltar }: {
 <script>window.onload=()=>{ window.print() }</script>
 </body>
 </html>`
-    w.document.write(html)
-    w.document.close()
+    abrirHtmlComoPdf(html, `Contracheque — ${fmtComp(h.competencia)}`)
   }
 
   // ── bloco de aceite na tela ─────────────────────────────────────────────────
@@ -923,7 +954,6 @@ function AbaFolhaPonto({ sessao, dataAdmissao, lancamentos }: { sessao: Sessao; 
   const [gerandoPdf, setGerandoPdf] = useState(false)
 
   function gerarPdfPonto() {
-    const w = window.open('', '_blank'); if (!w) return
     const mesLabel = fmtComp(mesSel)
     const fh = (hh: string|null) => hh ? hh.slice(0,5) : '—'
     const temRegistros = registros.length > 0
@@ -1050,8 +1080,7 @@ function AbaFolhaPonto({ sessao, dataAdmissao, lancamentos }: { sessao: Sessao; 
   </div>
 <script>window.onload=()=>{ window.print() }</script>
 </body></html>`
-    w.document.write(html)
-    w.document.close()
+    abrirHtmlComoPdf(html, `Folha de Ponto — ${sessao.nome} — ${mesLabel}`)
   }
 
   return (
@@ -1558,7 +1587,15 @@ export default function PortalContracheque() {
   const [empresa, setEmpresa]       = useState<EmpresaInfo|null>(null)
   const [loading, setLoading]       = useState(false)
   const [selecionado, setSelecionado] = useState<Contracheque|null>(null)
-  const [aceites, setAceites]       = useState<Record<string, AceiteDigital>>({})
+  const [aceites, setAceites]       = useState<Record<string, AceiteDigital>>(() => {
+    // Inicializa com cache local para evitar piscar o modal de aceite no reload
+    try {
+      const s = localStorage.getItem(SESSION_KEY)
+      const sess = s ? JSON.parse(s) : null
+      if (sess?.colaborador_id) return carregarAceiteCache(sess.colaborador_id)
+    } catch {}
+    return {}
+  })
   const [modalAceite, setModalAceite] = useState<Contracheque|null>(null)
   const [salvandoAceite, setSalvandoAceite] = useState(false)
   const [aba, setAba]               = useState<Aba>('contracheque')
@@ -1595,11 +1632,12 @@ export default function PortalContracheque() {
           .select('*')
           .eq('colaborador_id', colaboradorId)
           .in('contracheque_id', ids)
-        if (acData) {
-          const m: Record<string, AceiteDigital> = {}
-          for (const a of acData as AceiteDigital[]) m[a.contracheque_id] = a
-          setAceites(m)
-        }
+        // Fundir aceites do banco com cache local (banco prevalece)
+        const cacheLocal = carregarAceiteCache(colaboradorId)
+        const m: Record<string, AceiteDigital> = { ...cacheLocal }
+        for (const a of (acData ?? []) as AceiteDigital[]) m[a.contracheque_id] = a
+        setAceites(m)
+        salvarAceiteCache(colaboradorId, m)  // sincroniza cache
       }
     } finally { setLoading(false) }
   }, [])
@@ -1659,8 +1697,12 @@ export default function PortalContracheque() {
         }
       }
 
-      // Atualizar estado ANTES de abrir holerite — garante re-render correto
-      setAceites(prev => ({ ...prev, [h.id]: aceiteRegistrado! }))
+      // Atualizar estado + cache local ANTES de abrir holerite
+      setAceites(prev => {
+        const next = { ...prev, [h.id]: aceiteRegistrado! }
+        if (sessao) salvarAceiteCache(sessao.colaborador_id, next)
+        return next
+      })
       setModalAceite(null)
       setSelecionado(h)
     } catch {
@@ -1683,6 +1725,7 @@ export default function PortalContracheque() {
   }
 
   function sair() {
+    if (sessao) { try { localStorage.removeItem(ACEITES_KEY(sessao.colaborador_id)) } catch {} }
     localStorage.removeItem(SESSION_KEY)
     setSessao(null); setHolerites([]); setLancamentos([]); setSelecionado(null); setAba('contracheque'); setAceites({}); setModalAceite(null)
   }
