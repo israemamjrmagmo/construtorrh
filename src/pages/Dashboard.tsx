@@ -10,7 +10,7 @@ import {
 import {
   Users, Building2, DollarSign, AlertTriangle,
   TrendingUp, Award, FileText, Shield,
-  CheckCircle2, Clock, ChevronRight, Briefcase,
+  CheckCircle2, Clock, ChevronRight, Briefcase, Umbrella,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -110,6 +110,9 @@ interface DashboardData {
   rescisoesMesValor: number
   // Alertas
   lancamentosAguardando: number
+  feriasVencidas: number
+  feriasConcessivo: number
+  solicitacoesPendenteFerias: number
   // Config
   empresaNome: string
 }
@@ -227,6 +230,8 @@ export default function Dashboard() {
           premiosRes,
           rescisoesMesRes,
           lancAguardandoRes,
+          cltAdmissaoRes,
+          solFeriasPendRes,
           configRes,
         ] = await Promise.all([
           // 1. Colaboradores ativos com tipo_contrato
@@ -307,7 +312,21 @@ export default function Dashboard() {
             .select('id', { count: 'exact', head: true })
             .eq('status', 'aguardando_aprovacao'),
 
-          // 13. Configurações da empresa
+          // 13. Colaboradores CLT com data admissão (para calcular férias)
+          supabase
+            .from('colaboradores')
+            .select('id,data_admissao')
+            .eq('tipo_contrato','clt')
+            .in('status',['ativo','ferias','afastado'])
+            .not('data_admissao','is',null),
+
+          // 14. Solicitações de férias pendentes
+          supabase
+            .from('solicitacoes_ferias')
+            .select('id',{count:'exact',head:true})
+            .eq('status','pendente'),
+
+          // 15. Configurações da empresa
           supabase
             .from('configuracoes')
             .select('chave, valor')
@@ -397,6 +416,24 @@ export default function Dashboard() {
         // ── Lançamentos aguardando ────────────────────────────────────────────
         const lancamentosAguardando = lancAguardandoRes.count ?? 0
 
+        // ── Férias: calcular vencidas e em concessivo ──────────────────────
+        const hoje = new Date()
+        let feriasVencidas = 0, feriasConcessivo = 0
+        ;(cltAdmissaoRes.data ?? []).forEach((c: any) => {
+          if (!c.data_admissao) return
+          let ini = new Date(c.data_admissao + 'T12:00:00')
+          for (let n = 0; n < 30; n++) {
+            const fim   = new Date(ini); fim.setFullYear(fim.getFullYear()+1); fim.setDate(fim.getDate()-1)
+            const cIni  = new Date(fim);  cIni.setDate(cIni.getDate()+1)
+            const cFim  = new Date(cIni); cFim.setFullYear(cFim.getFullYear()+1); cFim.setDate(cFim.getDate()-1)
+            if (ini > hoje) break
+            if (hoje > cFim) { if (hoje > fim) feriasVencidas++ }
+            else if (hoje > fim) feriasConcessivo++
+            ini = new Date(fim); ini.setDate(ini.getDate()+1)
+          }
+        })
+        const solicitacoesPendenteFerias = solFeriasPendRes.count ?? 0
+
         // ── Config ────────────────────────────────────────────────────────────
         const configList = (configRes.data ?? []) as any[]
         const empresaNome = configList.find((c: any) => c.chave === 'empresa_nome')?.valor ?? 'ConstrutorRH'
@@ -414,6 +451,7 @@ export default function Dashboard() {
           premiosAprovadosCount, premiosAprovadosValor,
           rescisoesMes, rescisoesMesValor,
           lancamentosAguardando,
+          feriasVencidas, feriasConcessivo, solicitacoesPendenteFerias,
           empresaNome,
         })
       } catch (e: unknown) {
@@ -476,17 +514,31 @@ export default function Dashboard() {
             </div>
           )}
           {d.lancamentosAguardando > 0 && (
-            <div
-              onClick={() => navigate('/fechamento-ponto')}
-              style={{
-                background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 9,
-                padding: '9px 16px', display: 'flex', alignItems: 'center', gap: 10,
-                cursor: 'pointer', fontSize: 13, color: '#7c2d12', fontWeight: 600,
-              }}
-            >
+            <div onClick={() => navigate('/fechamento-ponto')} style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 9, padding: '9px 16px', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 13, color: '#7c2d12', fontWeight: 600 }}>
               <Clock size={15} style={{ color: '#ea580c', flexShrink: 0 }} />
               {d.lancamentosAguardando} fechamento{d.lancamentosAguardando > 1 ? 's' : ''} aguardando aprovação
               <span style={{ marginLeft: 4, fontWeight: 700, color: '#ea580c', textDecoration: 'underline' }}>→ Ver Fechamento</span>
+              <ChevronRight size={14} style={{ marginLeft: 'auto' }} />
+            </div>
+          )}
+          {d.feriasVencidas > 0 && (
+            <div onClick={() => navigate('/ferias')} style={{ background: '#fff1f2', border: '1px solid #fecaca', borderRadius: 9, padding: '9px 16px', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 13, color: '#7f1d1d', fontWeight: 600 }}>
+              <Umbrella size={15} style={{ color: '#dc2626', flexShrink: 0 }} />
+              ⚠️ {d.feriasVencidas} colaborador{d.feriasVencidas > 1 ? 'es' : ''} com férias <strong style={{ marginLeft: 4 }}>VENCIDAS</strong> — risco de pagamento em dobro
+              <ChevronRight size={14} style={{ marginLeft: 'auto' }} />
+            </div>
+          )}
+          {d.feriasConcessivo > 0 && d.feriasVencidas === 0 && (
+            <div onClick={() => navigate('/ferias')} style={{ background: '#fefce8', border: '1px solid #fde047', borderRadius: 9, padding: '9px 16px', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 13, color: '#713f12', fontWeight: 600 }}>
+              <Umbrella size={15} style={{ color: '#ca8a04', flexShrink: 0 }} />
+              🏖️ {d.feriasConcessivo} colaborador{d.feriasConcessivo > 1 ? 'es' : ''} no período concessivo — programar férias
+              <ChevronRight size={14} style={{ marginLeft: 'auto' }} />
+            </div>
+          )}
+          {d.solicitacoesPendenteFerias > 0 && (
+            <div onClick={() => navigate('/ferias')} style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 9, padding: '9px 16px', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 13, color: '#1e3a8a', fontWeight: 600 }}>
+              <Umbrella size={15} style={{ color: '#2563eb', flexShrink: 0 }} />
+              📋 {d.solicitacoesPendenteFerias} solicitaç{d.solicitacoesPendenteFerias > 1 ? 'ões' : 'ão'} de férias aguardando aprovação
               <ChevronRight size={14} style={{ marginLeft: 'auto' }} />
             </div>
           )}
