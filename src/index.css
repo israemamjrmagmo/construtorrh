@@ -297,8 +297,8 @@ button[style*="background: #1d4ed8"]:hover {
 .page-root {
   display: flex;
   flex-direction: column;
-  gap: 0;
-  padding: 28px 32px 32px;
+  gap: 20px;
+  padding: 28px 32px 40px;
   min-height: 100%;
   background: var(--background);
 }
@@ -470,9 +470,9 @@ h1 .page-emoji, h2 .page-emoji {
 
 /* Paddings responsivos */
 @media (max-width: 1200px) {
-  .page-root { padding: 20px 20px 28px; }
+  .page-root { padding: 20px 20px 32px; gap: 18px; }
 }
 @media (max-width: 768px) {
-  .page-root { padding: 16px 14px 24px; }
+  .page-root { padding: 16px 14px 28px; gap: 14px; }
   .kpi-grid { grid-template-columns: repeat(2, 1fr); }
 }

@@ -135,15 +135,15 @@ function DashboardSkeleton() {
   return (
     <div className="flex flex-col gap-6 p-6">
       <SkeletonBox h="h-16" />
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-5">
         {Array.from({ length: 5 }).map((_, i) => <SkeletonBox key={i} h="h-28" />)}
       </div>
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
         <SkeletonBox h="h-64 xl:col-span-2" />
         <SkeletonBox h="h-64" />
         <SkeletonBox h="h-64" />
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
         {Array.from({ length: 3 }).map((_, i) => <SkeletonBox key={i} h="h-24" />)}
       </div>
     </div>
@@ -584,7 +584,7 @@ export default function Dashboard() {
       </div>
 
       {/* ══ LINHA 1: 5 KPI Cards ═══════════════════════════════════════════ */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-5">
         <KpiCard
           iconBg="#eff6ff"
           icon={<Users size={22} style={{ color: '#3b82f6' }} />}
@@ -626,7 +626,7 @@ export default function Dashboard() {
       </div>
 
       {/* ══ LINHA 2: Gráfico + Headcount + Atividade ═══════════════════════ */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
 
         {/* Gráfico de barras — folha 6 meses */}
         <Card style={{ borderRadius: 14, boxShadow: '0 1px 6px rgba(0,0,0,.07)', border: '1px solid #f0f0f0' }} className="xl:col-span-1">
@@ -763,7 +763,7 @@ export default function Dashboard() {
       </div>
 
       {/* ══ LINHA 3: Atestados · Prêmios · Rescisões ═══════════════════════ */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
 
         {/* Atestados este mês */}
         <div
@@ -835,7 +835,7 @@ export default function Dashboard() {
       </div>
 
       {/* ══ LINHA 4: Aniversariantes + Próximas Férias ══════════════════════ */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
 
         {/* Aniversariantes do mês */}
         <Card style={{ borderRadius:14, boxShadow:'0 1px 6px rgba(0,0,0,.07)', border:'1px solid #f0f0f0' }}>
