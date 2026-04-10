@@ -1398,12 +1398,7 @@ export default function Documentos() {
                               </span>
                             )}
                           </div>
-                          {isAdmin && (doc.source==='avulso'||doc.source==='documento') && (
-                            <button onClick={()=>{setDeleteId(doc.id);setDeleteSource(doc.source)}}
-                              style={{ background:'none', border:'none', cursor:'pointer', color:'#ef4444', padding:4, flexShrink:0 }}>
-                              <Trash2 size={15}/>
-                            </button>
-                          )}
+
                         </div>
                       ))}
                     </div>
