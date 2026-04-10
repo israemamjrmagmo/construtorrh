@@ -21,7 +21,6 @@ const ROUTE_LABELS: Record<string, string> = {
   '/portal/documentos':  'Documentos',
   '/portal/playbook':    'Playbook',
   '/portal/mensagens':   'Mensagens',
-  '/portal/lancamentos': 'Lançamentos',
   '/portal/projetos':    'Projetos',
   '/portal/clima':       'Clima / Chuva',
 }
@@ -37,7 +36,6 @@ const navItems = [
   { to: '/portal/documentos',   icon: FileImage,     label: 'Docs',       color: '#60a5fa', bg: '#eff6ff' },
   { to: '/portal/ferias',       icon: Umbrella,      label: 'Férias',     color: '#0369a1', bg: '#e0f2fe' },
   { to: '/portal/mensagens',    icon: MessageSquare, label: 'Mensagens',  color: '#a78bfa', bg: '#f5f3ff' },
-  { to: '/portal/lancamentos',  icon: Clock,         label: 'Lançamentos',color: '#f97316', bg: '#fff7ed' },
   { to: '/portal/playbook',     icon: BookOpen,      label: 'Playbook',   color: '#34d399', bg: '#f0fdf4' },
   { to: '/portal/projetos',     icon: FolderOpen,    label: 'Projetos',   color: '#94a3b8', bg: '#f8fafc' },
   { to: '/portal/clima',        icon: CloudRain,     label: 'Clima',      color: '#0ea5e9', bg: '#f0f9ff' },

@@ -224,6 +224,7 @@ export default function PortalFerias() {
   const isConcessivo  = periodoAtual.situacao === 'concessivo'
   const diasRestantes = isConcessivo ? diasEntre(hoje, new Date(periodoAtual.concessivo_fim + 'T23:59:59')) : null
   const temSolPendente = solicitacoes.some(s => s.status === 'pendente')
+  const temSolAprovada  = solicitacoes.some(s => s.status === 'aprovada')
 
   return (
     <div style={{ padding:16, display:'flex', flexDirection:'column', gap:14, maxWidth:600, margin:'0 auto', paddingBottom:80 }}>
@@ -310,7 +311,7 @@ export default function PortalFerias() {
           )}
 
           {/* Botão solicitar */}
-          {!temSolPendente && (
+          {!temSolPendente && !temSolAprovada && (
             <button
               onClick={() => setModalAberto(true)}
               style={{ marginTop:12, width:'100%', background:'#15803d', color:'#fff', border:'none', borderRadius:10, padding:'12px 16px', fontSize:14, fontWeight:700, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}
