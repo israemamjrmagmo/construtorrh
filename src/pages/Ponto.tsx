@@ -2173,7 +2173,7 @@ export default function Ponto() {
                               : d.falta ? '#fff1f2'
                               : d.presente ? '#f0fdf4'
                               : '#ffffff'
-                            const TDc:React.CSSProperties = {...TD, padding:'4px 3px', verticalAlign:'middle'}
+                            const TDc:React.CSSProperties = {...TD, padding:'3px 2px', verticalAlign:'middle', textAlign:'center'}
                             return(
                               <tr key={d.data} style={{borderBottom:'1px solid #e5e7eb',background:rowBg}}>
                                 {/* Dia semana */}
@@ -2883,15 +2883,18 @@ export default function Ponto() {
 
 // ─── Estilos ──────────────────────────────────────────────────────────────────
 const TH:React.CSSProperties={padding:'4px 2px',fontWeight:700,fontSize:9,textTransform:'uppercase',letterSpacing:'0.02em',textAlign:'center',whiteSpace:'nowrap'}
-const TD:React.CSSProperties={padding:'1px 1px',fontSize:10.5}
+const TD:React.CSSProperties={padding:'1px 1px',fontSize:11,textAlign:'center'}
 const LBL:React.CSSProperties={display:'block',fontSize:12,fontWeight:600,marginBottom:4,color:'var(--muted-foreground)'}
 const SEL:React.CSSProperties={width:'100%',padding:'8px 10px',fontSize:13,border:'1px solid var(--border)',borderRadius:6,background:'var(--background)',color:'var(--foreground)'}
 
 function TI({value,onChange,disabled}:{value:string;onChange:(v:string)=>void;disabled:boolean}){
-  // width:100% + padding:0 garante que o input ocupa exatamente a célula sem overflow
   return<input type="time" value={value} onChange={e=>onChange(e.target.value)} disabled={disabled}
-    style={{display:'block',width:'100%',padding:'4px 0',fontSize:12,border:disabled?'none':'1px solid #d1d5db',borderRadius:4,
-      background:disabled?'transparent':'#fff',color:disabled?'#94a3b8':'#111827',
-      fontFamily:'monospace',textAlign:'center',cursor:disabled?'default':'text',
-      outline:'none',boxSizing:'border-box'}}/>
+    style={{display:'block',width:'100%',height:'100%',padding:'5px 4px',fontSize:12,
+      border:disabled?'none':'1px solid #cbd5e1',borderRadius:3,
+      background:disabled?'transparent':'#f8fafc',
+      color:disabled?'#94a3b8':'#0f172a',
+      fontFamily:'ui-monospace,monospace',fontWeight:500,
+      textAlign:'center',letterSpacing:'0.02em',
+      cursor:disabled?'default':'text',outline:'none',
+      boxSizing:'border-box',lineHeight:'1.2'}}/>
 }
