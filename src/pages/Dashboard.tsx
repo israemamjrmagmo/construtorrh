@@ -86,6 +86,9 @@ interface AtividadeRecente {
   snap_liquido: number
 }
 
+interface Aniversariante { id:string; nome:string; data_nascimento:string }
+interface FeriasProximas { id:string; nome:string; concessivo_fim:string; dias_direito:number }
+
 interface DashboardData {
   // KPIs
   totalAtivos: number
@@ -113,6 +116,9 @@ interface DashboardData {
   feriasVencidas: number
   feriasConcessivo: number
   solicitacoesPendenteFerias: number
+  // Extras
+  aniversariantes: Aniversariante[]
+  feriasProximas: FeriasProximas[]
   // Config
   empresaNome: string
 }
@@ -232,6 +238,7 @@ export default function Dashboard() {
           lancAguardandoRes,
           cltAdmissaoRes,
           solFeriasPendRes,
+          aniversariantesRes,
           configRes,
         ] = await Promise.all([
           // 1. Colaboradores ativos com tipo_contrato
@@ -321,16 +328,14 @@ export default function Dashboard() {
             .not('data_admissao','is',null),
 
           // 14. Solicitações de férias pendentes
-          supabase
-            .from('solicitacoes_ferias')
-            .select('id',{count:'exact',head:true})
-            .eq('status','pendente'),
+          supabase.from('solicitacoes_ferias').select('id',{count:'exact',head:true}).eq('status','pendente'),
+
+          // 16. Aniversariantes (mês atual)
+          supabase.from('colaboradores').select('id,nome,data_nascimento')
+            .eq('status','ativo').not('data_nascimento','is',null),
 
           // 15. Configurações da empresa
-          supabase
-            .from('configuracoes')
-            .select('chave, valor')
-            .in('chave', ['empresa_nome']),
+          supabase.from('configuracoes').select('chave, valor').in('chave', ['empresa_nome']),
         ])
 
         // ── KPI 1: colaboradores ──────────────────────────────────────────────
@@ -434,6 +439,38 @@ export default function Dashboard() {
         })
         const solicitacoesPendenteFerias = solFeriasPendRes.count ?? 0
 
+        // ── Aniversariantes do mês ────────────────────────────────────────────
+        const mesHoje = String(hoje.getMonth() + 1).padStart(2, '0')
+        const diaHoje = String(hoje.getDate()).padStart(2, '0')
+        const todosAniv = (aniversariantesRes.data ?? []) as any[]
+        const aniversariantes: Aniversariante[] = todosAniv
+          .filter((c: any) => c.data_nascimento?.substring(5, 7) === mesHoje)
+          .sort((a: any, b: any) => a.data_nascimento.substring(8, 10).localeCompare(b.data_nascimento.substring(8, 10)))
+          .map((c: any) => ({ id: c.id, nome: c.nome, data_nascimento: c.data_nascimento }))
+
+        // ── Próximas férias a vencer (concessivo ativo, ordenado por vencimento)
+        const feriasProximas: FeriasProximas[] = []
+        ;(cltAdmissaoRes.data ?? []).forEach((c: any) => {
+          if (!c.data_admissao) return
+          let ini = new Date(c.data_admissao + 'T12:00:00')
+          for (let n = 0; n < 30; n++) {
+            const fim  = new Date(ini); fim.setFullYear(fim.getFullYear()+1); fim.setDate(fim.getDate()-1)
+            const cIni = new Date(fim);  cIni.setDate(cIni.getDate()+1)
+            const cFim = new Date(cIni); cFim.setFullYear(cFim.getFullYear()+1); cFim.setDate(cFim.getDate()-1)
+            if (ini > hoje) break
+            if (hoje > fim && hoje <= cFim) {
+              feriasProximas.push({ id: c.id, nome: '', concessivo_fim: cFim.toISOString().slice(0,10), dias_direito: 30 })
+              break
+            }
+            ini = new Date(fim); ini.setDate(ini.getDate()+1)
+          }
+        })
+        // Enriquecer com nome do colaborador
+        const colabMap: Record<string, string> = {}
+        ;(colaboradoresRes.data ?? []).forEach((c: any) => { colabMap[c.id] = c.nome ?? '' })
+        feriasProximas.forEach(f => { f.nome = colabMap[f.id] ?? '' })
+        feriasProximas.sort((a, b) => a.concessivo_fim.localeCompare(b.concessivo_fim))
+
         // ── Config ────────────────────────────────────────────────────────────
         const configList = (configRes.data ?? []) as any[]
         const empresaNome = configList.find((c: any) => c.chave === 'empresa_nome')?.valor ?? 'ConstrutorRH'
@@ -452,6 +489,7 @@ export default function Dashboard() {
           rescisoesMes, rescisoesMesValor,
           lancamentosAguardando,
           feriasVencidas, feriasConcessivo, solicitacoesPendenteFerias,
+          aniversariantes, feriasProximas,
           empresaNome,
         })
       } catch (e: unknown) {
@@ -794,6 +832,89 @@ export default function Dashboard() {
             <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>{formatCurrency(d.rescisoesMesValor)}</div>
           </div>
         </div>
+      </div>
+
+      {/* ══ LINHA 4: Aniversariantes + Próximas Férias ══════════════════════ */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+
+        {/* Aniversariantes do mês */}
+        <Card style={{ borderRadius:14, boxShadow:'0 1px 6px rgba(0,0,0,.07)', border:'1px solid #f0f0f0' }}>
+          <CardHeader className="pb-1 pt-4 px-5">
+            <CardTitle style={{ fontSize:13, fontWeight:700, color:'#374151', display:'flex', alignItems:'center', gap:6 }}>
+              🎂 Aniversariantes de {new Date().toLocaleString('pt-BR',{month:'long'})}
+              <span style={{ marginLeft:'auto', fontSize:11, fontWeight:600, color:'#9ca3af' }}>{d.aniversariantes.length} neste mês</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-5 pb-4 pt-2">
+            {d.aniversariantes.length === 0 ? (
+              <div style={{ padding:'20px 0', textAlign:'center', color:'#9ca3af', fontSize:13 }}>Nenhum aniversariante neste mês</div>
+            ) : (
+              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                {d.aniversariantes.slice(0,6).map(a => {
+                  const dia = a.data_nascimento.substring(8,10)
+                  const diaHoje2 = String(new Date().getDate()).padStart(2,'0')
+                  const ehHoje   = dia === diaHoje2
+                  return (
+                    <div key={a.id} style={{ display:'flex', alignItems:'center', gap:10 }}>
+                      <div style={{ width:34, height:34, borderRadius:'50%', background: ehHoje ? '#fef3c7' : '#f3f4f6', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, fontSize:15 }}>
+                        {ehHoje ? '🎂' : '🎁'}
+                      </div>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontSize:12, fontWeight: ehHoje ? 800 : 700, color: ehHoje ? '#92400e' : '#111827', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                          {a.nome} {ehHoje && <span style={{ fontSize:10, background:'#fde047', color:'#78350f', borderRadius:4, padding:'0 5px', marginLeft:4, fontWeight:700 }}>HOJE! 🎉</span>}
+                        </div>
+                        <div style={{ fontSize:11, color:'#6b7280' }}>dia {dia}</div>
+                      </div>
+                    </div>
+                  )
+                })}
+                {d.aniversariantes.length > 6 && (
+                  <div style={{ fontSize:11, color:'#9ca3af', textAlign:'center', paddingTop:4 }}>+{d.aniversariantes.length - 6} mais…</div>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Próximas férias a vencer */}
+        <Card style={{ borderRadius:14, boxShadow:'0 1px 6px rgba(0,0,0,.07)', border:'1px solid #f0f0f0' }}>
+          <CardHeader className="pb-1 pt-4 px-5">
+            <CardTitle style={{ fontSize:13, fontWeight:700, color:'#374151', display:'flex', alignItems:'center', gap:6 }}>
+              🏖️ Férias no Período Concessivo
+              <span style={{ marginLeft:'auto', fontSize:11, fontWeight:600, color:'#9ca3af' }}>{d.feriasProximas.length} colaborador{d.feriasProximas.length !== 1 ? 'es' : ''}</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-5 pb-4 pt-2">
+            {d.feriasProximas.length === 0 ? (
+              <div style={{ padding:'20px 0', textAlign:'center', color:'#9ca3af', fontSize:13 }}>Nenhum colaborador no período concessivo</div>
+            ) : (
+              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                {d.feriasProximas.slice(0,6).map(f => {
+                  const fim     = new Date(f.concessivo_fim + 'T12:00:00')
+                  const diasRest = Math.max(0, Math.round((fim.getTime() - new Date().getTime()) / 86400000))
+                  const urgente  = diasRest <= 60
+                  return (
+                    <div key={f.id} style={{ display:'flex', alignItems:'center', gap:10 }}>
+                      <div style={{ width:34, height:34, borderRadius:'50%', background: urgente ? '#fff1f2' : '#f0fdf4', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, fontSize:14 }}>
+                        {urgente ? '⚠️' : '🏖️'}
+                      </div>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontSize:12, fontWeight:700, color: urgente ? '#b91c1c' : '#111827', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{f.nome}</div>
+                        <div style={{ fontSize:11, color: urgente ? '#dc2626' : '#6b7280' }}>Vence em {fim.toLocaleDateString('pt-BR')} · {diasRest} dias</div>
+                      </div>
+                      <div style={{ fontSize:11, fontWeight:700, background: urgente ? '#fee2e2' : '#dcfce7', color: urgente ? '#b91c1c' : '#15803d', borderRadius:6, padding:'2px 8px', whiteSpace:'nowrap' }}>
+                        {f.dias_direito}d
+                      </div>
+                    </div>
+                  )
+                })}
+                {d.feriasProximas.length > 6 && (
+                  <div style={{ fontSize:11, color:'#9ca3af', textAlign:'center', paddingTop:4 }}>+{d.feriasProximas.length - 6} mais…</div>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
     </div>
