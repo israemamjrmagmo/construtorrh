@@ -2173,7 +2173,7 @@ export default function Ponto() {
                               : d.falta ? '#fff1f2'
                               : d.presente ? '#f0fdf4'
                               : '#ffffff'
-                            const TDc:React.CSSProperties = {...TD, padding:'3px 2px', verticalAlign:'middle', textAlign:'center'}
+                            const TDc:React.CSSProperties = {padding:'2px', verticalAlign:'middle', textAlign:'center', fontSize:11}
                             return(
                               <tr key={d.data} style={{borderBottom:'1px solid #e5e7eb',background:rowBg}}>
                                 {/* Dia semana */}
@@ -2203,14 +2203,14 @@ export default function Ponto() {
                                       style={{border:'none',cursor:lancBloq?'default':'pointer',padding:'1px 3px',borderRadius:3,background:d.feriado_remunerado?'#fef3c7':'transparent',color:d.feriado_remunerado?'#92400e':'#d1d5db',fontSize:10,fontWeight:700}}>$</button>
                                   )}
                                 </td>
-                                {/* Campos de hora — padding:0 na célula, input ocupa 100% */}
-                                <td style={{...TDc,padding:0,borderLeft:'2px solid #e2e8f0'}}><TI disabled={!d.presente||d.falta||d.bloqueado||lancBloq} value={d.hora_entrada} onChange={v=>updDia(lanc.id,idx,'hora_entrada',v)}/></td>
-                                <td style={{...TDc,padding:0}}><TI disabled={!d.presente||d.falta||d.bloqueado||lancBloq} value={d.saida_almoco} onChange={v=>updDia(lanc.id,idx,'saida_almoco',v)}/></td>
-                                <td style={{...TDc,padding:0}}><TI disabled={!d.presente||d.falta||d.bloqueado||lancBloq} value={d.retorno_almoco} onChange={v=>updDia(lanc.id,idx,'retorno_almoco',v)}/></td>
-                                <td style={{...TDc,padding:0,borderRight:'2px solid #e2e8f0'}}><TI disabled={!d.presente||d.falta||d.bloqueado||lancBloq} value={d.hora_saida} onChange={v=>updDia(lanc.id,idx,'hora_saida',v)}/></td>
+                                {/* Campos de hora: td com padding minimo, input 100% largura */}
+                                <td style={{...TDc,padding:'1px',borderLeft:'2px solid #dde1e7'}}><TI disabled={!d.presente||d.falta||d.bloqueado||lancBloq} value={d.hora_entrada} onChange={v=>updDia(lanc.id,idx,'hora_entrada',v)}/></td>
+                                <td style={{...TDc,padding:'1px'}}><TI disabled={!d.presente||d.falta||d.bloqueado||lancBloq} value={d.saida_almoco} onChange={v=>updDia(lanc.id,idx,'saida_almoco',v)}/></td>
+                                <td style={{...TDc,padding:'1px'}}><TI disabled={!d.presente||d.falta||d.bloqueado||lancBloq} value={d.retorno_almoco} onChange={v=>updDia(lanc.id,idx,'retorno_almoco',v)}/></td>
+                                <td style={{...TDc,padding:'1px',borderRight:'2px solid #dde1e7'}}><TI disabled={!d.presente||d.falta||d.bloqueado||lancBloq} value={d.hora_saida} onChange={v=>updDia(lanc.id,idx,'hora_saida',v)}/></td>
                                 {/* HE */}
-                                <td style={{...TDc,padding:0,background:'#f0f4ff'}}><TI disabled={!d.presente||d.falta||d.bloqueado||lancBloq} value={d.he_entrada} onChange={v=>updDia(lanc.id,idx,'he_entrada',v)}/></td>
-                                <td style={{...TDc,padding:0,background:'#f0f4ff',borderRight:'2px solid #e2e8f0'}}><TI disabled={!d.presente||d.falta||d.bloqueado||lancBloq} value={d.he_saida} onChange={v=>updDia(lanc.id,idx,'he_saida',v)}/></td>
+                                <td style={{...TDc,padding:'1px',background:'#eef1fb'}}><TI disabled={!d.presente||d.falta||d.bloqueado||lancBloq} value={d.he_entrada} onChange={v=>updDia(lanc.id,idx,'he_entrada',v)}/></td>
+                                <td style={{...TDc,padding:'1px',background:'#eef1fb',borderRight:'2px solid #dde1e7'}}><TI disabled={!d.presente||d.falta||d.bloqueado||lancBloq} value={d.he_saida} onChange={v=>updDia(lanc.id,idx,'he_saida',v)}/></td>
                                 {/* Cálculos */}
                                 <td style={{...TDc,textAlign:'center',fontWeight:600,fontFamily:'monospace',fontSize:11,color:calc.normais>0?'#15803d':'#9ca3af'}}>{calc.normais>0?fmtHHMM(calc.normais):'—'}</td>
                                 <td style={{...TDc,textAlign:'center',fontWeight:600,fontFamily:'monospace',fontSize:11,color:calc.extras100>0?'#dc2626':calc.extras50>0?'#1d4ed8':'#9ca3af'}}>{calc.extras100>0?fmtHHMM(calc.extras100):calc.extras50>0?fmtHHMM(calc.extras50):'—'}</td>
@@ -2882,19 +2882,28 @@ export default function Ponto() {
 }
 
 // ─── Estilos ──────────────────────────────────────────────────────────────────
-const TH:React.CSSProperties={padding:'4px 2px',fontWeight:700,fontSize:9,textTransform:'uppercase',letterSpacing:'0.02em',textAlign:'center',whiteSpace:'nowrap'}
-const TD:React.CSSProperties={padding:'1px 1px',fontSize:11,textAlign:'center'}
+const TH:React.CSSProperties={padding:'5px 3px',fontWeight:700,fontSize:10,textTransform:'uppercase',letterSpacing:'0.03em',textAlign:'center',whiteSpace:'nowrap'}
+const TD:React.CSSProperties={padding:'2px',fontSize:11,textAlign:'center',verticalAlign:'middle'}
 const LBL:React.CSSProperties={display:'block',fontSize:12,fontWeight:600,marginBottom:4,color:'var(--muted-foreground)'}
 const SEL:React.CSSProperties={width:'100%',padding:'8px 10px',fontSize:13,border:'1px solid var(--border)',borderRadius:6,background:'var(--background)',color:'var(--foreground)'}
 
 function TI({value,onChange,disabled}:{value:string;onChange:(v:string)=>void;disabled:boolean}){
+  // Solução definitiva para input de hora:
+  // - appearance:none remove controles nativos do browser que quebram o layout
+  // - Largura em px garante que o conteúdo nunca seja cortado (HH:MM = 5 chars + padding)
+  // - padding horizontal fixo para alinhar o ":" verticalmente entre colunas
   return<input type="time" value={value} onChange={e=>onChange(e.target.value)} disabled={disabled}
-    style={{display:'block',width:'100%',height:'100%',padding:'5px 4px',fontSize:12,
-      border:disabled?'none':'1px solid #cbd5e1',borderRadius:3,
-      background:disabled?'transparent':'#f8fafc',
-      color:disabled?'#94a3b8':'#0f172a',
-      fontFamily:'ui-monospace,monospace',fontWeight:500,
-      textAlign:'center',letterSpacing:'0.02em',
-      cursor:disabled?'default':'text',outline:'none',
-      boxSizing:'border-box',lineHeight:'1.2'}}/>
+    style={{
+      display:'block', width:'100%', minWidth:72,
+      padding:'5px 6px', fontSize:12, lineHeight:'1.4',
+      border: disabled ? 'none' : '1px solid #cbd5e1',
+      borderRadius:4,
+      background: disabled ? 'transparent' : '#f8fafc',
+      color: disabled ? '#94a3b8' : '#0f172a',
+      fontFamily:'ui-monospace,SFMono-Regular,monospace',
+      fontWeight: 600, textAlign:'center',
+      cursor: disabled ? 'default' : 'text',
+      outline:'none', boxSizing:'border-box',
+      WebkitAppearance:'none', MozAppearance:'textfield',
+    }}/>
 }
