@@ -1321,7 +1321,7 @@ export default function Documentos() {
         <div style={{ padding:'0 16px', borderBottom:'1px solid var(--border)',
           background:'var(--card)', display:'flex', alignItems:'center', gap:0 }}>
           {tabs.map(t => (
-            <button key={t.id} onClick={()=>{setAba(t.id); setDocViewing(null)}}
+            <button key={t.id} onClick={()=>setAba(t.id)}
               style={{ display:'flex', alignItems:'center', gap:6, padding:'13px 16px',
                 border:'none', background:'none', cursor:'pointer', fontSize:13,
                 fontWeight: aba===t.id ? 700 : 500,
@@ -1346,18 +1346,12 @@ export default function Documentos() {
             {/* Header do colaborador selecionado */}
             <div style={{ padding:'10px 16px', borderBottom:'1px solid var(--border)',
               display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, flexWrap:'wrap' }}>
-              {colabSel ? (
+                  {colabSel ? (
                 <>
                   <div>
                     <div style={{ fontWeight:700, fontSize:15 }}>{colabSel.nome}</div>
                     <div style={{ fontSize:12, color:'var(--muted-foreground)' }}>{colabSel.chapa} · {docsColab.length} documento(s)</div>
                   </div>
-                  {docViewing && (
-                    <button onClick={()=>setDocViewing(null)}
-                      style={{ display:'flex', alignItems:'center', gap:6, background:'#f1f5f9', border:'1px solid #e2e8f0', borderRadius:8, padding:'6px 12px', cursor:'pointer', fontSize:12 }}>
-                      ← Voltar à lista
-                    </button>
-                  )}
                 </>
               ) : (
                 <div style={{ fontWeight:600, fontSize:14, color:'var(--muted-foreground)' }}>← Selecione um colaborador</div>
@@ -1365,11 +1359,7 @@ export default function Documentos() {
             </div>
 
             <div style={{ flex:1, overflowY:'auto' }}>
-              {/* Visualizador de documento */}
-              {docViewing ? (
-                <DocViewer url={docViewing.documento_url} nome={docViewing.documento_nome || 'documento'} />
-              ) : (
-                <div style={{ padding:16 }}>
+              <div style={{ padding:16 }}>
                   {!colabSel ? (
                     <EmptyState icon={<FileText size={32}/>} title="Selecione um colaborador"
                       description="Escolha um colaborador no painel à esquerda para ver seus documentos." />
@@ -1390,17 +1380,17 @@ export default function Documentos() {
                               <div style={{ fontSize:13, color:'var(--foreground)', marginBottom:4 }}>{doc.descricao}</div>
                             )}
                             {doc.documento_url ? (
-                              <div style={{ display:'flex', gap:8 }}>
+                              <div style={{ display:'flex', gap:8, alignItems:'center' }}>
                                 <a href={doc.documento_url} target="_blank" rel="noreferrer"
                                   style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:12,
                                     color:'hsl(var(--primary))', textDecoration:'none' }}>
                                   <ExternalLink size={12}/> {doc.documento_nome||'Ver documento'}
                                 </a>
-                                <button onClick={()=>setDocViewing(doc)}
+                                <a href={doc.documento_url} download={doc.documento_nome||'documento'}
                                   style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:12,
-                                    color:'#0369a1', background:'none', border:'none', cursor:'pointer', padding:0 }}>
-                                  <Eye size={12}/> Visualizar
-                                </button>
+                                    color:'#0369a1', textDecoration:'none' }}>
+                                  <Download size={12}/> Baixar
+                                </a>
                               </div>
                             ) : (
                               <span style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:11, color:'#94a3b8' }}>
@@ -1419,7 +1409,6 @@ export default function Documentos() {
                     </div>
                   )}
                 </div>
-              )}
             </div>
           </>
         )}
