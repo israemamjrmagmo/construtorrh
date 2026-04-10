@@ -4,13 +4,14 @@ import {
   ClipboardList, AlertTriangle, Home, LogOut,
   HardHat, ShieldCheck, FileImage,
   BookOpen, MessageSquare, FolderOpen,
-  WifiOff, Building2, Clock, Menu, X, UserPlus, CloudRain,
+  WifiOff, Building2, Clock, Menu, X, UserPlus, CloudRain, Umbrella,
 } from 'lucide-react'
 import { clearPortalSession, getPortalSession } from '@/hooks/usePortalAuth'
 
 interface PortalLayoutProps { children: React.ReactNode }
 
 const ROUTE_LABELS: Record<string, string> = {
+  '/portal/ferias':       'Férias',
   '/portal/home':        'Início',
   '/portal/ponto':       'Ponto',
   '/portal/ocorrencias': 'Ocorrências',
@@ -34,6 +35,7 @@ const navItems = [
   { to: '/portal/solicitacoes', icon: UserPlus,      label: 'Cadastro',   color: '#a78bfa', bg: '#f5f3ff' },
   { to: '/portal/epis',         icon: ShieldCheck,   label: 'EPIs',       color: '#f87171', bg: '#fef2f2' },
   { to: '/portal/documentos',   icon: FileImage,     label: 'Docs',       color: '#60a5fa', bg: '#eff6ff' },
+  { to: '/portal/ferias',       icon: Umbrella,      label: 'Férias',     color: '#0369a1', bg: '#e0f2fe' },
   { to: '/portal/mensagens',    icon: MessageSquare, label: 'Mensagens',  color: '#a78bfa', bg: '#f5f3ff' },
   { to: '/portal/lancamentos',  icon: Clock,         label: 'Lançamentos',color: '#f97316', bg: '#fff7ed' },
   { to: '/portal/playbook',     icon: BookOpen,      label: 'Playbook',   color: '#34d399', bg: '#f0fdf4' },

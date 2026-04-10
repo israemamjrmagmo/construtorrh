@@ -29,6 +29,7 @@ const Feriados          = React.lazy(() => import('@/pages/Feriados'))
 const FechamentoPonto   = React.lazy(() => import('@/pages/FechamentoPonto'))
 const Usuarios       = React.lazy(() => import('@/pages/Usuarios'))
 const EncargosPage   = React.lazy(() => import('@/pages/EncargosPage'))
+const ProgramacaoFerias = React.lazy(() => import('@/pages/ProgramacaoFerias'))
 const Adiantamentos  = React.lazy(() => import('@/pages/Adiantamentos'))
 const PortalAdmin    = React.lazy(() => import('@/pages/PortalAdmin'))
 const Solicitacoes   = React.lazy(() => import('@/pages/Solicitacoes'))
@@ -43,6 +44,7 @@ const PortalSolicitacoes = React.lazy(() => import('@/pages/portal/PortalSolicit
 const PortalProducao     = React.lazy(() => import('@/pages/portal/PortalProducao'))
 const PortalEpis         = React.lazy(() => import('@/pages/portal/PortalEpis'))
 const PortalDocumentos   = React.lazy(() => import('@/pages/portal/PortalDocumentos'))
+const PortalFerias       = React.lazy(() => import('@/pages/portal/PortalFerias'))
 const PortalPlaybook     = React.lazy(() => import('@/pages/portal/PortalPlaybook'))
 const PortalMensagens    = React.lazy(() => import('@/pages/portal/PortalMensagens'))
 const PortalProjetos     = React.lazy(() => import('@/pages/portal/PortalProjetos'))
@@ -145,6 +147,7 @@ export default function App() {
               <Route path="/portal/producao"      element={<PortalProducao />} />
               <Route path="/portal/epis"          element={<PortalEpis />} />
               <Route path="/portal/documentos"    element={<PortalDocumentos />} />
+              <Route path="/portal/ferias"        element={<PortalFerias />} />
               <Route path="/portal/playbook"      element={<PortalPlaybook />} />
               <Route path="/portal/mensagens"     element={<PortalMensagens />} />
               <Route path="/portal/projetos"      element={<PortalProjetos />} />
@@ -360,6 +363,16 @@ export default function App() {
                   <PrivateRoute>
                     <Layout>
                       <ProvisaoRescisao />
+                    </Layout>
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/ferias"
+                element={
+                  <PrivateRoute>
+                    <Layout>
+                      <ProgramacaoFerias />
                     </Layout>
                   </PrivateRoute>
                 }

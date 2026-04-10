@@ -14,7 +14,7 @@ import {
   Smartphone, Inbox, Scale, MessageSquare,
   Search, Bell, ChevronDown,
   LayoutGrid, FolderKanban, HeartPulse, Banknote, Gavel, Cog,
-  BookOpen, CreditCard, Layers, ClipboardCheck, ShoppingBasket, FolderOpen, ScrollText, Receipt, KeyRound,
+  BookOpen, CreditCard, Layers, ClipboardCheck, ShoppingBasket, FolderOpen, ScrollText, Receipt, KeyRound, Umbrella,
 } from 'lucide-react'
 
 // ─── Cor principal da sidebar ───────────────────────────────────────────────
@@ -117,11 +117,20 @@ const NAV_GROUPS = [
     short: 'Financ.',
     icon:  Banknote,
     items: [
-      { to: '/fechamento-ponto', label: 'Fechamento',         icon: Lock,       color: '#fb923c', badge: 'fech' as const },
-      { to: '/pagamentos',       label: 'Pagamentos',         icon: DollarSign, color: '#4ade80' },
-      { to: '/contracheques',    label: 'Contracheques',      icon: Receipt,    color: '#0d9488' },
-      { to: '/encargos',         label: 'Encargos',           icon: Briefcase,  color: '#a78bfa' },
-      { to: '/provisoes',        label: 'Provisões Rescisão', icon: Calculator, color: '#f472b6' },
+      { to: '/fechamento-ponto', label: 'Fechamento',    icon: Lock,       color: '#fb923c', badge: 'fech' as const },
+      { to: '/pagamentos',       label: 'Pagamentos',    icon: DollarSign, color: '#4ade80' },
+      { to: '/contracheques',    label: 'Contracheques', icon: Receipt,    color: '#0d9488' },
+    ],
+  },
+  {
+    id:    'rh_financeiro',
+    label: 'RH Financeiro',
+    short: 'RH Fin.',
+    icon:  Umbrella,
+    items: [
+      { to: '/encargos',  label: 'Encargos',              icon: Briefcase,  color: '#a78bfa' },
+      { to: '/provisoes', label: 'Provisões Rescisão',    icon: Calculator, color: '#f472b6' },
+      { to: '/ferias',    label: 'Programação de Férias', icon: Umbrella,   color: '#38bdf8' },
     ],
   },
   {
