@@ -1260,9 +1260,7 @@ export default function Documentos() {
 
   // ── Tabs config ────────────────────────────────────────────────────────────
   const tabs: { id: Aba; label: string; icon: React.ReactNode }[] = [
-    { id: 'documentos',  label: 'Documentos',         icon: <FileText size={14}/> },
-    { id: 'contratacao', label: 'Kit de Contratação', icon: <ClipboardList size={14}/> },
-    { id: 'lote',        label: 'Geração em Lote',    icon: <Layers size={14}/> },
+    { id: 'documentos',  label: 'Documentos', icon: <FileText size={14}/> },
   ]
 
   return (
