@@ -2682,15 +2682,15 @@ export default function Relatorios() {
                         <div className="text-[10px] text-slate-500 mt-1 uppercase tracking-wide">Holerites</div>
                       </div>
                       <div className="flex-1 min-w-[110px] text-center p-3 bg-green-50 rounded-lg">
-                        <div className="text-2xl font-black text-green-700">{fmtBRL(totalBruto)}</div>
+                        <div className="text-2xl font-black text-green-700">{fmtCur(totalBruto)}</div>
                         <div className="text-[10px] text-slate-500 mt-1 uppercase tracking-wide">Total Proventos</div>
                       </div>
                       <div className="flex-1 min-w-[110px] text-center p-3 bg-red-50 rounded-lg">
-                        <div className="text-2xl font-black text-red-600">{fmtBRL(totalDesc)}</div>
+                        <div className="text-2xl font-black text-red-600">{fmtCur(totalDesc)}</div>
                         <div className="text-[10px] text-slate-500 mt-1 uppercase tracking-wide">Total Descontos</div>
                       </div>
                       <div className="flex-1 min-w-[110px] text-center p-3 bg-emerald-50 rounded-lg">
-                        <div className="text-2xl font-black text-emerald-700">{fmtBRL(totalLiq)}</div>
+                        <div className="text-2xl font-black text-emerald-700">{fmtCur(totalLiq)}</div>
                         <div className="text-[10px] text-slate-500 mt-1 uppercase tracking-wide">Total Líquido</div>
                       </div>
                     </div>
@@ -2716,10 +2716,10 @@ export default function Relatorios() {
                               <td className="px-4 py-2.5 text-center text-slate-500 text-xs">{String(r.chapa)}</td>
                               <td className="px-4 py-2.5 text-slate-600 text-xs">{String(r.funcao)}</td>
                               <td className="px-4 py-2.5 text-slate-600 text-xs">{String(r.obra)}</td>
-                              <td className="px-4 py-2.5 text-right text-slate-700">{fmtBRL(Number(r.salario_base))}</td>
-                              <td className="px-4 py-2.5 text-right text-green-700 font-semibold">{fmtBRL(Number(r.total_proventos))}</td>
-                              <td className="px-4 py-2.5 text-right text-red-600 font-semibold">{fmtBRL(Number(r.total_descontos))}</td>
-                              <td className="px-4 py-2.5 text-right text-emerald-700 font-bold">{fmtBRL(Number(r.valor_liquido))}</td>
+                              <td className="px-4 py-2.5 text-right text-slate-700">{fmtCur(Number(r.salario_base))}</td>
+                              <td className="px-4 py-2.5 text-right text-green-700 font-semibold">{fmtCur(Number(r.total_proventos))}</td>
+                              <td className="px-4 py-2.5 text-right text-red-600 font-semibold">{fmtCur(Number(r.total_descontos))}</td>
+                              <td className="px-4 py-2.5 text-right text-emerald-700 font-bold">{fmtCur(Number(r.valor_liquido))}</td>
                               <td className="px-4 py-2.5 text-center">
                                 <span className={`text-xs px-2 py-0.5 rounded-full ${
                                   String(r.status) === 'publicado' ? 'bg-green-100 text-green-700' :
@@ -2733,9 +2733,9 @@ export default function Relatorios() {
                         <tfoot>
                           <tr className="bg-[#1e3a5f] text-white font-bold text-sm">
                             <td colSpan={6} className="px-4 py-3 text-right">TOTAIS</td>
-                            <td className="px-4 py-3 text-right">{fmtBRL(totalBruto)}</td>
-                            <td className="px-4 py-3 text-right">{fmtBRL(totalDesc)}</td>
-                            <td className="px-4 py-3 text-right">{fmtBRL(totalLiq)}</td>
+                            <td className="px-4 py-3 text-right">{fmtCur(totalBruto)}</td>
+                            <td className="px-4 py-3 text-right">{fmtCur(totalDesc)}</td>
+                            <td className="px-4 py-3 text-right">{fmtCur(totalLiq)}</td>
                             <td></td>
                           </tr>
                         </tfoot>
