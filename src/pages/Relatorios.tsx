@@ -40,6 +40,103 @@ const fmtMes = (ym: string | null | undefined) => {
 const fmtNum = (v: number | null | undefined) =>
   v != null ? v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'
 
+// ── Gerador de HTML de holerite individual ────────────────────────────────────
+function gerarHtmlHolerite(r: Record<string, unknown>, empresaNome = 'ConstrutorRH'): string {
+  const cur = (v: unknown) => Number(v ?? 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+  const ref = String(r.referencia ?? '—')
+  const [ano, mes] = ref.split('-')
+  const meses = ['','Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
+  const mesNome = meses[+mes] ?? ref
+  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
+<title>Holerite – ${String(r.colaborador)} – ${mesNome}/${ano}</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:Arial,sans-serif;font-size:12px;color:#1e293b;padding:24px;max-width:720px;margin:0 auto}
+  h1{font-size:16px;font-weight:800;color:#1e3a5f;margin-bottom:2px}
+  .empresa{font-size:11px;color:#64748b;margin-bottom:16px}
+  .header{background:#1e3a5f;color:#fff;padding:10px 14px;border-radius:8px 8px 0 0;display:flex;justify-content:space-between;align-items:center}
+  .header .nome{font-size:14px;font-weight:800}
+  .header .ref{font-size:12px;opacity:.8}
+  .info-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:0;border:1px solid #e2e8f0;border-top:none}
+  .info-item{padding:8px 12px;border-right:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0}
+  .info-item:nth-child(3n){border-right:none}
+  .info-label{font-size:9px;text-transform:uppercase;color:#94a3b8;font-weight:700;letter-spacing:.5px}
+  .info-val{font-size:12px;font-weight:700;color:#1e293b;margin-top:2px}
+  .section-title{background:#f1f5f9;padding:6px 12px;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:#475569;border:1px solid #e2e8f0;border-top:none}
+  table{width:100%;border-collapse:collapse;border:1px solid #e2e8f0;border-top:none}
+  th{background:#f8fafc;padding:6px 10px;text-align:left;font-size:10px;color:#64748b;font-weight:700;text-transform:uppercase;border-bottom:1px solid #e2e8f0}
+  td{padding:7px 10px;border-bottom:1px solid #f1f5f9;font-size:11px}
+  td.val{text-align:right;font-weight:700}
+  .totais{display:grid;grid-template-columns:1fr 1fr 1fr;gap:0;border:1px solid #e2e8f0;border-top:none;margin-top:0}
+  .tot-item{padding:12px 14px;text-align:center;border-right:1px solid #e2e8f0}
+  .tot-item:last-child{border-right:none}
+  .tot-label{font-size:10px;text-transform:uppercase;color:#64748b;font-weight:700}
+  .tot-val{font-size:16px;font-weight:800;margin-top:4px}
+  .verde{color:#15803d} .vermelho{color:#dc2626} .azul{color:#1d4ed8}
+  .assinatura{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:32px;padding-top:16px}
+  .ass-box{border-top:2px solid #94a3b8;padding-top:8px;text-align:center;font-size:10px;color:#64748b}
+  .no-print{display:flex;gap:8px;justify-content:center;margin-top:20px}
+  .btn{padding:10px 24px;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer}
+  .btn-primary{background:#1e3a5f;color:#fff}
+  @media print{.no-print{display:none!important}}
+</style></head><body>
+<h1>${empresaNome}</h1>
+<div class="empresa">Demonstrativo de Pagamento</div>
+
+<div class="header">
+  <div>
+    <div class="nome">${String(r.colaborador)}</div>
+    <div class="ref">Chapa: ${String(r.chapa ?? '—')} &nbsp;|&nbsp; ${String(r.funcao ?? '—')}</div>
+  </div>
+  <div style="text-align:right">
+    <div style="font-size:16px;font-weight:800">${mesNome}/${ano}</div>
+    <div class="ref">Competência ${ref}</div>
+  </div>
+</div>
+
+<div class="info-grid">
+  <div class="info-item"><div class="info-label">Obra</div><div class="info-val">${String(r.obra ?? '—')}</div></div>
+  <div class="info-item"><div class="info-label">Salário Base</div><div class="info-val">${cur(r.salario_base)}</div></div>
+  <div class="info-item"><div class="info-label">Status</div><div class="info-val">${String(r.status ?? '—').toUpperCase()}</div></div>
+</div>
+
+<div class="section-title">Proventos</div>
+<table>
+  <thead><tr><th>Descrição</th><th style="text-align:right">Valor</th></tr></thead>
+  <tbody>
+    <tr><td>Salário Base</td><td class="val verde">${cur(r.salario_base)}</td></tr>
+    <tr style="background:#f0fdf4"><td><strong>TOTAL PROVENTOS</strong></td><td class="val verde">${cur(r.total_proventos)}</td></tr>
+  </tbody>
+</table>
+
+<div class="section-title">Descontos</div>
+<table>
+  <thead><tr><th>Descrição</th><th style="text-align:right">Valor</th></tr></thead>
+  <tbody>
+    <tr><td>Total de Descontos</td><td class="val vermelho">${cur(r.total_descontos)}</td></tr>
+    <tr style="background:#fef2f2"><td><strong>TOTAL DESCONTOS</strong></td><td class="val vermelho">${cur(r.total_descontos)}</td></tr>
+  </tbody>
+</table>
+
+<div class="totais">
+  <div class="tot-item"><div class="tot-label">Total Proventos</div><div class="tot-val verde">${cur(r.total_proventos)}</div></div>
+  <div class="tot-item"><div class="tot-label">Total Descontos</div><div class="tot-val vermelho">${cur(r.total_descontos)}</div></div>
+  <div class="tot-item" style="background:#f0fdf4"><div class="tot-label">Valor Líquido</div><div class="tot-val azul">${cur(r.valor_liquido)}</div></div>
+</div>
+
+<div class="assinatura">
+  <div class="ass-box">Assinatura do Colaborador<br><br><small>${String(r.colaborador)}</small></div>
+  <div class="ass-box">Assinatura do Responsável<br><br><small>${empresaNome}</small></div>
+</div>
+
+<div class="no-print">
+  <button class="btn btn-primary" onclick="window.print()">🖨️ Imprimir / Salvar PDF</button>
+  <button class="btn" style="background:#e2e8f0;color:#1e293b" onclick="window.close()">✕ Fechar</button>
+</div>
+<script>window.onload=()=>setTimeout(()=>window.print(),400)<\/script>
+</body></html>`
+}
+
 const anoAtual = String(new Date().getFullYear())
 const mesAtual = String(new Date().getMonth() + 1).padStart(2, '0')
 const hoje = new Date().toISOString().split('T')[0]
@@ -2707,6 +2804,7 @@ export default function Relatorios() {
                           <th className="px-4 py-3 text-right">Descontos</th>
                           <th className="px-4 py-3 text-right">Líquido</th>
                           <th className="px-4 py-3 text-center">Status</th>
+                          <th className="px-4 py-3 text-center">PDF</th>
                         </tr></thead>
                         <tbody>
                           {dados.map((r, i) => (
@@ -2727,6 +2825,20 @@ export default function Relatorios() {
                                   'bg-slate-100 text-slate-500'
                                 }`}>{String(r.status)}</span>
                               </td>
+                              <td className="px-4 py-2.5 text-center">
+                                <button
+                                  onClick={() => {
+                                    const html = gerarHtmlHolerite(r)
+                                    const win = window.open('', '_blank', 'width=800,height=680')
+                                    if (win) { win.document.write(html); win.document.close() }
+                                    else toast.warning('Permita pop-ups para este site')
+                                  }}
+                                  className="inline-flex items-center gap-1 px-2 py-1 bg-slate-100 hover:bg-[#1e3a5f] hover:text-white text-slate-600 text-xs font-semibold rounded transition"
+                                  title="Gerar PDF individual"
+                                >
+                                  <Printer size={12}/> PDF
+                                </button>
+                              </td>
                             </tr>
                           ))}
                         </tbody>
@@ -2736,7 +2848,7 @@ export default function Relatorios() {
                             <td className="px-4 py-3 text-right">{fmtCur(totalBruto)}</td>
                             <td className="px-4 py-3 text-right">{fmtCur(totalDesc)}</td>
                             <td className="px-4 py-3 text-right">{fmtCur(totalLiq)}</td>
-                            <td></td>
+                            <td></td><td></td>
                           </tr>
                         </tfoot>
                       </table>
