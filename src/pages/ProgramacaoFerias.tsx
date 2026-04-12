@@ -217,14 +217,30 @@ export default function ProgramacaoFerias() {
     })
   }, [colabs, faltas])
 
+  // IDs de colaboradores com solicitações (aprovadas ou pendentes)
+  const colabsComSolicitacao = useMemo(() => {
+    const ids = new Set<string>()
+    solicitacoes
+      .filter(s => s.status === 'aprovada' || s.status === 'pendente')
+      .forEach(s => ids.add(s.colaborador_id))
+    return ids
+  }, [solicitacoes])
+
   const filtrado = useMemo(() => {
-    if (!busca) return dados
+    // Filtrar: apenas colaboradores com período concessivo ativo OU férias programadas
+    const comConcessivoOuProgramadas = dados.filter(d => {
+      const temConcessivo = d.periodos.some(p => p.situacao === 'concessivo')
+      const temFeriasProgr = colabsComSolicitacao.has(d.colab.id)
+      return temConcessivo || temFeriasProgr
+    })
+
+    if (!busca) return comConcessivoOuProgramadas
     const q = busca.toLowerCase()
-    return dados.filter(d =>
+    return comConcessivoOuProgramadas.filter(d =>
       d.colab.nome.toLowerCase().includes(q) ||
       d.colab.chapa?.toLowerCase().includes(q)
     )
-  }, [dados, busca])
+  }, [dados, busca, colabsComSolicitacao])
 
   // ─── Render ───────────────────────────────────────────────────────────────
   const SIT_CONFIG = {
@@ -260,7 +276,7 @@ export default function ProgramacaoFerias() {
       <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', background: 'var(--card)', paddingLeft: 16 }}>
         {([
           { id: 'solicitacoes', label: 'Solicitações', icon: <Bell size={13}/> },
-          { id: 'colaboradores', label: 'Colaboradores', icon: <Umbrella size={13}/> },
+          { id: 'colaboradores', label: 'Concessivo / Programadas', icon: <Umbrella size={13}/> },
         ] as const).map(a => (
           <button key={a.id} onClick={() => setAbaAtiva(a.id)}
             style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '11px 16px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: abaAtiva === a.id ? 700 : 500, color: abaAtiva === a.id ? '#0369a1' : 'var(--muted-foreground)', borderBottom: abaAtiva === a.id ? '2px solid #0369a1' : '2px solid transparent', marginBottom: -1 }}>
@@ -367,7 +383,11 @@ export default function ProgramacaoFerias() {
         {loading ? (
           <div style={{ textAlign: 'center', padding: 40, color: 'var(--muted-foreground)' }}>⏳ Carregando…</div>
         ) : filtrado.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: 40, color: 'var(--muted-foreground)' }}>Nenhum colaborador CLT encontrado.</div>
+          <div style={{ textAlign: 'center', padding: 40, color: 'var(--muted-foreground)' }}>
+            <Umbrella size={36} style={{ opacity: 0.2, marginBottom: 12, display: 'block', margin: '0 auto 12px' }}/>
+            <div style={{ fontWeight: 600 }}>Nenhum colaborador com período concessivo ativo ou férias programadas</div>
+            <div style={{ fontSize: 13, marginTop: 4 }}>Colaboradores em período aquisitivo e sem férias programadas não aparecem aqui.</div>
+          </div>
         ) : (
           filtrado.map(({ colab, periodos }) => {
             const aberto = expandido === colab.id

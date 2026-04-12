@@ -65,13 +65,23 @@ export default function PortalLogin() {
 
     const obrasIds: string[] = data.obras_ids ?? []
     let obraNome: string | null = null
-    if (obrasIds.length > 0) {
+
+    if (obrasIds.length === 0) {
+      // obras_ids vazio = acesso a TODAS as obras do sistema
+      const { data: todasObras } = await supabase
+        .from('obras')
+        .select('id, nome')
+        .order('nome')
+      const ids = (todasObras ?? []).map((o: any) => o.id)
+      obraNome = todasObras?.[0]?.nome ?? null
+      setPortalSession({ id: data.id, login: data.login, nome: data.nome, obras_ids: ids, obra_nome: obraNome })
+    } else {
       const { data: obraData } = await supabase
         .from('obras').select('nome').eq('id', obrasIds[0]).single()
       obraNome = obraData?.nome ?? null
+      setPortalSession({ id: data.id, login: data.login, nome: data.nome, obras_ids: obrasIds, obra_nome: obraNome })
     }
 
-    setPortalSession({ id: data.id, login: data.login, nome: data.nome, obras_ids: obrasIds, obra_nome: obraNome })
     nav('/portal/home')
   }
 

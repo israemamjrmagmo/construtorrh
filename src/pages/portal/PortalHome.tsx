@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
-import { getPortalSession } from '@/hooks/usePortalAuth'
+import { getPortalSession, refreshPortalSession } from '@/hooks/usePortalAuth'
 import PortalLayout from './PortalLayout'
 import {
   ClipboardList, AlertTriangle, UserPlus, ShieldCheck,
@@ -14,8 +14,8 @@ interface ObraInfo { id: string; nome: string; codigo?: string }
 export default function PortalHome() {
   const nav = useNavigate()
 
-  // ⚠️  useMemo garante referência estável — evita re-render / piscar
-  const session = useMemo(() => getPortalSession(), [])
+  // Sessão — inicializa do localStorage, mas re-valida contra o banco na montagem
+  const [session, setSession] = useState(() => getPortalSession())
 
   const [obras,      setObras]      = useState<ObraInfo[]>([])
   const [contadores, setContadores] = useState<Record<string, { ponto: number; ocorr: number }>>({})
@@ -50,7 +50,16 @@ export default function PortalHome() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [obrasIdsKey])   // só re-cria se as obras mudarem
 
-  // Roda apenas uma vez (obrasIdsKey não muda entre renders normais)
+  // Re-valida sessão contra o banco uma vez (atualiza obras_ids se admin mudou)
+  useEffect(() => {
+    refreshPortalSession(supabase).then(updated => {
+      if (updated === null) { nav('/portal'); return }
+      if (updated !== session) setSession(updated)
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Roda fetchData quando obras mudam (após refresh)
   useEffect(() => { fetchData() }, [fetchData])
 
   if (!session) return null
