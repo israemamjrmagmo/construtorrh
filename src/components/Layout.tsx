@@ -210,8 +210,6 @@ export function Layout({ children }: LayoutProps) {
 
   useEffect(() => { fetchFechamentos();  const t = setInterval(fetchFechamentos,  60_000); return () => clearInterval(t) }, [fetchFechamentos])
   useEffect(() => { fetchSolicitacoes(); const t = setInterval(fetchSolicitacoes, 60_000); return () => clearInterval(t) }, [fetchSolicitacoes])
-  useEffect(() => { fetchMensagens();    const t = setInterval(fetchMensagens,    30_000); return () => clearInterval(t) }, [fetchMensagens])
-
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (notifRef.current && !notifRef.current.contains(e.target as Node)) setShowNotif(false)
