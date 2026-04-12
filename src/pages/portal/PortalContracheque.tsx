@@ -7,7 +7,7 @@ import {
   Clock, FolderOpen, FileCheck, FileX, CheckCircle2, ShieldCheck, Umbrella,
 } from 'lucide-react'
 import AbaFolhaPontoNova from './AbaFolhaPontoNova'
-import PortalFerias from './PortalFerias'
+import PortalFeriasColab from './PortalFeriasColab'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Sessao = {
@@ -1451,7 +1451,7 @@ export default function PortalContracheque() {
       )}
       {aba==='ponto' && <AbaFolhaPonto sessao={sessao} dataAdmissao={colab?.data_admissao ?? null} lancamentos={lancamentos} colab={colab} empresa={empresa}/>}
       {aba==='documentos' && <AbaMeusDocumentos sessao={sessao}/>}
-      {aba==='ferias' && <PortalFerias/>}
+      {aba==='ferias' && <PortalFeriasColab/>}
 
       {/* ══ MODAL ACEITE DIGITAL ══ */}
       {modalAceite && (
