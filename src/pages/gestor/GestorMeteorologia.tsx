@@ -1,15 +1,17 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import GestorLayout from './GestorLayout'
-import { CloudRain, Sun, Wind, Thermometer, Loader2, Plus, Droplets, Eye, AlertTriangle } from 'lucide-react'
+import MapaChuva, { ClimaItem } from '@/components/MapaChuva'
+import { CloudRain, Loader2, Plus, Map } from 'lucide-react'
 import { toast } from 'sonner'
 
-interface ClimaRow {
-  id: string; data: string; obra_id: string; obra_nome: string
-  choveu: boolean; precipitacao_mm?: number | null
+interface ClimaRow extends ClimaItem {
+  id: string; obra_id: string; obra_nome: string
+  condicao: string
+  precipitacao_mm?: number | null
   temperatura_max?: number | null; temperatura_min?: number | null
   vento_kmh?: number | null; umidade_pct?: number | null
-  condicao: string; impacto_obra: string; observacoes?: string | null
+  observacoes?: string | null
 }
 
 const CONDICAO_CFG: Record<string, { emoji: string; label: string; cor: string; bg: string }> = {
@@ -30,15 +32,21 @@ const IMPACTO_CFG: Record<string, { label: string; cor: string; bg: string }> = 
   paralisacao:  { label: 'Paralisação',    cor: '#7c3aed', bg: '#f5f3ff' },
 }
 
+const PERIODO_CFG = [
+  { key: 'manha', label: '🌅 Manhã',  desc: '06h–12h' },
+  { key: 'tarde', label: '☀️ Tarde',  desc: '12h–18h' },
+  { key: 'noite', label: '🌙 Noite',  desc: '18h–00h' },
+]
+
 interface FormClima {
-  obra_id: string; data: string; choveu: boolean
+  obra_id: string; data: string; periodo: 'manha' | 'tarde' | 'noite'; choveu: boolean
   precipitacao_mm: string; temperatura_max: string; temperatura_min: string
   vento_kmh: string; umidade_pct: string
   condicao: string; impacto_obra: string; observacoes: string
 }
 
 const EMPTY_FORM: FormClima = {
-  obra_id: '', data: new Date().toISOString().slice(0, 10), choveu: false,
+  obra_id: '', data: new Date().toISOString().slice(0, 10), periodo: 'manha', choveu: false,
   precipitacao_mm: '', temperatura_max: '', temperatura_min: '',
   vento_kmh: '', umidade_pct: '', condicao: 'ensolarado', impacto_obra: 'nenhum', observacoes: '',
 }
@@ -46,6 +54,7 @@ const EMPTY_FORM: FormClima = {
 export default function GestorMeteorologia() {
   const hoje = new Date().toISOString().slice(0, 10)
   const mesInicio = hoje.slice(0, 8) + '01'
+  const anoMes = hoje.slice(0, 7)
 
   const [loading, setLoading] = useState(true)
   const [rows, setRows] = useState<ClimaRow[]>([])
@@ -53,6 +62,7 @@ export default function GestorMeteorologia() {
   const [obraFiltro, setObraFiltro] = useState('todas')
   const [dtIni, setDtIni] = useState(mesInicio)
   const [dtFim, setDtFim] = useState(hoje)
+  const [abaAtiva, setAbaAtiva] = useState<'historico' | 'mapas'>('historico')
   const [modal, setModal] = useState(false)
   const [form, setForm] = useState<FormClima>(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
@@ -66,13 +76,15 @@ export default function GestorMeteorologia() {
           .select('*, obras(nome)')
           .gte('data', dtIni)
           .lte('data', dtFim)
-          .order('data', { ascending: false }),
+          .order('data', { ascending: false })
+          .order('periodo', { ascending: true }),
         supabase.from('obras').select('id, nome').neq('status', 'concluida').order('nome'),
       ])
       setObras(obrasData ?? [])
       setRows((data ?? []).map((r: any) => ({
         id: r.id, data: r.data, obra_id: r.obra_id,
         obra_nome: r.obras?.nome ?? '—',
+        periodo: r.periodo ?? 'manha',
         choveu: r.choveu ?? false,
         precipitacao_mm: r.precipitacao_mm,
         temperatura_max: r.temperatura_max,
@@ -97,14 +109,18 @@ export default function GestorMeteorologia() {
 
   const resumo = useMemo(() => {
     const arr = rowsFiltrados
+    const diasComChuva = new Set(arr.filter(r => r.choveu).map(r => r.data))
+    const diasSemChuva = new Set(arr.filter(r => !r.choveu).map(r => r.data))
     return {
       total: arr.length,
-      diasChuva: arr.filter(r => r.choveu).length,
-      diasSol: arr.filter(r => !r.choveu && r.condicao === 'ensolarado').length,
+      diasChuva: diasComChuva.size,
+      diasSol: diasSemChuva.size,
       paralisacoes: arr.filter(r => r.impacto_obra === 'paralisacao').length,
       precipTotal: arr.reduce((s, r) => s + (r.precipitacao_mm ?? 0), 0),
-      tempMax: arr.length > 0 ? Math.max(...arr.filter(r => r.temperatura_max).map(r => r.temperatura_max!)) : null,
-      tempMin: arr.length > 0 ? Math.min(...arr.filter(r => r.temperatura_min).map(r => r.temperatura_min!)) : null,
+      tempMax: arr.filter(r => r.temperatura_max != null).length > 0
+        ? Math.max(...arr.filter(r => r.temperatura_max != null).map(r => r.temperatura_max!)) : null,
+      tempMin: arr.filter(r => r.temperatura_min != null).length > 0
+        ? Math.min(...arr.filter(r => r.temperatura_min != null).map(r => r.temperatura_min!)) : null,
     }
   }, [rowsFiltrados])
 
@@ -118,6 +134,7 @@ export default function GestorMeteorologia() {
       const payload = {
         obra_id: form.obra_id,
         data: form.data,
+        periodo: form.periodo,
         choveu: form.choveu,
         precipitacao_mm: form.precipitacao_mm ? parseFloat(form.precipitacao_mm) : null,
         temperatura_max: form.temperatura_max ? parseFloat(form.temperatura_max) : null,
@@ -130,7 +147,7 @@ export default function GestorMeteorologia() {
       }
       const { error } = editId
         ? await supabase.from('obra_clima').update(payload).eq('id', editId)
-        : await supabase.from('obra_clima').insert(payload)
+        : await supabase.from('obra_clima').upsert(payload, { onConflict: 'obra_id,data,periodo' })
       if (error) { toast.error('Erro: ' + error.message); return }
       toast.success(editId ? 'Registro atualizado!' : 'Registro climático salvo!')
       setModal(false); setEditId(null); setForm(EMPTY_FORM); fetchData()
@@ -142,7 +159,7 @@ export default function GestorMeteorologia() {
   const handleEdit = (r: ClimaRow) => {
     setEditId(r.id)
     setForm({
-      obra_id: r.obra_id, data: r.data, choveu: r.choveu,
+      obra_id: r.obra_id, data: r.data, periodo: r.periodo ?? 'manha', choveu: r.choveu,
       precipitacao_mm: r.precipitacao_mm ? String(r.precipitacao_mm) : '',
       temperatura_max: r.temperatura_max ? String(r.temperatura_max) : '',
       temperatura_min: r.temperatura_min ? String(r.temperatura_min) : '',
@@ -163,6 +180,15 @@ export default function GestorMeteorologia() {
     })
     return Array.from(m.entries()).sort((a, b) => b[0].localeCompare(a[0]))
   }, [rowsFiltrados])
+
+  // Para os mapas: pegar todos os rows do mês atual, agrupados por obra
+  const rowsMesAtual = useMemo(() => rows.filter(r => r.data.startsWith(anoMes)), [rows, anoMes])
+
+  // Lista de obras com dados no mês atual
+  const obrasComDados = useMemo(() => {
+    const ids = new Set(rowsMesAtual.map(r => r.obra_id))
+    return obras.filter(o => ids.has(o.id))
+  }, [obras, rowsMesAtual])
 
   return (
     <GestorLayout>
@@ -190,7 +216,7 @@ export default function GestorMeteorologia() {
           { emoji: '❄️', label: 'Temp. Mín.', value: resumo.tempMin != null ? `${resumo.tempMin}°C` : '—', cor: '#0369a1', bg: '#f0f9ff' },
         ].map(k => (
           <div key={k.label} style={{
-            background: '#fff', borderRadius: 12, border: `1px solid ${k.alert ? k.cor + '44' : '#e2e8f0'}`,
+            background: '#fff', borderRadius: 12, border: `1px solid ${(k as any).alert ? k.cor + '44' : '#e2e8f0'}`,
             padding: '14px 16px', textAlign: 'center',
           }}>
             <div style={{ fontSize: 24, marginBottom: 4 }}>{k.emoji}</div>
@@ -217,77 +243,143 @@ export default function GestorMeteorologia() {
         </select>
       </div>
 
-      {/* Timeline */}
-      {loading ? (
-        <div style={{ display: 'flex', justifyContent: 'center', padding: 48 }}>
-          <Loader2 size={28} color="#0369a1" style={{ animation: 'spin 1s linear infinite' }} />
-        </div>
-      ) : porData.length === 0 ? (
-        <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', padding: 40, textAlign: 'center', color: '#94a3b8' }}>
-          <div style={{ fontSize: 40, marginBottom: 8 }}>🌤️</div>
-          <div style={{ fontSize: 14, fontWeight: 600 }}>Nenhum registro climático no período</div>
-          <div style={{ fontSize: 12, marginTop: 4 }}>Clique em "Novo Registro Climático" para começar</div>
-        </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {porData.map(([data, registros]) => {
-            const dataFmt = new Date(data + 'T12:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })
-            const temChuva = registros.some(r => r.choveu)
-            const temParalisacao = registros.some(r => r.impacto_obra === 'paralisacao')
-            return (
-              <div key={data} style={{ background: '#fff', borderRadius: 12, border: `1px solid ${temParalisacao ? '#dc2626' : temChuva ? '#bfdbfe' : '#e2e8f0'}`, overflow: 'hidden' }}>
-                {/* Header do dia */}
-                <div style={{
-                  padding: '10px 16px', borderBottom: '1px solid #f1f5f9',
-                  background: temParalisacao ? '#fef2f2' : temChuva ? '#eff6ff' : '#f8fafc',
-                  display: 'flex', alignItems: 'center', gap: 10,
-                }}>
-                  <span style={{ fontSize: 18 }}>{temParalisacao ? '⚠️' : temChuva ? '🌧️' : '☀️'}</span>
-                  <span style={{ fontWeight: 800, fontSize: 14, color: '#0f172a' }}>{dataFmt}</span>
-                  {temParalisacao && <span style={{ fontSize: 11, background: '#fee2e2', color: '#dc2626', borderRadius: 5, padding: '1px 7px', fontWeight: 700 }}>⚠️ Paralisação</span>}
-                  {temChuva && !temParalisacao && <span style={{ fontSize: 11, background: '#eff6ff', color: '#2563eb', borderRadius: 5, padding: '1px 7px', fontWeight: 700 }}>🌧️ Dia Chuvoso</span>}
-                </div>
-                {/* Registros do dia */}
-                <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {registros.map(r => {
-                    const cc = CONDICAO_CFG[r.condicao] ?? CONDICAO_CFG['ensolarado']
-                    const ic = IMPACTO_CFG[r.impacto_obra] ?? IMPACTO_CFG['nenhum']
-                    return (
-                      <div key={r.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 14, padding: '10px 14px', background: '#f8fafc', borderRadius: 10, border: '1px solid #e2e8f0' }}>
-                        <div style={{ fontSize: 28, flexShrink: 0 }}>{cc.emoji}</div>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 6 }}>
-                            <span style={{ fontWeight: 700, fontSize: 13, color: '#374151' }}>{r.obra_nome}</span>
-                            <span style={{ fontSize: 11, background: cc.bg, color: cc.cor, borderRadius: 5, padding: '1px 7px', fontWeight: 600 }}>{cc.emoji} {cc.label}</span>
-                            <span style={{ fontSize: 11, background: ic.bg, color: ic.cor, borderRadius: 5, padding: '1px 7px', fontWeight: 600 }}>Impacto: {ic.label}</span>
-                          </div>
-                          <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', fontSize: 12, color: '#64748b' }}>
-                            {r.precipitacao_mm != null && <span>💧 {r.precipitacao_mm} mm</span>}
-                            {r.temperatura_max != null && <span>🌡️ {r.temperatura_max}°C máx.</span>}
-                            {r.temperatura_min != null && <span>❄️ {r.temperatura_min}°C mín.</span>}
-                            {r.vento_kmh != null && <span>💨 {r.vento_kmh} km/h</span>}
-                            {r.umidade_pct != null && <span>💦 {r.umidade_pct}% umidade</span>}
-                          </div>
-                          {r.observacoes && <div style={{ fontSize: 12, color: '#374151', marginTop: 4, fontStyle: 'italic' }}>"{r.observacoes}"</div>}
-                        </div>
-                        <button onClick={() => handleEdit(r)}
-                          style={{ flexShrink: 0, background: 'none', border: '1px solid #e2e8f0', borderRadius: 7, padding: '4px 10px', fontSize: 11, cursor: 'pointer', color: '#64748b' }}>
-                          ✏️ Editar
-                        </button>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            )
-          })}
+      {/* Abas: Histórico / Mapas Pluviométricos */}
+      <div style={{ display: 'flex', borderBottom: '2px solid #e2e8f0', marginBottom: 20 }}>
+        {[
+          { key: 'historico', label: '📋 Histórico de Registros' },
+          { key: 'mapas',     label: '🗺️ Mapas Pluviométricos' },
+        ].map(t => (
+          <button key={t.key} onClick={() => setAbaAtiva(t.key as any)}
+            style={{
+              padding: '10px 20px', border: 'none',
+              borderBottom: `3px solid ${abaAtiva === t.key ? '#0369a1' : 'transparent'}`,
+              background: 'none', fontWeight: abaAtiva === t.key ? 800 : 600, fontSize: 14,
+              color: abaAtiva === t.key ? '#0369a1' : '#64748b', cursor: 'pointer', marginBottom: -2,
+            }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ══════════════════ ABA: MAPAS PLUVIOMÉTRICOS ══════════════════ */}
+      {abaAtiva === 'mapas' && (
+        <div>
+          {loading ? (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: 48 }}>
+              <Loader2 size={28} color="#0369a1" style={{ animation: 'spin 1s linear infinite' }} />
+            </div>
+          ) : obrasComDados.length === 0 ? (
+            <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', padding: 40, textAlign: 'center', color: '#94a3b8' }}>
+              <div style={{ fontSize: 40, marginBottom: 8 }}>🗺️</div>
+              <div style={{ fontSize: 14, fontWeight: 600 }}>Nenhum registro no mês atual</div>
+              <div style={{ fontSize: 12, marginTop: 4 }}>Os mapas são gerados automaticamente a partir dos registros do mês corrente.</div>
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(420px, 1fr))', gap: 20 }}>
+              {obrasComDados.map(obra => {
+                const regObra: ClimaItem[] = rowsMesAtual
+                  .filter(r => r.obra_id === obra.id)
+                  .map(r => ({
+                    data: r.data,
+                    periodo: r.periodo ?? 'manha',
+                    choveu: r.choveu,
+                    impacto_obra: r.impacto_obra,
+                  }))
+                return (
+                  <MapaChuva
+                    key={obra.id}
+                    registros={regObra}
+                    titulo={obra.nome}
+                    mesRef={anoMes}
+                  />
+                )
+              })}
+            </div>
+          )}
         </div>
       )}
 
-      {/* Modal */}
+      {/* ══════════════════ ABA: HISTÓRICO ══════════════════ */}
+      {abaAtiva === 'historico' && (
+        loading ? (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: 48 }}>
+            <Loader2 size={28} color="#0369a1" style={{ animation: 'spin 1s linear infinite' }} />
+          </div>
+        ) : porData.length === 0 ? (
+          <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', padding: 40, textAlign: 'center', color: '#94a3b8' }}>
+            <div style={{ fontSize: 40, marginBottom: 8 }}>🌤️</div>
+            <div style={{ fontSize: 14, fontWeight: 600 }}>Nenhum registro climático no período</div>
+            <div style={{ fontSize: 12, marginTop: 4 }}>Clique em "Novo Registro Climático" para começar</div>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {porData.map(([data, registros]) => {
+              const dataFmt = new Date(data + 'T12:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })
+              const temChuva = registros.some(r => r.choveu)
+              const temParalisacao = registros.some(r => r.impacto_obra === 'paralisacao')
+              return (
+                <div key={data} style={{ background: '#fff', borderRadius: 12, border: `1px solid ${temParalisacao ? '#dc2626' : temChuva ? '#bfdbfe' : '#e2e8f0'}`, overflow: 'hidden' }}>
+                  {/* Header do dia */}
+                  <div style={{
+                    padding: '10px 16px', borderBottom: '1px solid #f1f5f9',
+                    background: temParalisacao ? '#fef2f2' : temChuva ? '#eff6ff' : '#f8fafc',
+                    display: 'flex', alignItems: 'center', gap: 10,
+                  }}>
+                    <span style={{ fontSize: 18 }}>{temParalisacao ? '⚠️' : temChuva ? '🌧️' : '☀️'}</span>
+                    <span style={{ fontWeight: 800, fontSize: 14, color: '#0f172a' }}>{dataFmt}</span>
+                    {temParalisacao && <span style={{ fontSize: 11, background: '#fee2e2', color: '#dc2626', borderRadius: 5, padding: '1px 7px', fontWeight: 700 }}>⚠️ Paralisação</span>}
+                    {temChuva && !temParalisacao && <span style={{ fontSize: 11, background: '#eff6ff', color: '#2563eb', borderRadius: 5, padding: '1px 7px', fontWeight: 700 }}>🌧️ Dia Chuvoso</span>}
+                    <span style={{ marginLeft: 'auto', fontSize: 11, color: '#94a3b8' }}>{registros.length} lançamento{registros.length > 1 ? 's' : ''}</span>
+                  </div>
+                  {/* Registros do dia */}
+                  <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {registros
+                      .sort((a, b) => {
+                        const ord = { manha: 0, tarde: 1, noite: 2 }
+                        return ord[a.periodo ?? 'manha'] - ord[b.periodo ?? 'manha']
+                      })
+                      .map(r => {
+                        const cc = CONDICAO_CFG[r.condicao] ?? CONDICAO_CFG['ensolarado']
+                        const ic = IMPACTO_CFG[r.impacto_obra] ?? IMPACTO_CFG['nenhum']
+                        const pc = PERIODO_CFG.find(p => p.key === r.periodo) ?? PERIODO_CFG[0]
+                        return (
+                          <div key={r.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 14, padding: '10px 14px', background: '#f8fafc', borderRadius: 10, border: '1px solid #e2e8f0' }}>
+                            <div style={{ fontSize: 28, flexShrink: 0 }}>{cc.emoji}</div>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 6 }}>
+                                <span style={{ fontWeight: 700, fontSize: 13, color: '#374151' }}>{r.obra_nome}</span>
+                                <span style={{ fontSize: 11, background: '#f1f5f9', borderRadius: 5, padding: '1px 6px', color: '#64748b', fontWeight: 600 }}>{pc.label} {pc.desc}</span>
+                                <span style={{ fontSize: 11, background: cc.bg, color: cc.cor, borderRadius: 5, padding: '1px 7px', fontWeight: 600 }}>{cc.emoji} {cc.label}</span>
+                                <span style={{ fontSize: 11, background: ic.bg, color: ic.cor, borderRadius: 5, padding: '1px 7px', fontWeight: 600 }}>Impacto: {ic.label}</span>
+                              </div>
+                              <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', fontSize: 12, color: '#64748b' }}>
+                                {r.precipitacao_mm != null && <span>💧 {r.precipitacao_mm} mm</span>}
+                                {r.temperatura_max != null && <span>🌡️ {r.temperatura_max}°C máx.</span>}
+                                {r.temperatura_min != null && <span>❄️ {r.temperatura_min}°C mín.</span>}
+                                {r.vento_kmh != null && <span>💨 {r.vento_kmh} km/h</span>}
+                                {r.umidade_pct != null && <span>💦 {r.umidade_pct}% umidade</span>}
+                              </div>
+                              {r.observacoes && <div style={{ fontSize: 12, color: '#374151', marginTop: 4, fontStyle: 'italic' }}>"{r.observacoes}"</div>}
+                            </div>
+                            <button onClick={() => handleEdit(r)}
+                              style={{ flexShrink: 0, background: 'none', border: '1px solid #e2e8f0', borderRadius: 7, padding: '4px 10px', fontSize: 11, cursor: 'pointer', color: '#64748b' }}>
+                              ✏️ Editar
+                            </button>
+                          </div>
+                        )
+                      })}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )
+      )}
+
+      {/* Modal Novo/Editar Registro */}
       {modal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-          <div style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 520, maxHeight: '92vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
+          <div style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 540, maxHeight: '92vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
             {/* Header */}
             <div style={{ padding: '16px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ fontWeight: 800, fontSize: 16 }}>🌦️ {editId ? 'Editar' : 'Novo'} Registro Climático</div>
@@ -308,6 +400,28 @@ export default function GestorMeteorologia() {
                   <label style={{ fontSize: 12, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4 }}>Data *</label>
                   <input type="date" value={form.data} onChange={e => setF('data', e.target.value)}
                     style={{ width: '100%', border: '1px solid #e2e8f0', borderRadius: 8, padding: '7px 10px', fontSize: 13, boxSizing: 'border-box' }} />
+                </div>
+              </div>
+
+              {/* Período */}
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 6 }}>⏰ Período do Dia</label>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+                  {PERIODO_CFG.map(p => (
+                    <button key={p.key} onClick={() => setF('periodo', p.key)}
+                      style={{
+                        padding: '10px 6px', borderRadius: 10,
+                        border: `2px solid ${form.periodo === p.key ? '#0369a1' : '#e2e8f0'}`,
+                        background: form.periodo === p.key ? '#eff6ff' : '#fff',
+                        cursor: 'pointer', textAlign: 'center',
+                      }}>
+                      <div style={{ fontSize: 18 }}>{p.label.split(' ')[0]}</div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: form.periodo === p.key ? '#0369a1' : '#374151', marginTop: 2 }}>
+                        {p.label.split(' ').slice(1).join(' ')}
+                      </div>
+                      <div style={{ fontSize: 10, color: '#94a3b8' }}>{p.desc}</div>
+                    </button>
+                  ))}
                 </div>
               </div>
 
@@ -335,7 +449,7 @@ export default function GestorMeteorologia() {
                   <span style={{ position: 'absolute', top: 3, left: form.choveu ? 22 : 3, width: 18, height: 18, borderRadius: '50%', background: '#fff', transition: 'left 150ms' }} />
                 </button>
                 <span style={{ fontSize: 13, fontWeight: 600, color: form.choveu ? '#2563eb' : '#374151' }}>
-                  {form.choveu ? '🌧️ Choveu neste dia' : '☀️ Não choveu'}
+                  {form.choveu ? '🌧️ Choveu neste período' : '☀️ Não choveu neste período'}
                 </span>
               </div>
 
@@ -359,7 +473,7 @@ export default function GestorMeteorologia() {
 
               {/* Impacto na obra */}
               <div>
-                <label style={{ fontSize: 12, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 6 }}>Impacto na Obra</label>
+                <label style={{ fontSize: 12, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 6 }}>🏗️ Impacto na Obra</label>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                   {Object.entries(IMPACTO_CFG).map(([k, v]) => (
                     <button key={k} onClick={() => setF('impacto_obra', k)}
@@ -376,10 +490,10 @@ export default function GestorMeteorologia() {
 
               {/* Observações */}
               <div>
-                <label style={{ fontSize: 12, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 3 }}>Observações</label>
+                <label style={{ fontSize: 12, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 3 }}>📝 Observações</label>
                 <textarea value={form.observacoes} onChange={e => setF('observacoes', e.target.value)} rows={2}
                   placeholder="Detalhes sobre o clima, impacto nas atividades…"
-                  style={{ width: '100%', border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 10px', fontSize: 13, boxSizing: 'border-box', resize: 'vertical' }} />
+                  style={{ width: '100%', border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 10px', fontSize: 13, boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit' }} />
               </div>
             </div>
             {/* Footer */}
@@ -389,7 +503,7 @@ export default function GestorMeteorologia() {
               </button>
               <button onClick={handleSave} disabled={saving}
                 style={{ padding: '8px 20px', borderRadius: 8, border: 'none', background: saving ? '#94a3b8' : '#0369a1', color: '#fff', fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer' }}>
-                {saving ? 'Salvando…' : editId ? 'Atualizar' : '💾 Salvar Registro'}
+                {saving ? 'Salvando…' : editId ? '💾 Atualizar' : '💾 Salvar Registro'}
               </button>
             </div>
           </div>

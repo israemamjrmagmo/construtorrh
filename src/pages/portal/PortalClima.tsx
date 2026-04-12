@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { getPortalSession } from '@/hooks/usePortalAuth'
 import PortalLayout from './PortalLayout'
-import { CloudRain, Sun, Wind, Thermometer, Plus, Loader2 } from 'lucide-react'
+import MapaChuva, { ClimaItem } from '@/components/MapaChuva'
+import { CloudRain, Sun, Wind, Thermometer, Plus, Loader2, Map } from 'lucide-react'
 import { toast } from 'sonner'
 
 const CONDICAO_CFG: Record<string, { emoji: string; label: string }> = {
@@ -24,18 +25,28 @@ const IMPACTO_CFG: Record<string, { label: string; cor: string; bg: string }> = 
   paralisacao: { label: 'Paralisação',  cor: '#7c3aed', bg: '#f5f3ff' },
 }
 
+const PERIODO_CFG = [
+  { key: 'manha', label: '🌅 Manhã',  desc: '06h–12h' },
+  { key: 'tarde', label: '☀️ Tarde',  desc: '12h–18h' },
+  { key: 'noite', label: '🌙 Noite',  desc: '18h–00h' },
+]
+
 interface FormClima {
-  obra_id: string; data: string; choveu: boolean
+  obra_id: string; data: string; periodo: 'manha' | 'tarde' | 'noite'; choveu: boolean
   precipitacao_mm: string; temperatura_max: string; temperatura_min: string
   vento_kmh: string; umidade_pct: string
   condicao: string; impacto_obra: string; observacoes: string
 }
 
-interface ClimaRow {
-  id: string; data: string; condicao: string; choveu: boolean
-  precipitacao_mm?: number | null; temperatura_max?: number | null
-  temperatura_min?: number | null; vento_kmh?: number | null
-  umidade_pct?: number | null; impacto_obra: string; observacoes?: string | null
+interface ClimaRow extends ClimaItem {
+  id: string
+  condicao: string
+  precipitacao_mm?: number | null
+  temperatura_max?: number | null
+  temperatura_min?: number | null
+  vento_kmh?: number | null
+  umidade_pct?: number | null
+  observacoes?: string | null
 }
 
 export default function PortalClima() {
@@ -44,6 +55,7 @@ export default function PortalClima() {
   const obras = session?.obras_ids ?? []
   const hoje = new Date().toISOString().slice(0, 10)
   const mesInicio = hoje.slice(0, 8) + '01'
+  const anoMes = hoje.slice(0, 7)
 
   const [obraId, setObraId] = useState(obras[0] ?? '')
   const [obrasData, setObrasData] = useState<{ id: string; nome: string }[]>([])
@@ -51,17 +63,18 @@ export default function PortalClima() {
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [step, setStep] = useState<'form' | 'sucesso'>('form')
+  const [abaAtiva, setAbaAtiva] = useState<'historico' | 'mapa'>('historico')
   const [editandoId, setEditandoId] = useState<string | null>(null)
   const [modalEditar, setModalEditar] = useState(false)
   const [formEditar, setFormEditar] = useState<FormClima & { id?: string }>({
-    obra_id: '', data: hoje, choveu: false,
+    obra_id: '', data: hoje, periodo: 'manha', choveu: false,
     precipitacao_mm: '', temperatura_max: '', temperatura_min: '',
     vento_kmh: '', umidade_pct: '', condicao: 'ensolarado', impacto_obra: 'nenhum', observacoes: '',
   })
   const [savingEdit, setSavingEdit] = useState(false)
 
   const [form, setForm] = useState<FormClima>({
-    obra_id: obraId, data: hoje, choveu: false,
+    obra_id: obraId, data: hoje, periodo: 'manha', choveu: false,
     precipitacao_mm: '', temperatura_max: '', temperatura_min: '',
     vento_kmh: '', umidade_pct: '', condicao: 'ensolarado', impacto_obra: 'nenhum', observacoes: '',
   })
@@ -88,11 +101,15 @@ export default function PortalClima() {
   async function fetchHistorico() {
     setLoading(true)
     const { data } = await supabase.from('obra_clima')
-      .select('id, data, condicao, choveu, precipitacao_mm, temperatura_max, temperatura_min, vento_kmh, umidade_pct, impacto_obra, observacoes')
+      .select('id, data, periodo, condicao, choveu, precipitacao_mm, temperatura_max, temperatura_min, vento_kmh, umidade_pct, impacto_obra, observacoes')
       .eq('obra_id', obraId)
       .gte('data', mesInicio)
       .order('data', { ascending: false })
-    setHistorico(data ?? [])
+      .order('periodo', { ascending: true })
+    setHistorico((data ?? []).map((r: any) => ({
+      ...r,
+      periodo: r.periodo ?? 'manha',
+    })))
     setLoading(false)
   }
 
@@ -105,6 +122,7 @@ export default function PortalClima() {
       const payload = {
         obra_id: form.obra_id,
         data: form.data,
+        periodo: form.periodo,
         choveu: form.choveu,
         precipitacao_mm: form.precipitacao_mm ? parseFloat(form.precipitacao_mm) : null,
         temperatura_max: form.temperatura_max ? parseFloat(form.temperatura_max) : null,
@@ -116,8 +134,7 @@ export default function PortalClima() {
         observacoes: form.observacoes || null,
         lancado_por: session?.nome ?? session?.login ?? 'portal',
       }
-      // Upsert por obra_id + data
-      const { error } = await supabase.from('obra_clima').upsert(payload, { onConflict: 'obra_id,data' })
+      const { error } = await supabase.from('obra_clima').upsert(payload, { onConflict: 'obra_id,data,periodo' })
       if (error) { toast.error('Erro: ' + error.message); return }
       toast.success('Registro climático salvo!')
       setStep('sucesso')
@@ -128,7 +145,7 @@ export default function PortalClima() {
   }
 
   function novoRegistro() {
-    setForm({ obra_id: obraId, data: hoje, choveu: false, precipitacao_mm: '', temperatura_max: '', temperatura_min: '', vento_kmh: '', umidade_pct: '', condicao: 'ensolarado', impacto_obra: 'nenhum', observacoes: '' })
+    setForm({ obra_id: obraId, data: hoje, periodo: 'manha', choveu: false, precipitacao_mm: '', temperatura_max: '', temperatura_min: '', vento_kmh: '', umidade_pct: '', condicao: 'ensolarado', impacto_obra: 'nenhum', observacoes: '' })
     setStep('form')
   }
 
@@ -138,6 +155,7 @@ export default function PortalClima() {
       id: r.id,
       obra_id: obraId,
       data: r.data,
+      periodo: r.periodo ?? 'manha',
       choveu: r.choveu,
       precipitacao_mm: r.precipitacao_mm != null ? String(r.precipitacao_mm) : '',
       temperatura_max: r.temperatura_max != null ? String(r.temperatura_max) : '',
@@ -158,6 +176,7 @@ export default function PortalClima() {
     setSavingEdit(true)
     try {
       const payload = {
+        periodo: formEditar.periodo,
         choveu: formEditar.choveu,
         precipitacao_mm: formEditar.precipitacao_mm ? parseFloat(formEditar.precipitacao_mm) : null,
         temperatura_max: formEditar.temperatura_max ? parseFloat(formEditar.temperatura_max) : null,
@@ -177,8 +196,16 @@ export default function PortalClima() {
     }
   }
 
-  const diasChuva = historico.filter(r => r.choveu).length
+  const diasChuva = [...new Set(historico.filter(r => r.choveu).map(r => r.data))].length
   const obraNome = obrasData.find(o => o.id === obraId)?.nome ?? '—'
+
+  // Dados para o MapaChuva
+  const mapaRegistros: ClimaItem[] = historico.map(r => ({
+    data: r.data,
+    periodo: r.periodo ?? 'manha',
+    choveu: r.choveu,
+    impacto_obra: r.impacto_obra,
+  }))
 
   if (!session) return null
 
@@ -207,7 +234,7 @@ export default function PortalClima() {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 16 }}>
           {[
             { emoji: '🌧️', val: diasChuva, label: 'Dias de Chuva' },
-            { emoji: '☀️', val: historico.length - diasChuva, label: 'Dias de Sol' },
+            { emoji: '☀️', val: [...new Set(historico.filter(r => !r.choveu).map(r => r.data))].length, label: 'Dias de Sol' },
             { emoji: '⚠️', val: historico.filter(r => r.impacto_obra === 'paralisacao').length, label: 'Paralisações' },
           ].map(k => (
             <div key={k.label} style={{ background: '#f8fafc', borderRadius: 10, border: '1px solid #e2e8f0', padding: '10px 0', textAlign: 'center' }}>
@@ -222,7 +249,9 @@ export default function PortalClima() {
           <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 14, padding: 28, textAlign: 'center' }}>
             <div style={{ fontSize: 48, marginBottom: 8 }}>✅</div>
             <div style={{ fontWeight: 800, fontSize: 18, color: '#15803d', marginBottom: 4 }}>Registro Salvo!</div>
-            <div style={{ color: '#64748b', fontSize: 13, marginBottom: 18 }}>Dados climáticos de {new Date(form.data + 'T12:00').toLocaleDateString('pt-BR')} registrados com sucesso.</div>
+            <div style={{ color: '#64748b', fontSize: 13, marginBottom: 18 }}>
+              Dados climáticos de {new Date(form.data + 'T12:00').toLocaleDateString('pt-BR')} ({PERIODO_CFG.find(p => p.key === form.periodo)?.label}) registrados.
+            </div>
             <button onClick={novoRegistro} style={{ padding: '10px 24px', borderRadius: 10, border: 'none', background: '#0ea5e9', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
               ➕ Novo Registro
             </button>
@@ -240,6 +269,28 @@ export default function PortalClima() {
                 <label style={{ fontSize: 12, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4 }}>📅 Data</label>
                 <input type="date" value={form.data} onChange={e => setF('data', e.target.value)}
                   style={{ width: '100%', border: '1px solid #e2e8f0', borderRadius: 10, padding: '10px 12px', fontSize: 14, boxSizing: 'border-box' }} />
+              </div>
+
+              {/* Período do dia */}
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 6 }}>⏰ Período do Dia</label>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
+                  {PERIODO_CFG.map(p => (
+                    <button key={p.key} onClick={() => setF('periodo', p.key)}
+                      style={{
+                        padding: '10px 6px', borderRadius: 10,
+                        border: `2px solid ${form.periodo === p.key ? '#0ea5e9' : '#e2e8f0'}`,
+                        background: form.periodo === p.key ? '#e0f7ff' : '#fff',
+                        cursor: 'pointer', textAlign: 'center',
+                      }}>
+                      <div style={{ fontSize: 16 }}>{p.label.split(' ')[0]}</div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: form.periodo === p.key ? '#0369a1' : '#374151', marginTop: 2 }}>
+                        {p.label.split(' ').slice(1).join(' ')}
+                      </div>
+                      <div style={{ fontSize: 9, color: '#94a3b8' }}>{p.desc}</div>
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {/* Condição */}
@@ -270,7 +321,7 @@ export default function PortalClima() {
                   <span style={{ position: 'absolute', top: 3, left: form.choveu ? 24 : 3, width: 20, height: 20, borderRadius: '50%', background: '#fff', transition: 'left 150ms', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
                 </button>
                 <span style={{ fontSize: 14, fontWeight: 700, color: form.choveu ? '#0369a1' : '#374151' }}>
-                  {form.choveu ? '🌧️ Choveu neste dia' : '☀️ Não choveu'}
+                  {form.choveu ? '🌧️ Choveu neste período' : '☀️ Não choveu'}
                 </span>
               </div>
 
@@ -339,42 +390,72 @@ export default function PortalClima() {
           </div>
         )}
 
-        {/* Histórico */}
+        {/* Abas: Histórico / Mapa */}
         <div style={{ marginTop: 20 }}>
-          <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 10, color: '#0f172a' }}>📋 Histórico do Mês — {obraNome}</div>
-          {loading ? (
-            <div style={{ textAlign: 'center', padding: 20 }}><Loader2 size={20} color="#0ea5e9" style={{ animation: 'spin 1s linear infinite' }} /></div>
-          ) : historico.length === 0 ? (
-            <div style={{ background: '#f8fafc', borderRadius: 10, border: '1px solid #e2e8f0', padding: 20, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>
-              🌤️ Nenhum registro climático neste mês
-            </div>
-          ) : historico.map(r => {
-            const cc = CONDICAO_CFG[r.condicao] ?? CONDICAO_CFG['ensolarado']
-            const ic = IMPACTO_CFG[r.impacto_obra] ?? IMPACTO_CFG['nenhum']
-            return (
-              <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', background: '#fff', borderRadius: 10, border: '1px solid #e2e8f0', marginBottom: 8 }}>
-                <div style={{ fontSize: 24, flexShrink: 0 }}>{cc.emoji}</div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 700, fontSize: 13 }}>
-                    {new Date(r.data + 'T12:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' })}
-                  </div>
-                  <div style={{ fontSize: 11, color: '#64748b', display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 2 }}>
-                    <span>{cc.label}</span>
-                    {r.precipitacao_mm && <span>💧 {r.precipitacao_mm}mm</span>}
-                    {r.temperatura_max && <span>🌡️ {r.temperatura_max}°C</span>}
-                    {r.vento_kmh && <span>💨 {r.vento_kmh}km/h</span>}
-                  </div>
-                </div>
-                <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 5, background: ic.bg, color: ic.cor, flexShrink: 0 }}>
-                  {ic.label}
-                </span>
-                <button onClick={() => abrirEditar(r)}
-                  style={{ background: 'none', border: '1px solid #e2e8f0', borderRadius: 7, padding: '4px 10px', fontSize: 11, cursor: 'pointer', color: '#64748b', flexShrink: 0 }}>
-                  ✏️ Editar
-                </button>
+          <div style={{ display: 'flex', borderBottom: '2px solid #e2e8f0', marginBottom: 14 }}>
+            {[
+              { key: 'historico', label: '📋 Histórico' },
+              { key: 'mapa',     label: '🗺️ Mapa Pluviométrico' },
+            ].map(t => (
+              <button key={t.key} onClick={() => setAbaAtiva(t.key as any)}
+                style={{
+                  padding: '8px 16px', border: 'none', borderBottom: `3px solid ${abaAtiva === t.key ? '#0ea5e9' : 'transparent'}`,
+                  background: 'none', fontWeight: abaAtiva === t.key ? 800 : 600, fontSize: 13,
+                  color: abaAtiva === t.key ? '#0ea5e9' : '#64748b', cursor: 'pointer', marginBottom: -2,
+                }}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          {abaAtiva === 'mapa' ? (
+            <MapaChuva
+              registros={mapaRegistros}
+              titulo={obraNome}
+              mesRef={anoMes}
+            />
+          ) : (
+            <>
+              <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 10, color: '#0f172a' }}>
+                📋 Histórico do Mês — {obraNome}
               </div>
-            )
-          })}
+              {loading ? (
+                <div style={{ textAlign: 'center', padding: 20 }}><Loader2 size={20} color="#0ea5e9" style={{ animation: 'spin 1s linear infinite' }} /></div>
+              ) : historico.length === 0 ? (
+                <div style={{ background: '#f8fafc', borderRadius: 10, border: '1px solid #e2e8f0', padding: 20, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>
+                  🌤️ Nenhum registro climático neste mês
+                </div>
+              ) : historico.map(r => {
+                const cc = CONDICAO_CFG[r.condicao] ?? CONDICAO_CFG['ensolarado']
+                const ic = IMPACTO_CFG[r.impacto_obra] ?? IMPACTO_CFG['nenhum']
+                const pc = PERIODO_CFG.find(p => p.key === r.periodo) ?? PERIODO_CFG[0]
+                return (
+                  <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', background: '#fff', borderRadius: 10, border: '1px solid #e2e8f0', marginBottom: 8 }}>
+                    <div style={{ fontSize: 24, flexShrink: 0 }}>{cc.emoji}</div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 700, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        {new Date(r.data + 'T12:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' })}
+                        <span style={{ fontSize: 10, background: '#f1f5f9', borderRadius: 4, padding: '1px 5px', color: '#64748b' }}>{pc.label}</span>
+                      </div>
+                      <div style={{ fontSize: 11, color: '#64748b', display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 2 }}>
+                        <span>{cc.label}</span>
+                        {r.precipitacao_mm && <span>💧 {r.precipitacao_mm}mm</span>}
+                        {r.temperatura_max && <span>🌡️ {r.temperatura_max}°C</span>}
+                        {r.vento_kmh && <span>💨 {r.vento_kmh}km/h</span>}
+                      </div>
+                    </div>
+                    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 5, background: ic.bg, color: ic.cor, flexShrink: 0 }}>
+                      {ic.label}
+                    </span>
+                    <button onClick={() => abrirEditar(r)}
+                      style={{ background: 'none', border: '1px solid #e2e8f0', borderRadius: 7, padding: '4px 10px', fontSize: 11, cursor: 'pointer', color: '#64748b', flexShrink: 0 }}>
+                      ✏️ Editar
+                    </button>
+                  </div>
+                )
+              })}
+            </>
+          )}
         </div>
 
         {/* Modal Editar Registro Climático */}
@@ -388,6 +469,19 @@ export default function PortalClima() {
               <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
                 <div style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>
                   📅 Data: {new Date(formEditar.data + 'T12:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })}
+                </div>
+                {/* Período */}
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 6 }}>⏰ Período</label>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 5 }}>
+                    {PERIODO_CFG.map(p => (
+                      <button key={p.key} onClick={() => setFE('periodo', p.key)}
+                        style={{ padding: '7px 4px', borderRadius: 8, border: `2px solid ${formEditar.periodo === p.key ? '#0ea5e9' : '#e2e8f0'}`, background: formEditar.periodo === p.key ? '#e0f7ff' : '#fff', fontWeight: 600, fontSize: 10, cursor: 'pointer', textAlign: 'center' }}>
+                        <div style={{ fontSize: 14 }}>{p.label.split(' ')[0]}</div>
+                        <div style={{ color: formEditar.periodo === p.key ? '#0369a1' : '#64748b' }}>{p.label.split(' ').slice(1).join(' ')}</div>
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 {/* Condição */}
                 <div>
