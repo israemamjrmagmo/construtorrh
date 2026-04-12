@@ -428,29 +428,38 @@ export default function GestorDashboard() {
           </div>
 
           {/* ── Mapa Pluviométrico ── */}
-          {climaItens.length > 0 && (() => {
-            // determinar obra para o mapa: se filtrada, usa essa; senão pega a com mais dados
-            const obrasMapa = obraFiltro !== 'todas'
-              ? [todasObras.find(o => o.id === obraFiltro)].filter(Boolean) as typeof todasObras
-              : todasObras
-            return (
-              <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid #e2e8f0' }}>
-                {obrasMapa.map(obra => {
-                  const regsObra: ClimaItem[] = climaItens.filter((c: any) => c.obra_id === obra.id)
-                  if (regsObra.length === 0) return null
-                  return (
-                    <div key={obra.id} style={{ marginBottom: obrasMapa.length > 1 ? 16 : 0 }}>
-                      <MapaChuva
-                        registros={regsObra}
-                        titulo={obrasMapa.length > 1 ? obra.nome : undefined}
-                        mesRef={mesIni.slice(0, 7)}
-                      />
-                    </div>
-                  )
-                })}
+          {climaItens.length > 0 && (
+            <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid #e2e8f0' }}>
+              <div style={{ fontWeight: 700, fontSize: 12, color: '#64748b', marginBottom: 12,
+                textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: 6 }}>
+                🗺️ Mapa Pluviométrico
               </div>
-            )
-          })()}
+
+              {/* Mapa geral: todas as obras combinadas */}
+              <div style={{ marginBottom: 16 }}>
+                <MapaChuva
+                  registros={climaItens}
+                  titulo="Todas as Obras"
+                  mesRef={mesIni.slice(0, 7)}
+                />
+              </div>
+
+              {/* Mapas individuais por obra */}
+              {todasObras.map(obra => {
+                const regsObra: ClimaItem[] = climaItens.filter((c: any) => c.obra_id === obra.id)
+                if (regsObra.length === 0) return null
+                return (
+                  <div key={obra.id} style={{ marginBottom: 16 }}>
+                    <MapaChuva
+                      registros={regsObra}
+                      titulo={obra.nome}
+                      mesRef={mesIni.slice(0, 7)}
+                    />
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </div>
       </div>
 
