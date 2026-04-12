@@ -420,7 +420,6 @@ export default function PortalOcorrencias() {
 
           {/* Colaborador */}
           <div>
-            {LBL('Colaborador a ser desligado *')}
             <ColabSearchSelect
               colabs={colabs}
               value={colabId}
@@ -495,7 +494,6 @@ export default function PortalOcorrencias() {
 
           {/* Colaborador */}
           <div>
-            {LBL('Colaborador *')}
             <ColabSearchSelect
               colabs={colabs}
               value={colabId}

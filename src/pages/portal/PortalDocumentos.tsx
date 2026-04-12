@@ -274,7 +274,6 @@ export default function PortalDocumentos() {
 
           {/* Colaborador */}
           <div>
-            <label style={{ fontSize:11, fontWeight:700, color:'#374151', display:'block', marginBottom:4, textTransform:'uppercase' }}>Colaborador (opcional)</label>
             <ColabSearchSelect
               colabs={colabs}
               value={colabId}
