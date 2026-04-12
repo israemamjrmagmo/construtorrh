@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import GestorLayout from './GestorLayout'
+import MapaChuva, { ClimaItem } from '@/components/MapaChuva'
 import {
   Users, UserCheck, CloudRain, BarChart3,
   Building2, FileText, ShieldAlert, Loader2,
@@ -46,6 +47,7 @@ export default function GestorDashboard() {
   const [taxaMes,      setTaxaMes]      = useState(0)
   const [diasChuva,    setDiasChuva]    = useState(0)
   const [ultimoClima,  setUltimoClima]  = useState<any>(null)
+  const [climaItens,   setClimaItens]   = useState<ClimaItem[]>([])
   const [atestados,    setAtestados]    = useState(0)
   const [acidentes,    setAcidentes]    = useState(0)
 
@@ -149,6 +151,13 @@ export default function GestorDashboard() {
       const cl = climaData ?? []
       setDiasChuva(cl.filter((c: any) => c.choveu).length)
       setUltimoClima(cl[0] ?? null)
+      setClimaItens(cl.map((c: any) => ({
+        data: c.data,
+        periodo: c.periodo ?? 'manha',
+        choveu: c.choveu ?? false,
+        impacto_obra: c.impacto_obra ?? 'nenhum',
+        obra_id: c.obra_id,
+      })))
 
       // Alertas
       setAtestados((atests as any)?.length ?? 0)
@@ -417,6 +426,31 @@ export default function GestorDashboard() {
               ))}
             </div>
           </div>
+
+          {/* ── Mapa Pluviométrico ── */}
+          {climaItens.length > 0 && (() => {
+            // determinar obra para o mapa: se filtrada, usa essa; senão pega a com mais dados
+            const obrasMapa = obraFiltro !== 'todas'
+              ? [todasObras.find(o => o.id === obraFiltro)].filter(Boolean) as typeof todasObras
+              : todasObras
+            return (
+              <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid #e2e8f0' }}>
+                {obrasMapa.map(obra => {
+                  const regsObra: ClimaItem[] = climaItens.filter((c: any) => c.obra_id === obra.id)
+                  if (regsObra.length === 0) return null
+                  return (
+                    <div key={obra.id} style={{ marginBottom: obrasMapa.length > 1 ? 16 : 0 }}>
+                      <MapaChuva
+                        registros={regsObra}
+                        titulo={obrasMapa.length > 1 ? obra.nome : undefined}
+                        mesRef={mesIni.slice(0, 7)}
+                      />
+                    </div>
+                  )
+                })}
+              </div>
+            )
+          })()}
         </div>
       </div>
 

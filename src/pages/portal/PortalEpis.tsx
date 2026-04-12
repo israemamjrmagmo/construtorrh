@@ -1,10 +1,10 @@
-import React, { useEffect, useState, useCallback } from 'react'
+import React, { useEffect, useState, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { getPortalSession } from '@/hooks/usePortalAuth'
 import PortalLayout from './PortalLayout'
 import ColabSearchSelect from '@/components/ColabSearchSelect'
-import { ShieldCheck, Plus, Trash2, CheckCircle2, Loader2, ChevronDown } from 'lucide-react'
+import { ShieldCheck, Plus, Trash2, CheckCircle2, Loader2, Search, X } from 'lucide-react'
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 
@@ -77,6 +77,10 @@ export default function PortalEpis() {
   const [saving,    setSaving]    = useState(false)
   const [sucesso,   setSucesso]   = useState(false)
   const [loadCat,   setLoadCat]   = useState(false)
+  // pesquisa por item
+  const [buscas,    setBuscas]    = useState<Record<string, string>>({})  // id → texto busca
+  const [abertos,   setAbertos]   = useState<Record<string, boolean>>({}) // id → dropdown aberto
+  const buscaRefs   = useRef<Record<string, HTMLDivElement | null>>({})
 
   // form
   const [colabId,  setColabId]  = useState('')
@@ -123,11 +127,31 @@ export default function PortalEpis() {
   // ── manipulação de itens ───────────────────────────────────────────────────
 
   function addItem()  { setItens(p => [...p, novoItem()]) }
-  function remItem(id: string) { setItens(p => p.filter(x => x.id !== id)) }
+  function remItem(id: string) {
+    setItens(p => p.filter(x => x.id !== id))
+    setBuscas(p => { const n = { ...p }; delete n[id]; return n })
+    setAbertos(p => { const n = { ...p }; delete n[id]; return n })
+  }
 
   function updItem(id: string, field: keyof EpiItem, val: string) {
     setItens(p => p.map(x => x.id === id ? { ...x, [field]: val } : x))
   }
+
+  function setBusca(id: string, v: string) { setBuscas(p => ({ ...p, [id]: v })) }
+  function setAberto(id: string, v: boolean) { setAbertos(p => ({ ...p, [id]: v })) }
+
+  // Fechar dropdown ao clicar fora
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      Object.keys(abertos).forEach(id => {
+        if (abertos[id] && buscaRefs.current[id] && !buscaRefs.current[id]!.contains(e.target as Node)) {
+          setAberto(id, false)
+        }
+      })
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [abertos])
 
   function selecionarEpi(id: string, epiId: string) {
     const epi = catalogo.find(c => c.id === epiId)
@@ -180,9 +204,6 @@ export default function PortalEpis() {
     if (s === 'recusado') return { bg: '#fee2e2', cor: '#dc2626', label: '✗ Recusado' }
     return { bg: '#fef3c7', cor: '#b45309', label: '⏳ Pendente' }
   }
-
-  // Agrupar catálogo por categoria para o select com optgroup
-  const categorias = [...new Set(catalogo.map(e => e.categoria))].sort()
 
   return (
     <PortalLayout>
@@ -279,26 +300,80 @@ export default function PortalEpis() {
               <div key={item.id} style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 10, padding: '12px 12px', marginBottom: 8 }}>
                 {/* Linha 1: EPI + Qtd + botão remover */}
                 <div style={{ display: 'flex', gap: 8, marginBottom: item.requer_tamanho || item.requer_numero ? 8 : 0 }}>
-                  {/* Select do EPI */}
-                  <div style={{ flex: 1 }}>
+                  {/* Busca de EPI com pesquisa por nome */}
+                  <div
+                    style={{ flex: 1, position: 'relative' }}
+                    ref={el => { buscaRefs.current[item.id] = el }}
+                  >
                     <label style={{ fontSize: 10, fontWeight: 700, color: '#6b7280', display: 'block', marginBottom: 3 }}>EPI *</label>
+                    {/* Campo de input com pesquisa */}
                     <div style={{ position: 'relative' }}>
-                      <select
-                        value={item.epi_catalogo_id}
-                        onChange={e => selecionarEpi(item.id, e.target.value)}
-                        style={{ ...S, height: 36, fontSize: 12, paddingRight: 28 }}
-                      >
-                        <option value="">Selecione o EPI…</option>
-                        {categorias.map(cat => (
-                          <optgroup key={cat} label={`📦 ${cat}`}>
-                            {catalogo.filter(e => e.categoria === cat).map(e => (
-                              <option key={e.id} value={e.id}>{e.nome}</option>
-                            ))}
-                          </optgroup>
-                        ))}
-                      </select>
-                      <ChevronDown size={13} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: '#6b7280' }} />
+                      <Search size={13} style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', pointerEvents: 'none' }} />
+                      <input
+                        type="text"
+                        value={abertos[item.id] ? (buscas[item.id] ?? '') : item.nome}
+                        placeholder="Pesquisar EPI por nome ou categoria…"
+                        onFocus={() => { setAberto(item.id, true); setBusca(item.id, '') }}
+                        onChange={e => { setBusca(item.id, e.target.value); setAberto(item.id, true) }}
+                        style={{ ...I, height: 36, fontSize: 12, paddingLeft: 28, paddingRight: item.epi_catalogo_id ? 28 : 10 }}
+                      />
+                      {item.epi_catalogo_id && !abertos[item.id] && (
+                        <button type="button" onClick={() => { selecionarEpi(item.id, ''); setBusca(item.id, '') }}
+                          style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', padding: 2 }}>
+                          <X size={13} />
+                        </button>
+                      )}
                     </div>
+                    {/* Dropdown de resultados */}
+                    {abertos[item.id] && (() => {
+                      const termo = (buscas[item.id] ?? '').toLowerCase().trim()
+                      const resultados = catalogo.filter(e =>
+                        !termo ||
+                        e.nome.toLowerCase().includes(termo) ||
+                        e.categoria.toLowerCase().includes(termo)
+                      )
+                      const grupos = [...new Set(resultados.map(e => e.categoria))].sort()
+                      return (
+                        <div style={{
+                          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200,
+                          background: '#fff', border: '1px solid #e5e7eb', borderRadius: 9,
+                          boxShadow: '0 8px 24px rgba(0,0,0,0.12)', maxHeight: 280, overflowY: 'auto',
+                          marginTop: 3,
+                        }}>
+                          {resultados.length === 0 ? (
+                            <div style={{ padding: '14px 12px', color: '#9ca3af', fontSize: 12, textAlign: 'center' }}>
+                              Nenhum EPI encontrado para "{buscas[item.id]}"
+                            </div>
+                          ) : grupos.map(cat => (
+                            <div key={cat}>
+                              <div style={{ padding: '6px 12px 4px', fontSize: 10, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', background: '#f8fafc', borderBottom: '1px solid #f1f5f9' }}>
+                                {cat}
+                              </div>
+                              {resultados.filter(e => e.categoria === cat).map(e => (
+                                <button key={e.id} type="button"
+                                  onMouseDown={() => { selecionarEpi(item.id, e.id); setAberto(item.id, false); setBusca(item.id, '') }}
+                                  style={{
+                                    width: '100%', textAlign: 'left', padding: '8px 14px',
+                                    background: item.epi_catalogo_id === e.id ? '#eff6ff' : 'transparent',
+                                    border: 'none', cursor: 'pointer', fontSize: 12,
+                                    fontWeight: item.epi_catalogo_id === e.id ? 700 : 400,
+                                    color: item.epi_catalogo_id === e.id ? '#1d4ed8' : '#374151',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+                                  }}
+                                >
+                                  <span>{e.nome}</span>
+                                  {(e.requer_tamanho || e.requer_numero) && (
+                                    <span style={{ fontSize: 9, background: '#fef3c7', color: '#b45309', borderRadius: 4, padding: '1px 5px', fontWeight: 700, flexShrink: 0 }}>
+                                      {e.requer_tamanho ? '👕 tam' : ''}{e.requer_tamanho && e.requer_numero ? '+' : ''}{e.requer_numero ? '👟 nº' : ''}
+                                    </span>
+                                  )}
+                                </button>
+                              ))}
+                            </div>
+                          ))}
+                        </div>
+                      )
+                    })()}
                   </div>
 
                   {/* Quantidade */}

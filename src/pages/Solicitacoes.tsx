@@ -711,10 +711,17 @@ function TabEpis({ obras, colabs, perfil }: { obras: Obra[]; colabs: Colab[]; pe
     const _empEpi = await fetchEmpresaData()
     const ugL = (u: string) => u==='critico'?'🔴 Crítico':u==='urgente'?'🟠 Urgente':'🟢 Normal'
 
-    const itensHtml = (r.itens ?? []).map((it: any) =>
-      `<tr><td style="padding:5px 10px;border-bottom:1px solid #e5e7eb;font-size:12px">${it.nome}</td>
-       <td style="padding:5px 10px;border-bottom:1px solid #e5e7eb;font-size:12px;text-align:right;font-weight:700">×${it.quantidade}</td></tr>`
-    ).join('')
+    const itensHtml = (r.itens ?? []).map((it: any) => {
+      const detalhes = [it.tamanho ? `Tam: ${it.tamanho}` : '', it.numero ? `Nº ${it.numero}` : ''].filter(Boolean).join(' · ')
+      return `<tr>
+        <td style="padding:5px 10px;border-bottom:1px solid #e5e7eb;font-size:12px">
+          ${it.nome}${detalhes ? `<span style="font-size:10px;color:#6b7280;margin-left:8px">${detalhes}</span>` : ''}
+        </td>
+        <td style="padding:5px 10px;border-bottom:1px solid #e5e7eb;font-size:12px;text-align:center;font-weight:700">${it.tamanho || '—'}</td>
+        <td style="padding:5px 10px;border-bottom:1px solid #e5e7eb;font-size:12px;text-align:center;font-weight:700">${it.numero || '—'}</td>
+        <td style="padding:5px 10px;border-bottom:1px solid #e5e7eb;font-size:12px;text-align:right;font-weight:700">×${it.quantidade}</td>
+      </tr>`
+    }).join('')
 
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Solicitação de EPI</title>
     <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;padding:28px;color:#111}
@@ -734,7 +741,7 @@ function TabEpis({ obras, colabs, perfil }: { obras: Obra[]; colabs: Colab[]; pe
       ${r.observacoes ? `<span class="label">Observações</span><span class="val">${r.observacoes}</span>` : ''}
       <span class="label">Enviado em</span><span class="val">${new Date(r.criado_em).toLocaleString('pt-BR')}</span>
     </div>
-    <table><thead><tr><th>Item / EPI</th><th style="text-align:right">Qtd.</th></tr></thead>
+    <table><thead><tr><th>Item / EPI</th><th style="text-align:center">Tamanho</th><th style="text-align:center">Nº Calçado</th><th style="text-align:right">Qtd.</th></tr></thead>
     <tbody>${itensHtml}</tbody></table>
     <div class="ass">
       <div><div class="linha"></div>Solicitante / Assinatura</div>
@@ -830,9 +837,26 @@ function TabEpis({ obras, colabs, perfil }: { obras: Obra[]; colabs: Colab[]; pe
             <div style={{ marginBottom:12 }}>
               <div style={{ fontSize:11, fontWeight:700, color:'var(--muted-foreground)', marginBottom:6, letterSpacing:.5 }}>ITENS SOLICITADOS</div>
               {(modal.itens ?? []).map((it: any, idx: number) => (
-                <div key={idx} style={{ display:'flex', justifyContent:'space-between', borderBottom:'1px solid var(--border)', padding:'6px 0' }}>
-                  <span style={{ fontSize:13 }}>{it.nome}</span>
-                  <span style={{ fontSize:12, fontWeight:700 }}>×{it.quantidade}</span>
+                <div key={idx} style={{ borderBottom:'1px solid var(--border)', padding:'7px 0' }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
+                    <span style={{ fontSize:13, fontWeight:600 }}>{it.nome}</span>
+                    <span style={{ fontSize:12, fontWeight:700, flexShrink:0, marginLeft:8 }}>×{it.quantidade}</span>
+                  </div>
+                  {(it.tamanho || it.numero) && (
+                    <div style={{ display:'flex', gap:6, marginTop:3 }}>
+                      {it.tamanho && (
+                        <span style={{ fontSize:11, background:'#1e3a5f', color:'#fff', borderRadius:4, padding:'1px 7px', fontWeight:700 }}>
+                          👕 {it.tamanho}
+                        </span>
+                      )}
+                      {it.numero && (
+                        <span style={{ fontSize:11, background:'#0369a1', color:'#fff', borderRadius:4, padding:'1px 7px', fontWeight:700 }}>
+                          👟 Nº {it.numero}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  {it.obs && <div style={{ fontSize:11, color:'#6b7280', marginTop:2, fontStyle:'italic' }}>{it.obs}</div>}
                 </div>
               ))}
             </div>

@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { getPortalSession, refreshPortalSession } from '@/hooks/usePortalAuth'
 import PortalLayout from './PortalLayout'
-import MapaChuva, { ClimaItem } from '@/components/MapaChuva'
 import {
   ClipboardList, AlertTriangle, UserPlus, ShieldCheck,
   HardHat, BookOpen, FolderOpen, FileImage,
@@ -16,17 +15,11 @@ export default function PortalHome() {
   const nav = useNavigate()
 
   const [session, setSession] = useState(() => getPortalSession())
+  const [obras,      setObras]      = useState<ObraInfo[]>([])
+  const [contadores, setContadores] = useState<Record<string, { ponto: number; ocorr: number }>>({})
+  const [loading,    setLoading]    = useState(true)
 
-  const [obras,        setObras]        = useState<ObraInfo[]>([])
-  const [contadores,   setContadores]   = useState<Record<string, { ponto: number; ocorr: number }>>({})
-  const [climaRows,    setClimaRows]    = useState<ClimaItem[]>([])
-  const [loading,      setLoading]      = useState(true)
-  const [obraMapaId,   setObraMapaId]   = useState<string>('')  // obra selecionada para o mapa
-
-  const hoje    = useRef(new Date().toISOString().slice(0, 10)).current
-  const anoMes  = hoje.slice(0, 7)
-  const mesIni  = anoMes + '-01'
-
+  const hoje       = useRef(new Date().toISOString().slice(0, 10)).current
   const obrasIdsKey = useMemo(() => (session?.obras_ids ?? []).join(','), [session])
 
   const fetchData = useCallback(async () => {
@@ -35,37 +28,19 @@ export default function PortalHome() {
     if (!ids || ids.length === 0) { setLoading(false); return }
 
     setLoading(true)
-    const [{ data: obsData }, { data: pontosHoje }, { data: ocorrHoje }, { data: climaData }] = await Promise.all([
+    const [{ data: obsData }, { data: pontosHoje }, { data: ocorrHoje }] = await Promise.all([
       supabase.from('obras').select('id,nome,codigo').in('id', ids).order('nome'),
       supabase.from('portal_ponto_diario').select('obra_id').in('obra_id', ids).eq('data', hoje),
       supabase.from('portal_ocorrencias').select('obra_id').in('obra_id', ids).eq('data', hoje),
-      supabase.from('obra_clima')
-        .select('obra_id,data,periodo,choveu,impacto_obra')
-        .in('obra_id', ids)
-        .gte('data', mesIni)
-        .lte('data', hoje),
     ])
 
-    if (obsData) {
-      setObras(obsData)
-      // Seleciona a primeira obra por padrão para o mapa
-      if (obsData.length > 0) setObraMapaId(prev => prev || obsData[0].id)
-    }
+    if (obsData) setObras(obsData)
 
     const cnt: Record<string, { ponto: number; ocorr: number }> = {}
     ids.forEach(id => { cnt[id] = { ponto: 0, ocorr: 0 } })
     pontosHoje?.forEach((r: any) => { if (cnt[r.obra_id]) cnt[r.obra_id].ponto++ })
     ocorrHoje?.forEach( (r: any) => { if (cnt[r.obra_id]) cnt[r.obra_id].ocorr++ })
     setContadores(cnt)
-
-    setClimaRows((climaData ?? []).map((r: any) => ({
-      data: r.data,
-      periodo: r.periodo ?? 'manha',
-      choveu: r.choveu ?? false,
-      impacto_obra: r.impacto_obra ?? 'nenhum',
-      obra_id: r.obra_id,
-    })))
-
     setLoading(false)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [obrasIdsKey])
@@ -85,13 +60,6 @@ export default function PortalHome() {
   const dataHojeFmt = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })
   const primeiroNome = (session.nome ?? session.login).split(' ')[0]
 
-  // Filtra registros climáticos pela obra selecionada
-  const climaObraSelecionada: ClimaItem[] = climaRows.filter(
-    (r: any) => r.obra_id === obraMapaId
-  )
-  const obraSelecionadaNome = obras.find(o => o.id === obraMapaId)?.nome ?? ''
-
-  // Ações rápidas
   const acoesRapidas = [
     { icon: <ClipboardList size={24} />, label: 'Lançar Ponto',   sub: 'Presenças do dia',   to: '/portal/ponto',        cor: '#1d4ed8', bg: '#eff6ff', border: '#bfdbfe' },
     { icon: <AlertTriangle size={24} />, label: 'Ocorrência',     sub: 'Registrar evento',   to: '/portal/ocorrencias',  cor: '#dc2626', bg: '#fef2f2', border: '#fecaca' },
@@ -106,20 +74,16 @@ export default function PortalHome() {
 
   return (
     <PortalLayout>
-      {/* ── Saudação ── */}
+      {/* Saudação */}
       <div style={{ padding: '18px 16px 10px' }}>
-        <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 2, textTransform: 'capitalize' }}>
-          {dataHojeFmt}
-        </div>
-        <div style={{ fontSize: 20, fontWeight: 800, color: '#1e3a5f', lineHeight: 1.3 }}>
-          Olá, {primeiroNome}! 👋
-        </div>
+        <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 2, textTransform: 'capitalize' }}>{dataHojeFmt}</div>
+        <div style={{ fontSize: 20, fontWeight: 800, color: '#1e3a5f', lineHeight: 1.3 }}>Olá, {primeiroNome}! 👋</div>
         <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
           Você tem acesso a <strong>{obras.length}</strong> obra{obras.length !== 1 ? 's' : ''}
         </div>
       </div>
 
-      {/* ── Obras com contadores ── */}
+      {/* Obras com contadores */}
       {!loading && obras.length > 0 && (
         <div style={{ padding: '0 16px 10px' }}>
           <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: '#9ca3af', marginBottom: 8 }}>
@@ -129,30 +93,17 @@ export default function PortalHome() {
             {obras.map(o => {
               const cnt = contadores[o.id] ?? { ponto: 0, ocorr: 0 }
               return (
-                <div key={o.id} style={{
-                  background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12,
-                  padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10,
-                }}>
-                  <div style={{
-                    width: 36, height: 36, borderRadius: 10,
-                    background: 'linear-gradient(135deg,#1e3a5f,#1d4ed8)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                  }}>
+                <div key={o.id} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ width: 36, height: 36, borderRadius: 10, background: 'linear-gradient(135deg,#1e3a5f,#1d4ed8)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                     <Building2 size={16} color="#fff" />
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 700, fontSize: 13, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {o.nome}
-                    </div>
+                    <div style={{ fontWeight: 700, fontSize: 13, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.nome}</div>
                     {o.codigo && <div style={{ fontSize: 10, color: '#9ca3af' }}>{o.codigo}</div>}
                   </div>
                   <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                    {cnt.ponto > 0 && (
-                      <span style={{ background: '#dcfce7', color: '#15803d', borderRadius: 6, padding: '2px 7px', fontSize: 10, fontWeight: 700 }}>✓ {cnt.ponto}</span>
-                    )}
-                    {cnt.ocorr > 0 && (
-                      <span style={{ background: '#fee2e2', color: '#dc2626', borderRadius: 6, padding: '2px 7px', fontSize: 10, fontWeight: 700 }}>⚠ {cnt.ocorr}</span>
-                    )}
+                    {cnt.ponto > 0 && <span style={{ background: '#dcfce7', color: '#15803d', borderRadius: 6, padding: '2px 7px', fontSize: 10, fontWeight: 700 }}>✓ {cnt.ponto}</span>}
+                    {cnt.ocorr > 0 && <span style={{ background: '#fee2e2', color: '#dc2626', borderRadius: 6, padding: '2px 7px', fontSize: 10, fontWeight: 700 }}>⚠ {cnt.ocorr}</span>}
                   </div>
                 </div>
               )
@@ -161,78 +112,26 @@ export default function PortalHome() {
         </div>
       )}
 
-      {/* ── Mapa Pluviométrico ── */}
-      {!loading && obras.length > 0 && (
-        <div style={{ padding: '0 16px 12px' }}>
-          {/* Seletor de obra (só aparece se tiver mais de 1 obra) */}
-          {obras.length > 1 && (
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
-              {obras.map(o => (
-                <button
-                  key={o.id}
-                  onClick={() => setObraMapaId(o.id)}
-                  style={{
-                    padding: '5px 12px', borderRadius: 8, fontSize: 11, fontWeight: 700,
-                    border: `2px solid ${obraMapaId === o.id ? '#0ea5e9' : '#e2e8f0'}`,
-                    background: obraMapaId === o.id ? '#e0f7ff' : '#fff',
-                    color: obraMapaId === o.id ? '#0369a1' : '#64748b',
-                    cursor: 'pointer',
-                  }}
-                >
-                  {o.nome}
-                </button>
-              ))}
-            </div>
-          )}
-
-          <MapaChuva
-            registros={climaObraSelecionada}
-            titulo={obras.length > 1 ? obraSelecionadaNome : undefined}
-            mesRef={anoMes}
-          />
-        </div>
-      )}
-
-      {/* ── Menu rápido ── */}
+      {/* Menu rápido */}
       <div style={{ padding: '4px 16px 32px' }}>
         <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: '#9ca3af', marginBottom: 10 }}>
           Menu Rápido
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
           {acoesRapidas.map(a => (
-            <button
-              key={a.to}
-              onClick={() => nav(a.to)}
-              style={{
-                background: a.bg,
-                border: `1.5px solid ${a.border}`,
-                borderRadius: 14,
-                padding: '14px 10px',
-                cursor: 'pointer',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: 6,
-                boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
-                WebkitTapHighlightColor: 'transparent',
-              }}
-              onTouchStart={e => {
-                e.currentTarget.style.transform = 'scale(0.95)'
-                e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.12)'
-              }}
-              onTouchEnd={e => {
-                e.currentTarget.style.transform = 'scale(1)'
-                e.currentTarget.style.boxShadow = '0 1px 4px rgba(0,0,0,0.06)'
-              }}
+            <button key={a.to} onClick={() => nav(a.to)} style={{
+              background: a.bg, border: `1.5px solid ${a.border}`, borderRadius: 14,
+              padding: '14px 10px', cursor: 'pointer', display: 'flex',
+              flexDirection: 'column', alignItems: 'center', gap: 6,
+              boxShadow: '0 1px 4px rgba(0,0,0,0.06)', WebkitTapHighlightColor: 'transparent',
+            }}
+              onTouchStart={e => { e.currentTarget.style.transform = 'scale(0.95)'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.12)' }}
+              onTouchEnd={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 1px 4px rgba(0,0,0,0.06)' }}
             >
               <div style={{ color: a.cor }}>{a.icon}</div>
               <div>
-                <div style={{ fontWeight: 700, fontSize: 11, color: '#1e293b', textAlign: 'center', lineHeight: 1.3 }}>
-                  {a.label}
-                </div>
-                <div style={{ fontSize: 9, color: '#6b7280', textAlign: 'center', marginTop: 2, lineHeight: 1.3 }}>
-                  {a.sub}
-                </div>
+                <div style={{ fontWeight: 700, fontSize: 11, color: '#1e293b', textAlign: 'center', lineHeight: 1.3 }}>{a.label}</div>
+                <div style={{ fontSize: 9, color: '#6b7280', textAlign: 'center', marginTop: 2, lineHeight: 1.3 }}>{a.sub}</div>
               </div>
             </button>
           ))}
