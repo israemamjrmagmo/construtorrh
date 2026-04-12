@@ -45,6 +45,7 @@ interface AtividadePreco {
   atividade_id: string
   obra_id: string
   preco_unitario: number
+  preco_maximo: number | null
   ativo: boolean
 }
 
@@ -95,6 +96,7 @@ export default function Playbooks() {
   // ─── Aba Atividades ────────────────────────────────────────────────────────
   const [searchAtiv, setSearchAtiv]       = useState('')
   const [catFiltro, setCatFiltro]         = useState('todas')
+  const [unidFiltro, setUnidFiltro]       = useState('todas')
   const [modalAtiv, setModalAtiv]         = useState(false)
   const [editAtiv, setEditAtiv]           = useState<Atividade | null>(null)
   const [formAtiv, setFormAtiv]           = useState(ATIV_EMPTY())
@@ -104,9 +106,10 @@ export default function Playbooks() {
   // ─── Aba Preços por Obra ───────────────────────────────────────────────────
   const [obraSel, setObraSel]             = useState<Obra | null>(null)
   const [searchObra, setSearchObra]       = useState('')
-  const [savingPreco, setSavingPreco]     = useState<string | null>(null)  // atividade_id em saving
-  const [editandoPreco, setEditandoPreco] = useState<string | null>(null)  // atividade_id em edição
+  const [savingPreco, setSavingPreco]     = useState<string | null>(null)
+  const [editandoPreco, setEditandoPreco] = useState<string | null>(null)
   const [valorTemp, setValorTemp]         = useState('')
+  const [valorMaxTemp, setValorMaxTemp]   = useState('')
   const [modalCopiar, setModalCopiar]     = useState(false)
   const [obraOrigem, setObraOrigem]       = useState('')
   const [copiando, setCopiando]           = useState(false)
@@ -156,9 +159,10 @@ export default function Playbooks() {
     const q = searchAtiv.toLowerCase()
     return atividades.filter(a =>
       (!q || a.descricao.toLowerCase().includes(q) || (a.codigo ?? '').toLowerCase().includes(q)) &&
-      (catFiltro === 'todas' || a.categoria === catFiltro)
+      (catFiltro === 'todas' || a.categoria === catFiltro) &&
+      (unidFiltro === 'todas' || a.unidade === unidFiltro)
     )
-  }, [atividades, searchAtiv, catFiltro])
+  }, [atividades, searchAtiv, catFiltro, unidFiltro])
 
   const ativPorCat = useMemo(() => {
     const m = new Map<string, Atividade[]>()
@@ -243,14 +247,15 @@ export default function Playbooks() {
     if (!obraSel) return
     setSavingPreco(ativId)
     const existing = precosMap.get(`${ativId}::${obraSel.id}`)
-    const payload = { atividade_id: ativId, obra_id: obraSel.id, preco_unitario: valor, ativo: true }
-    const { error } = existing
-      ? await supabase.from('playbook_precos').update({ preco_unitario: valor }).eq('id', existing.id)
+    const precoMax = parseFloat(valorMaxTemp) || null
+    const payload = { atividade_id: ativId, obra_id: obraSel.id, preco_unitario: valor, preco_maximo: precoMax, ativo: true }
+    const res = existing
+      ? await supabase.from('playbook_precos').update({ preco_unitario: valor, preco_maximo: precoMax }).eq('id', existing.id)
       : await supabase.from('playbook_precos').insert(payload)
     setSavingPreco(null)
-    if (error) { toast.error(traduzirErro(error.message)); return }
+    if (res.error) { toast.error(traduzirErro(res.error.message)); return }
     toast.success('Preço salvo!')
-    setEditandoPreco(null); setValorTemp(''); fetchData()
+    setEditandoPreco(null); setValorTemp(''); setValorMaxTemp(''); fetchData()
   }
 
   async function removerPreco(ativId: string) {
@@ -337,6 +342,13 @@ export default function Playbooks() {
                 <SelectContent>
                   <SelectItem value="todas">Todas as categorias</SelectItem>
                   {CATEGORIAS.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <Select value={unidFiltro} onValueChange={setUnidFiltro}>
+                <SelectTrigger style={{ width: 130 }}><SelectValue placeholder="Unidade" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todas">Todas as unidades</SelectItem>
+                  {UNIDADES.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
                 </SelectContent>
               </Select>
               {canCreate && (
@@ -523,12 +535,13 @@ export default function Playbooks() {
                     <Table>
                       <TableHeader>
                         <TableRow style={{ background: 'var(--muted)' }}>
-                          <TableHead style={{ width: 80 }}>Código</TableHead>
+                          <TableHead style={{ width: 110 }}>Código</TableHead>
                           <TableHead>Atividade</TableHead>
                           <TableHead style={{ width: 80, textAlign: 'center' }}>Unidade</TableHead>
-                          <TableHead style={{ width: 80 }}>Categoria</TableHead>
-                          <TableHead style={{ width: 160, textAlign: 'right' }}>Preço Unit. (R$)</TableHead>
-                          <TableHead style={{ width: 80, textAlign: 'center' }}>Ações</TableHead>
+                          <TableHead style={{ width: 110 }}>Categoria</TableHead>
+                          <TableHead style={{ width: 160, textAlign: 'right' }}>Preço Negociado (R$)</TableHead>
+                          <TableHead style={{ width: 160, textAlign: 'right' }}>Preço Máximo (R$)</TableHead>
+                          <TableHead style={{ width: 60, textAlign: 'center' }}>Ações</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -540,7 +553,7 @@ export default function Playbooks() {
                             const salvando = savingPreco === a.id
                             return (
                               <TableRow key={a.id} style={{ background: idx % 2 === 0 ? 'transparent' : 'var(--muted)/10' }}>
-                                <TableCell>
+                                <TableCell style={{ whiteSpace: 'nowrap' }}>
                                   {a.codigo ? <span style={{ fontFamily: 'monospace', fontSize: 11, background: '#f1f5f9', borderRadius: 4, padding: '2px 6px', fontWeight: 700 }}>{a.codigo}</span> : '—'}
                                 </TableCell>
                                 <TableCell>
@@ -564,9 +577,9 @@ export default function Playbooks() {
                                           onChange={e => setValorTemp(e.target.value)}
                                           onKeyDown={e => {
                                             if (e.key === 'Enter') salvarPreco(a.id, parseFloat(valorTemp) || 0)
-                                            if (e.key === 'Escape') { setEditandoPreco(null); setValorTemp('') }
+                                            if (e.key === 'Escape') { setEditandoPreco(null); setValorTemp(''); setValorMaxTemp('') }
                                           }}
-                                          style={{ width: 110, paddingLeft: 26, textAlign: 'right' }}
+                                          style={{ width: 100, paddingLeft: 26, textAlign: 'right' }}
                                         />
                                       </div>
                                       <Button size="icon" style={{ width: 28, height: 28, background: '#16a34a' }} disabled={salvando}
@@ -574,7 +587,7 @@ export default function Playbooks() {
                                         <CheckCircle2 size={13} color="#fff" />
                                       </Button>
                                       <Button variant="ghost" size="icon" style={{ width: 28, height: 28 }}
-                                        onClick={() => { setEditandoPreco(null); setValorTemp('') }}>
+                                        onClick={() => { setEditandoPreco(null); setValorTemp(''); setValorMaxTemp('') }}>
                                         ✕
                                       </Button>
                                     </div>
@@ -585,10 +598,39 @@ export default function Playbooks() {
                                         if (!canEdit) return
                                         setEditandoPreco(a.id)
                                         setValorTemp(precoAtual ? String(precoAtual.preco_unitario) : '')
+                                        setValorMaxTemp(precoAtual?.preco_maximo != null ? String(precoAtual.preco_maximo) : '')
                                       }}
                                       title="Clique para editar o preço"
                                     >
                                       {precoAtual ? formatCurrency(precoAtual.preco_unitario) : '+ definir preço'}
+                                    </span>
+                                  )}
+                                </TableCell>
+                                {/* Preço Máximo */}
+                                <TableCell style={{ textAlign: 'right' }}>
+                                  {emEdicao ? (
+                                    <div style={{ position: 'relative' }}>
+                                      <span style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 11, color: 'var(--muted-foreground)' }}>R$</span>
+                                      <Input
+                                        type="number" step="0.01" min="0"
+                                        value={valorMaxTemp}
+                                        onChange={e => setValorMaxTemp(e.target.value)}
+                                        placeholder="—"
+                                        style={{ width: 100, paddingLeft: 26, textAlign: 'right' }}
+                                      />
+                                    </div>
+                                  ) : (
+                                    <span
+                                      style={{ fontWeight: 600, fontSize: 13, color: precoAtual?.preco_maximo ? '#b45309' : '#cbd5e1', cursor: canEdit ? 'pointer' : 'default' }}
+                                      onClick={() => {
+                                        if (!canEdit) return
+                                        setEditandoPreco(a.id)
+                                        setValorTemp(precoAtual ? String(precoAtual.preco_unitario) : '')
+                                        setValorMaxTemp(precoAtual?.preco_maximo != null ? String(precoAtual.preco_maximo) : '')
+                                      }}
+                                      title="Clique para editar o preço máximo"
+                                    >
+                                      {precoAtual?.preco_maximo != null ? formatCurrency(precoAtual.preco_maximo) : '—'}
                                     </span>
                                   )}
                                 </TableCell>
