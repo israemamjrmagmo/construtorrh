@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { getPortalSession, refreshPortalSession } from '@/hooks/usePortalAuth'
 import PortalLayout from './PortalLayout'
+import MapaChuva, { ClimaItem } from '@/components/MapaChuva'
 import {
   ClipboardList, AlertTriangle, UserPlus, ShieldCheck,
   HardHat, BookOpen, FolderOpen, FileImage,
@@ -14,17 +15,18 @@ interface ObraInfo { id: string; nome: string; codigo?: string }
 export default function PortalHome() {
   const nav = useNavigate()
 
-  // Sessão — inicializa do localStorage, mas re-valida contra o banco na montagem
   const [session, setSession] = useState(() => getPortalSession())
 
-  const [obras,      setObras]      = useState<ObraInfo[]>([])
-  const [contadores, setContadores] = useState<Record<string, { ponto: number; ocorr: number }>>({})
-  const [loading,    setLoading]    = useState(true)
+  const [obras,        setObras]        = useState<ObraInfo[]>([])
+  const [contadores,   setContadores]   = useState<Record<string, { ponto: number; ocorr: number }>>({})
+  const [climaRows,    setClimaRows]    = useState<ClimaItem[]>([])
+  const [loading,      setLoading]      = useState(true)
+  const [obraMapaId,   setObraMapaId]   = useState<string>('')  // obra selecionada para o mapa
 
-  // Congela "hoje" para não mudar referência a cada render
-  const hoje = useRef(new Date().toISOString().slice(0, 10)).current
+  const hoje    = useRef(new Date().toISOString().slice(0, 10)).current
+  const anoMes  = hoje.slice(0, 7)
+  const mesIni  = anoMes + '-01'
 
-  // IDs estáveis (string serializada como dep do callback)
   const obrasIdsKey = useMemo(() => (session?.obras_ids ?? []).join(','), [session])
 
   const fetchData = useCallback(async () => {
@@ -33,24 +35,41 @@ export default function PortalHome() {
     if (!ids || ids.length === 0) { setLoading(false); return }
 
     setLoading(true)
-    const [{ data: obsData }, { data: pontosHoje }, { data: ocorrHoje }] = await Promise.all([
+    const [{ data: obsData }, { data: pontosHoje }, { data: ocorrHoje }, { data: climaData }] = await Promise.all([
       supabase.from('obras').select('id,nome,codigo').in('id', ids).order('nome'),
       supabase.from('portal_ponto_diario').select('obra_id').in('obra_id', ids).eq('data', hoje),
       supabase.from('portal_ocorrencias').select('obra_id').in('obra_id', ids).eq('data', hoje),
+      supabase.from('obra_clima')
+        .select('obra_id,data,periodo,choveu,impacto_obra')
+        .in('obra_id', ids)
+        .gte('data', mesIni)
+        .lte('data', hoje),
     ])
 
-    if (obsData) setObras(obsData)
+    if (obsData) {
+      setObras(obsData)
+      // Seleciona a primeira obra por padrão para o mapa
+      if (obsData.length > 0) setObraMapaId(prev => prev || obsData[0].id)
+    }
 
     const cnt: Record<string, { ponto: number; ocorr: number }> = {}
     ids.forEach(id => { cnt[id] = { ponto: 0, ocorr: 0 } })
     pontosHoje?.forEach((r: any) => { if (cnt[r.obra_id]) cnt[r.obra_id].ponto++ })
     ocorrHoje?.forEach( (r: any) => { if (cnt[r.obra_id]) cnt[r.obra_id].ocorr++ })
     setContadores(cnt)
+
+    setClimaRows((climaData ?? []).map((r: any) => ({
+      data: r.data,
+      periodo: r.periodo ?? 'manha',
+      choveu: r.choveu ?? false,
+      impacto_obra: r.impacto_obra ?? 'nenhum',
+      obra_id: r.obra_id,
+    })))
+
     setLoading(false)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [obrasIdsKey])   // só re-cria se as obras mudarem
+  }, [obrasIdsKey])
 
-  // Re-valida sessão contra o banco uma vez (atualiza obras_ids se admin mudou)
   useEffect(() => {
     refreshPortalSession(supabase).then(updated => {
       if (updated === null) { nav('/portal'); return }
@@ -59,7 +78,6 @@ export default function PortalHome() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Roda fetchData quando obras mudam (após refresh)
   useEffect(() => { fetchData() }, [fetchData])
 
   if (!session) return null
@@ -67,53 +85,23 @@ export default function PortalHome() {
   const dataHojeFmt = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })
   const primeiroNome = (session.nome ?? session.login).split(' ')[0]
 
-  // ── Ações principais ────────────────────────────────────────────────────────
+  // Filtra registros climáticos pela obra selecionada
+  const climaObraSelecionada: ClimaItem[] = climaRows.filter(
+    (r: any) => r.obra_id === obraMapaId
+  )
+  const obraSelecionadaNome = obras.find(o => o.id === obraMapaId)?.nome ?? ''
+
+  // Ações rápidas
   const acoesRapidas = [
-    {
-      icon: <ClipboardList size={24} />, label: 'Lançar Ponto',
-      sub: 'Presenças do dia', to: '/portal/ponto',
-      cor: '#1d4ed8', bg: '#eff6ff', border: '#bfdbfe',
-    },
-    {
-      icon: <AlertTriangle size={24} />, label: 'Ocorrência',
-      sub: 'Registrar evento', to: '/portal/ocorrencias',
-      cor: '#dc2626', bg: '#fef2f2', border: '#fecaca',
-    },
-    {
-      icon: <HardHat size={24} />, label: 'Ficha de Prod.',
-      sub: 'Enviar documento', to: '/portal/producao',
-      cor: '#b45309', bg: '#fffbeb', border: '#fde68a',
-    },
-    {
-      icon: <UserPlus size={24} />, label: 'Cadastro',
-      sub: 'Novo colaborador', to: '/portal/solicitacoes',
-      cor: '#15803d', bg: '#f0fdf4', border: '#bbf7d0',
-    },
-    {
-      icon: <ShieldCheck size={24} />, label: 'Solicitar EPI',
-      sub: 'Equipamentos', to: '/portal/epis',
-      cor: '#c2410c', bg: '#fff7ed', border: '#fed7aa',
-    },
-    {
-      icon: <FileImage size={24} />, label: 'Documentos',
-      sub: 'Enviar arquivos', to: '/portal/documentos',
-      cor: '#0369a1', bg: '#f0f9ff', border: '#bae6fd',
-    },
-    {
-      icon: <BookOpen size={24} />, label: 'Playbook',
-      sub: 'Serviços e preços', to: '/portal/playbook',
-      cor: '#059669', bg: '#f0fdf4', border: '#a7f3d0',
-    },
-    {
-      icon: <FolderOpen size={24} />, label: 'Projetos',
-      sub: 'Arquivos da obra', to: '/portal/projetos',
-      cor: '#475569', bg: '#f8fafc', border: '#cbd5e1',
-    },
-    {
-      icon: <Clock size={24} />, label: 'Lançamentos',
-      sub: 'Ponto mensal', to: '/portal/lancamentos',
-      cor: '#ea580c', bg: '#fff7ed', border: '#fed7aa',
-    },
+    { icon: <ClipboardList size={24} />, label: 'Lançar Ponto',   sub: 'Presenças do dia',   to: '/portal/ponto',        cor: '#1d4ed8', bg: '#eff6ff', border: '#bfdbfe' },
+    { icon: <AlertTriangle size={24} />, label: 'Ocorrência',     sub: 'Registrar evento',   to: '/portal/ocorrencias',  cor: '#dc2626', bg: '#fef2f2', border: '#fecaca' },
+    { icon: <HardHat size={24} />,       label: 'Ficha de Prod.', sub: 'Enviar documento',   to: '/portal/producao',     cor: '#b45309', bg: '#fffbeb', border: '#fde68a' },
+    { icon: <UserPlus size={24} />,      label: 'Cadastro',       sub: 'Novo colaborador',   to: '/portal/solicitacoes', cor: '#15803d', bg: '#f0fdf4', border: '#bbf7d0' },
+    { icon: <ShieldCheck size={24} />,   label: 'Solicitar EPI',  sub: 'Equipamentos',       to: '/portal/epis',         cor: '#c2410c', bg: '#fff7ed', border: '#fed7aa' },
+    { icon: <FileImage size={24} />,     label: 'Documentos',     sub: 'Enviar arquivos',    to: '/portal/documentos',   cor: '#0369a1', bg: '#f0f9ff', border: '#bae6fd' },
+    { icon: <BookOpen size={24} />,      label: 'Playbook',       sub: 'Serviços e preços',  to: '/portal/playbook',     cor: '#059669', bg: '#f0fdf4', border: '#a7f3d0' },
+    { icon: <FolderOpen size={24} />,    label: 'Projetos',       sub: 'Arquivos da obra',   to: '/portal/projetos',     cor: '#475569', bg: '#f8fafc', border: '#cbd5e1' },
+    { icon: <Clock size={24} />,         label: 'Lançamentos',    sub: 'Ponto mensal',       to: '/portal/lancamentos',  cor: '#ea580c', bg: '#fff7ed', border: '#fed7aa' },
   ]
 
   return (
@@ -156,26 +144,52 @@ export default function PortalHome() {
                     <div style={{ fontWeight: 700, fontSize: 13, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {o.nome}
                     </div>
-                    {o.codigo && (
-                      <div style={{ fontSize: 10, color: '#9ca3af' }}>{o.codigo}</div>
-                    )}
+                    {o.codigo && <div style={{ fontSize: 10, color: '#9ca3af' }}>{o.codigo}</div>}
                   </div>
                   <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
                     {cnt.ponto > 0 && (
-                      <span style={{ background: '#dcfce7', color: '#15803d', borderRadius: 6, padding: '2px 7px', fontSize: 10, fontWeight: 700 }}>
-                        ✓ {cnt.ponto}
-                      </span>
+                      <span style={{ background: '#dcfce7', color: '#15803d', borderRadius: 6, padding: '2px 7px', fontSize: 10, fontWeight: 700 }}>✓ {cnt.ponto}</span>
                     )}
                     {cnt.ocorr > 0 && (
-                      <span style={{ background: '#fee2e2', color: '#dc2626', borderRadius: 6, padding: '2px 7px', fontSize: 10, fontWeight: 700 }}>
-                        ⚠ {cnt.ocorr}
-                      </span>
+                      <span style={{ background: '#fee2e2', color: '#dc2626', borderRadius: 6, padding: '2px 7px', fontSize: 10, fontWeight: 700 }}>⚠ {cnt.ocorr}</span>
                     )}
                   </div>
                 </div>
               )
             })}
           </div>
+        </div>
+      )}
+
+      {/* ── Mapa Pluviométrico ── */}
+      {!loading && obras.length > 0 && (
+        <div style={{ padding: '0 16px 12px' }}>
+          {/* Seletor de obra (só aparece se tiver mais de 1 obra) */}
+          {obras.length > 1 && (
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+              {obras.map(o => (
+                <button
+                  key={o.id}
+                  onClick={() => setObraMapaId(o.id)}
+                  style={{
+                    padding: '5px 12px', borderRadius: 8, fontSize: 11, fontWeight: 700,
+                    border: `2px solid ${obraMapaId === o.id ? '#0ea5e9' : '#e2e8f0'}`,
+                    background: obraMapaId === o.id ? '#e0f7ff' : '#fff',
+                    color: obraMapaId === o.id ? '#0369a1' : '#64748b',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {o.nome}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <MapaChuva
+            registros={climaObraSelecionada}
+            titulo={obras.length > 1 ? obraSelecionadaNome : undefined}
+            mesRef={anoMes}
+          />
         </div>
       )}
 
@@ -200,7 +214,6 @@ export default function PortalHome() {
                 alignItems: 'center',
                 gap: 6,
                 boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
-                transition: 'transform 0.12s, box-shadow 0.12s',
                 WebkitTapHighlightColor: 'transparent',
               }}
               onTouchStart={e => {

@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import GestorLayout from './GestorLayout'
 import MapaChuva, { ClimaItem } from '@/components/MapaChuva'
-import { CloudRain, Loader2, Plus, Map } from 'lucide-react'
+import { CloudRain, Loader2, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface ClimaRow extends ClimaItem {
