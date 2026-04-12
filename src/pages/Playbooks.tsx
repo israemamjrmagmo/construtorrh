@@ -247,7 +247,7 @@ export default function Playbooks() {
     if (!obraSel) return
     setSavingPreco(ativId)
     const existing = precosMap.get(`${ativId}::${obraSel.id}`)
-    const precoMax = parseFloat(valorMaxTemp) || null
+    const precoMax = valorMaxTemp.trim() !== '' ? (parseFloat(valorMaxTemp) || 0) : null
     const payload = { atividade_id: ativId, obra_id: obraSel.id, preco_unitario: valor, preco_maximo: precoMax, ativo: true }
     const res = existing
       ? await supabase.from('playbook_precos').update({ preco_unitario: valor, preco_maximo: precoMax }).eq('id', existing.id)
@@ -582,14 +582,6 @@ export default function Playbooks() {
                                           style={{ width: 100, paddingLeft: 26, textAlign: 'right' }}
                                         />
                                       </div>
-                                      <Button size="icon" style={{ width: 28, height: 28, background: '#16a34a' }} disabled={salvando}
-                                        onClick={() => salvarPreco(a.id, parseFloat(valorTemp) || 0)}>
-                                        <CheckCircle2 size={13} color="#fff" />
-                                      </Button>
-                                      <Button variant="ghost" size="icon" style={{ width: 28, height: 28 }}
-                                        onClick={() => { setEditandoPreco(null); setValorTemp(''); setValorMaxTemp('') }}>
-                                        ✕
-                                      </Button>
                                     </div>
                                   ) : (
                                     <span
@@ -635,13 +627,24 @@ export default function Playbooks() {
                                   )}
                                 </TableCell>
                                 <TableCell style={{ textAlign: 'center' }}>
-                                  {precoAtual && canEdit && (
+                                  {emEdicao ? (
+                                    <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
+                                      <Button size="icon" style={{ width: 28, height: 28, background: '#16a34a' }} disabled={salvando}
+                                        onClick={() => salvarPreco(a.id, parseFloat(valorTemp) || 0)}>
+                                        <CheckCircle2 size={13} color="#fff" />
+                                      </Button>
+                                      <Button variant="ghost" size="icon" style={{ width: 28, height: 28 }}
+                                        onClick={() => { setEditandoPreco(null); setValorTemp(''); setValorMaxTemp('') }}>
+                                        ✕
+                                      </Button>
+                                    </div>
+                                  ) : precoAtual && canEdit ? (
                                     <Button variant="ghost" size="icon" style={{ width: 28, height: 28, color: '#dc2626' }}
                                       title="Remover preço desta obra"
                                       onClick={() => removerPreco(a.id)}>
                                       <Trash2 size={12} />
                                     </Button>
-                                  )}
+                                  ) : null}
                                 </TableCell>
                               </TableRow>
                             )
