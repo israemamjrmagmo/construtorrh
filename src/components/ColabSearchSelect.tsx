@@ -107,7 +107,7 @@ export default function ColabSearchSelect({
             background: disabled ? '#f9fafb' : '#fff',
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             padding: '0 12px', fontSize: 13, cursor: disabled ? 'not-allowed' : 'pointer',
-            color: selecionado ? '#1e293b' : optional ? '#6b7280' : (value === '' && opcional) ? '#6b7280' : '#9ca3af',
+            color: selecionado ? '#1e293b' : opcional ? '#6b7280' : '#9ca3af',
             boxSizing: 'border-box', textAlign: 'left',
           }}
         >
