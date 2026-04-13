@@ -1288,7 +1288,7 @@ export default function FechamentoPonto() {
                         <TableHead className="text-center" style={{ fontSize: 11 }}>Dias</TableHead>
                         <TableHead style={{ fontSize: 11, color: '#7c3aed', fontWeight: 700, minWidth: 260 }}>💵 Composição do Salário</TableHead>
                         <TableHead className="text-center" style={{ fontSize: 11, color: '#dc2626' }}>Faltas</TableHead>
-                        <TableHead className="text-right" style={{ fontSize: 11, color: '#b45309', whiteSpace: 'nowrap' }} title="Reduz o VT do beneïcio (cartão), NÃO desconta do salário">VT Falta ↓</TableHead>
+                        <TableHead className="text-right" style={{ fontSize: 11, color: '#dc2626', whiteSpace: 'nowrap' }} title="VT reduzido por faltas (desconta do benefício VT, não do salário)">VT Falta</TableHead>
                         <TableHead className="text-right" style={{ fontSize: 11, color: '#0369a1', whiteSpace: 'nowrap' }}>+Sáb/Dom</TableHead>
                         <TableHead className="text-right" style={{ fontSize: 11, color: '#b45309', whiteSpace: 'nowrap' }}>−VT 6%</TableHead>
                         <TableHead className="text-right" style={{ fontSize: 11, color: '#dc2626' }}>− INSS</TableHead>
@@ -1400,10 +1400,11 @@ export default function FechamentoPonto() {
                             {/* ══ VT Falta ══ */}
                             <TableCell className="text-right">
                               {lanc.vt_desconto_faltas > 0
-                                ? <span style={{ color: '#b45309', fontSize: 11, fontWeight: 600, cursor: 'help' }}
-                                    title={`${lanc.faltas} falta${lanc.faltas !== 1 ? 's' : ''} × R$ ${lanc.valor_vt_dia.toFixed(2)}/dia = VT reduzido em R$ ${lanc.vt_desconto_faltas.toFixed(2)} (NÃO desconta do salário)`}
+                                ? <span style={{ color: '#dc2626', fontSize: 11, fontWeight: 700, cursor: 'help' }}
+                                    title={`${lanc.faltas} falta${lanc.faltas !== 1 ? 's' : ''} × R$ ${lanc.valor_vt_dia.toFixed(2)}/dia = R$ ${lanc.vt_desconto_faltas.toFixed(2)} descontado do VT (não do salário)`}
                                   >
-                                    ↓{formatCurrency(lanc.vt_desconto_faltas)}
+                                    −{formatCurrency(lanc.vt_desconto_faltas)}
+                                    <div style={{ fontSize: 9, color: '#fca5a5', fontWeight: 400 }}>{lanc.faltas} falta{lanc.faltas !== 1 ? 's' : ''} no VT</div>
                                   </span>
                                 : <span style={{ color: '#94a3b8' }}>—</span>
                               }
@@ -1412,9 +1413,10 @@ export default function FechamentoPonto() {
                             {/* ══ +Sáb/Dom ══ */}
                             <TableCell className="text-right" style={{ fontSize: 12 }}>
                               {lanc.vt_adicional_sabdom > 0
-                                ? <span style={{ color: '#0369a1', fontWeight: 600, cursor: 'help' }}
-                                    title={`${lanc.vt_sabs_dom_trab} sáb/dom × R$ ${lanc.valor_vt_dia.toFixed(2)}/dia = +R$ ${lanc.vt_adicional_sabdom.toFixed(2)}`}>
+                                ? <span style={{ color: '#16a34a', fontWeight: 700, cursor: 'help' }}
+                                    title={`${lanc.vt_sabs_dom_trab} sáb/dom × R$ ${lanc.valor_vt_dia.toFixed(2)}/dia = +R$ ${lanc.vt_adicional_sabdom.toFixed(2)} no VT`}>
                                     +{formatCurrency(lanc.vt_adicional_sabdom)}
+                                    <div style={{ fontSize: 9, color: '#86efac', fontWeight: 400 }}>{lanc.vt_sabs_dom_trab} sáb/dom</div>
                                   </span>
                                 : <span style={{ color: 'var(--muted-foreground)', fontSize: 11 }}>—</span>
                               }
@@ -1807,7 +1809,7 @@ export default function FechamentoPonto() {
                           🚌 VT reduzido por faltas
                           <span style={{ fontSize:10, color:'#b45309', marginLeft:4 }}>({modalLiberar.faltas} falta{modalLiberar.faltas !== 1 ? 's' : ''} — desconta do VT, não do salário)</span>
                         </span>
-                        <span style={{ fontSize:12, fontWeight:600, color:'#b45309' }}>↓ {formatCurrency(modalLiberar.vt_desconto_faltas)}</span>
+                        <span style={{ fontSize:12, fontWeight:600, color:'#dc2626' }}>− {formatCurrency(modalLiberar.vt_desconto_faltas)}</span>
                       </div>
                     )}
 
