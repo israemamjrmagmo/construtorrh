@@ -1988,6 +1988,64 @@ ${crachaCardHTML(c, empNome, logoUrl)}
       })
     }
 
+    // ── Troca de contrato CLT ↔ Autônomo/PJ ────────────────────────────────
+    // Regra: quando muda tipo_contrato, cria novo registro copiando CPF e zera CPF do original.
+    // Isso evita constraint unique no CPF e mantém rastreabilidade histórica.
+    if (mudouContrato && editId) {
+      const colabAtual = rows.find(r => r.id === editId)
+      if (colabAtual) {
+        const cpfOriginal = (colabAtual as any).cpf ?? null
+
+        // 1. Gera nova chapa para o novo tipo de contrato
+        const fn = funcoes.find(f => f.id === form.funcao_id)
+        let novaChapa = form.chapa
+        if (fn?.sigla) {
+          novaChapa = await gerarChapa(fn.sigla, form.data_admissao || undefined)
+        }
+
+        // 2. Cria novo registro com CPF copiado + novo tipo_contrato
+        const novoPayloadContrato: any = {
+          ...payloadFull,
+          chapa: novaChapa,
+          cpf: cpfOriginal,           // herda CPF do original
+          tipo_contrato: form.tipo_contrato,
+          data_admissao: form.data_admissao || new Date().toISOString().split('T')[0],
+          status: 'ativo',
+          vinculo_anterior_id: editId,
+        }
+
+        // 3. Zera CPF do registro original (evita conflito unique)
+        const { error: errZeraCpf } = await supabase
+          .from('colaboradores')
+          .update({ cpf: null, status: 'inativo', data_demissao: form.data_admissao || new Date().toISOString().split('T')[0] } as any)
+          .eq('id', editId)
+        if (errZeraCpf) {
+          toast.error('Erro ao encerrar registro anterior: ' + errZeraCpf.message)
+          setSaving(false)
+          return
+        }
+
+        // 4. Insere novo registro
+        const { data: novoColab, error: errNovo } = await supabase
+          .from('colaboradores')
+          .insert(novoPayloadContrato)
+          .select('id')
+          .single()
+        if (errNovo || !novoColab) {
+          toast.error('Erro ao criar novo registro: ' + (errNovo?.message ?? 'desconhecido'))
+          setSaving(false)
+          return
+        }
+
+        toast.success(`Contrato alterado! Novo registro criado (${novaChapa}) com CPF preservado.`)
+        setSaving(false)
+        setModalOpen(false)
+        setInlineEditing(false)
+        await fetchData()
+        return   // encerra handleSave aqui — não segue o fluxo normal de update
+      }
+    }
+
     // ── 1. Salvar colaborador ────────────────────────────────────────────────
     let colaboradorId: string | null = editId
 

@@ -410,7 +410,7 @@ export default function ValeTransportePage() {
   }), [colaboradores, busca, obraFiltro, statusFiltro, competencia, vtRows])
 
   // ─── abrir modal ──────────────────────────────────────────────────────────
-  function openCreate() {
+  async function openCreate() {
     if (!colabSel) return
     const { pode, motivo } = podeNovoVT(colabSel.id)
     if (!pode) { toast.error(motivo); return }
@@ -424,15 +424,35 @@ export default function ValeTransportePage() {
 
     const vtDados    = colabSel.vt_dados as any
     const tipoAuto   = modalidadeParaTipo(vtDados?.modalidade)
+    const contarSab  = true
 
-    // Regra de sábado:
-    // - considera_sabado_util = true  → sábado JÁ está no VT mensal (contar para calcular proporção)
-    // - considera_sabado_util = false → sábado É dia trabalhado e DEVE ter VT (contar também)
-    // Em ambos os casos, contarSab = true para o cálculo de dias.
-    const contarSab  = true   // sempre contar sábado nos dias úteis do VT
+    // ── Buscar faltas reais do ponto no período ────────────────────────────
+    // Consulta registro_ponto para contar dias com falta=true no período da competência
+    const mesIni = primeiroDia(competencia)
+    const mesFim = ultimoDia(competencia)
 
-    // recalcularPeriodo já lê desconta_vt da obra do colaborador internamente
-    const calc = recalcularPeriodo(primeiroDia(competencia), ultimoDia(competencia), contarSab, competencia, colabSel, null, 0, 0)
+    const { data: pontoDias } = await supabase
+      .from('registro_ponto')
+      .select('data, falta')
+      .eq('colaborador_id', colabSel.id)
+      .gte('data', mesIni)
+      .lte('data', mesFim)
+
+    // Também busca no portal_ponto_diario (app do gestor)
+    const { data: portalDias } = await supabase
+      .from('portal_ponto_diario')
+      .select('data, falta')
+      .eq('colaborador_id', colabSel.id)
+      .gte('data', mesIni)
+      .lte('data', mesFim)
+
+    // Unifica datas com falta (evita duplicatas por data)
+    const datasComFalta = new Set<string>()
+    ;(pontoDias ?? []).forEach((r: any) => { if (r.falta) datasComFalta.add(r.data) })
+    ;(portalDias ?? []).forEach((r: any) => { if (r.falta) datasComFalta.add(r.data) })
+    const faltasReais = datasComFalta.size
+
+    const calc = recalcularPeriodo(mesIni, mesFim, contarSab, competencia, colabSel, null, faltasReais, 0)
 
     setEditando(null)
     setVtDiarioSnap(null)   // novo lançamento sempre usa base atual do colaborador
@@ -442,7 +462,7 @@ export default function ValeTransportePage() {
       data_fim:     ultimoDia(competencia),
       contar_sabado: contarSab,
       tipo:         tipoAuto,
-      num_faltas: '0',
+      num_faltas: String(faltasReais),  // faltas reais do ponto
       num_sabados_extras: '0',
       ...calc,
       observacoes: '',
@@ -1212,7 +1232,14 @@ export default function ValeTransportePage() {
               {/* Faltas e Sábados extras — ajuste fino do VT */}
               <div className="col-span-2">
                 <div style={{ background: '#fef9c3', border: '1px solid #fde047', borderRadius: 8, padding: '10px 14px' }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: '#713f12', marginBottom: 8 }}>⚠ Ajuste por falta / sábado trabalhado</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#713f12', marginBottom: 8 }}>
+                    ⚠ Ajuste por falta / sábado trabalhado
+                    {parseInt(form.num_faltas) > 0 && !editando && (
+                      <span style={{ marginLeft: 8, fontSize: 10, fontWeight: 600, color: '#15803d', background: '#dcfce7', border: '1px solid #86efac', borderRadius: 4, padding: '1px 6px' }}>
+                        🔍 {form.num_faltas} falta(s) detectada(s) no ponto
+                      </span>
+                    )}
+                  </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                     <div>
                       <Label className="text-xs" style={{ color: '#713f12' }}>Faltas (descontar dias)</Label>
