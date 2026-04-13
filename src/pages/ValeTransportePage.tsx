@@ -52,6 +52,10 @@ type FormData = {
   valor_empresa: string
   descontar_6pct: boolean
   observacoes: string
+  // breakdown de cálculo (somente UI — não persistidos)
+  _valorTotalDias?: number    // valor bruto antes de descontar faltas
+  _valorDescFalta?: number    // desconto por faltas (dias × VT/dia)
+  _valorSabExtra?: number     // adicional sábados trabalhados
 }
 
 const TIPO_OPTIONS = [
@@ -375,24 +379,28 @@ export default function ValeTransportePage() {
       vtDiario = diasMes > 0 && vtMen > 0 ? vtMen / diasMes : vtDiarioColab(colab?.vt_dados as any)
     }
     // dias efetivos = dias úteis do período - faltas + sábados extras trabalhados
-    const diasEfetivos = Math.max(0, diasUtil - numFaltas + numSabadosExtras)
-    const valorBruto = vtDiario > 0 ? +(vtDiario * diasEfetivos).toFixed(2) : 0
+    const diasSemFalta   = Math.max(0, diasUtil - numFaltas)               // dias base - faltas
+    const diasEfetivos   = Math.max(0, diasSemFalta + numSabadosExtras)    // + sábados extras
+    const valorTotalDias = vtDiario > 0 ? +(vtDiario * diasUtil).toFixed(2)           : 0  // valor SEM ajuste
+    const valorDescFalta = vtDiario > 0 ? +(vtDiario * Math.max(0, numFaltas)).toFixed(2) : 0 // desconto faltas
+    const valorSabExtra  = vtDiario > 0 ? +(vtDiario * numSabadosExtras).toFixed(2)   : 0  // adicional sáb
+    const valorBruto     = vtDiario > 0 ? +(vtDiario * diasEfetivos).toFixed(2) : 0
 
     // Desconto de 6%: somente CLT E se a obra do colaborador tem desconta_vt=true
     const isCLT = (colab?.tipo_contrato ?? 'clt').toLowerCase() === 'clt'
-    const obraColab = obras.find(o => o.id === colab?.obra_id)
-    const obraDesconta = obraColab?.desconta_vt ?? false
-    const salario = colab?.salario ?? 0
-    const desc6 = (obraDesconta && isCLT && salario > 0)
-      ? +Math.min(salario * 0.06, valorBruto).toFixed(2)
-      : 0
-
+    const obraDoColab = obras.find(o => o.id === colab?.obra_id)
+    const obraDesconta = obraDoColab?.desconta_vt ?? false
+    const desc6 = (obraDesconta && isCLT) ? +Math.min((colab?.salario ?? 0) * 0.06, valorBruto).toFixed(2) : 0
     return {
-      dias_trabalhados: String(diasEfetivos),
-      valor: valorBruto > 0 ? valorBruto.toFixed(2) : '',
-      desconto_colaborador: desc6 > 0 ? desc6.toFixed(2) : '0',
-      valor_empresa: valorBruto > 0 ? Math.max(0, valorBruto - desc6).toFixed(2) : '0',
-      descontar_6pct: obraDesconta && isCLT,
+      dias_trabalhados:     String(diasEfetivos),
+      valor:                String(valorBruto),
+      desconto_colaborador: String(desc6),
+      valor_empresa:        String(+(valorBruto - desc6).toFixed(2)),
+      descontar_6pct:       obraDesconta && isCLT,
+      // campos extras de breakdown (não persistidos, só UI)
+      _valorTotalDias:      valorTotalDias,
+      _valorDescFalta:      valorDescFalta,
+      _valorSabExtra:       valorSabExtra,
     }
   }
 
@@ -1351,20 +1359,93 @@ export default function ValeTransportePage() {
                 })()}
               </div>
 
-              {/* Resumo financeiro do VT */}
+              {/* ── Resumo financeiro detalhado do VT ── */}
               <div className="col-span-2">
                 <Label className="text-xs" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                   Resumo do VT
                   <span style={{ fontSize: 9, background: '#dbeafe', color: '#1d4ed8', borderRadius: 3, padding: '1px 4px', fontWeight: 600 }}>AUTO</span>
                 </Label>
-                <div style={{ marginTop:4, display:'grid', gridTemplateColumns:'1fr 1fr', gap:6 }}>
-                  <div style={{ padding:'8px 12px', background:'#eff6ff', border:'1px solid #bfdbfe', borderRadius:6, textAlign:'center' }}>
-                    <div style={{ fontSize:10, color:'#6b7280', marginBottom:2 }}>Valor Bruto</div>
-                    <div style={{ fontSize:15, fontWeight:800, color:'#1d4ed8' }}>{formatCurrency(parseFloat(form.valor)||0)}</div>
+
+                {/* Grade de breakdown */}
+                <div style={{ marginTop: 6, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, overflow: 'hidden' }}>
+
+                  {/* Linha 1: Total dos dias */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 14px', borderBottom: '1px solid #e2e8f0' }}>
+                    <div style={{ fontSize: 12, color: '#374151' }}>
+                      <span style={{ fontWeight: 600 }}>📅 Total dos dias</span>
+                      <span style={{ color: '#6b7280', marginLeft: 6, fontSize: 11 }}>
+                        ({parseInt(form.dias_trabalhados) + parseInt(form.num_faltas||'0')} dias × {formatCurrency(vtDiario)}/dia)
+                      </span>
+                    </div>
+                    <span style={{ fontSize: 14, fontWeight: 700, color: '#1d4ed8' }}>
+                      {formatCurrency((form._valorTotalDias ?? parseFloat(form.valor)) || 0)}
+                    </span>
                   </div>
-                  <div style={{ padding:'8px 12px', background: parseFloat(form.desconto_colaborador||'0') > 0 ? '#fef2f2':'#f0fdf4', border:`1px solid ${parseFloat(form.desconto_colaborador||'0') > 0 ? '#fecaca':'#bbf7d0'}`, borderRadius:6, textAlign:'center' }}>
-                    <div style={{ fontSize:10, color:'#6b7280', marginBottom:2 }}>Empresa paga</div>
-                    <div style={{ fontSize:15, fontWeight:800, color: parseFloat(form.desconto_colaborador||'0') > 0 ? '#dc2626':'#15803d' }}>{formatCurrency(parseFloat(form.valor_empresa)||0)}</div>
+
+                  {/* Linha 2: Desconto por faltas — só exibe se tiver faltas */}
+                  {parseInt(form.num_faltas||'0') > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 14px', borderBottom: '1px solid #e2e8f0', background: '#fff7ed' }}>
+                      <div style={{ fontSize: 12, color: '#92400e' }}>
+                        <span style={{ fontWeight: 600 }}>⛔ Desconto por faltas</span>
+                        <span style={{ color: '#b45309', marginLeft: 6, fontSize: 11 }}>
+                          ({form.num_faltas} falta{parseInt(form.num_faltas)!==1?'s':''} × {formatCurrency(vtDiario)}/dia)
+                        </span>
+                      </div>
+                      <span style={{ fontSize: 14, fontWeight: 700, color: '#dc2626' }}>
+                        − {formatCurrency(form._valorDescFalta ?? 0)}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Linha 3: Adicional sábados — só exibe quando sáb NÃO é dia útil e há sábados extras */}
+                  {(() => {
+                    const obraCol = obras.find(o => o.id === colabSel?.obra_id)
+                    const sabUtil = obraCol?.considera_sabado_util ?? false
+                    const sabExt  = parseInt(form.num_sabados_extras||'0')
+                    if (sabUtil || sabExt === 0) return null
+                    return (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 14px', borderBottom: '1px solid #e2e8f0', background: '#f0fdf4' }}>
+                        <div style={{ fontSize: 12, color: '#14532d' }}>
+                          <span style={{ fontWeight: 600 }}>➕ Sáb/Dom trabalhados</span>
+                          <span style={{ color: '#16a34a', marginLeft: 6, fontSize: 11 }}>
+                            ({sabExt} sáb × {formatCurrency(vtDiario)}/dia — obra não conta sáb. no período base)
+                          </span>
+                        </div>
+                        <span style={{ fontSize: 14, fontWeight: 700, color: '#15803d' }}>
+                          + {formatCurrency(form._valorSabExtra ?? 0)}
+                        </span>
+                      </div>
+                    )
+                  })()}
+
+                  {/* Linha 4: Desconto 6% — só exibe se aplicável */}
+                  {parseFloat(form.desconto_colaborador||'0') > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 14px', borderBottom: '1px solid #e2e8f0', background: '#fef3c7' }}>
+                      <div style={{ fontSize: 12, color: '#713f12' }}>
+                        <span style={{ fontWeight: 600 }}>📉 Desconto 6% (CLT)</span>
+                        <span style={{ color: '#92400e', marginLeft: 6, fontSize: 11 }}>colaborador participa do custeio</span>
+                      </div>
+                      <span style={{ fontSize: 14, fontWeight: 700, color: '#b45309' }}>
+                        − {formatCurrency(parseFloat(form.desconto_colaborador)||0)}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Linha final: VT Líquido (empresa paga) */}
+                  <div style={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    padding: '11px 14px',
+                    background: parseFloat(form.valor_empresa||'0') > 0 ? '#eff6ff' : '#f1f5f9',
+                  }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>
+                      💰 VT Líquido — Empresa paga
+                    </div>
+                    <span style={{
+                      fontSize: 18, fontWeight: 900,
+                      color: parseFloat(form.valor_empresa||'0') > 0 ? '#1d4ed8' : '#94a3b8',
+                    }}>
+                      {formatCurrency(parseFloat(form.valor_empresa)||0)}
+                    </span>
                   </div>
                 </div>
               </div>
