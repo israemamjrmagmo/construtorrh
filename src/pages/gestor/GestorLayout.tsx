@@ -3,7 +3,7 @@ import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, Users, CloudRain, AlertTriangle,
   FileText, LogOut, Menu, X, Clock, HardHat,
-  Activity, ShieldAlert, BarChart3, Thermometer, Wrench,
+  Activity, ShieldAlert, BarChart3, Thermometer, Wrench, DollarSign,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
@@ -18,6 +18,8 @@ const ROUTE_LABELS: Record<string, string> = {
   '/gestor/atestados':    'Atestados',
   '/gestor/acidentes':    'Acidentes',
   '/gestor/meteorologia': 'Meteorologia',
+  '/gestor/financeiro':   'Financeiro',
+  '/gestor/equipamentos': 'Equipamentos',
   '/gestor/relatorios':   'Relatórios',
 }
 
@@ -28,6 +30,7 @@ const navItems = [
   { to: '/gestor/atestados',    icon: FileText,        label: 'Atestados',    color: '#a78bfa', bg: '#f5f3ff' },
   { to: '/gestor/acidentes',    icon: ShieldAlert,     label: 'Acidentes',    color: '#f87171', bg: '#fef2f2' },
   { to: '/gestor/meteorologia', icon: CloudRain,    label: 'Meteorologia', color: '#34d399', bg: '#f0fdf4' },
+  { to: '/gestor/financeiro',    icon: DollarSign,   label: 'Financeiro',   color: '#059669', bg: '#f0fdf4' },
   { to: '/gestor/equipamentos',  icon: Wrench,       label: 'Equipamentos', color: '#b45309', bg: '#fffbeb' },
   { to: '/gestor/relatorios',    icon: Activity,     label: 'Relatórios',   color: '#94a3b8', bg: '#f8fafc' },
 ]

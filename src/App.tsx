@@ -65,6 +65,7 @@ const GestorAcidentes    = React.lazy(() => import('@/pages/gestor/GestorAcident
 const GestorMeteorologia = React.lazy(() => import('@/pages/gestor/GestorMeteorologia'))
 const GestorRelatorios   = React.lazy(() => import('@/pages/gestor/GestorRelatorios'))
 const GestorEquipamentos = React.lazy(() => import('@/pages/gestor/GestorEquipamentos'))
+const GestorFinanceiro   = React.lazy(() => import('@/pages/gestor/GestorFinanceiro'))
 const GestorLogin        = React.lazy(() => import('@/pages/gestor/GestorLogin'))
 const GestorAdmin        = React.lazy(() => import('@/pages/gestor/GestorAdmin'))
 
@@ -166,6 +167,7 @@ export default function App() {
               <Route path="/gestor/meteorologia" element={<GestorMeteorologia />} />
               <Route path="/gestor/relatorios" element={<GestorRelatorios />} />
               <Route path="/gestor/equipamentos" element={<GestorEquipamentos />} />
+              <Route path="/gestor/financeiro" element={<GestorFinanceiro />} />
               {/* Admin: gerenciar gestores — só master */}
               <Route path="/gestor-admin" element={<PrivateRoute><Layout><GestorAdmin /></Layout></PrivateRoute>} />
 

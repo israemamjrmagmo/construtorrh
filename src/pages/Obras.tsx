@@ -129,6 +129,7 @@ export default function Obras() {
       .from('colaboradores')
       .select('id, nome, chapa, status, tipo_contrato, funcoes(nome)')
       .eq('obra_id', obra.id)
+      .eq('status', 'ativo')
       .order('nome')
     if (error) {
       toast.error('Erro ao buscar colaboradores: ' + error.message)
@@ -217,6 +218,7 @@ export default function Obras() {
 
     const { data: counts } = await supabase
       .from('colaboradores').select('obra_id')
+      .eq('status', 'ativo')
       .in('obra_id', obrasData.map(o => o.id))
 
     const countMap: Record<string, number> = {}
@@ -696,7 +698,7 @@ export default function Obras() {
           ) : (
             <>
               <div style={{ fontSize: 12, color: '#64748b', marginBottom: 10 }}>
-                {colabList.length} colaborador{colabList.length !== 1 ? 'es' : ''} alocado{colabList.length !== 1 ? 's' : ''}
+                {colabList.length} colaborador{colabList.length !== 1 ? 'es' : ''} ativo{colabList.length !== 1 ? 's' : ''} alocado{colabList.length !== 1 ? 's' : ''}
               </div>
               <div style={{ overflowY: 'auto', maxHeight: 380, borderRadius: 8, border: '1px solid #e2e8f0' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>

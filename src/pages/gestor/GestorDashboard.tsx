@@ -293,12 +293,11 @@ export default function GestorDashboard() {
           },
           {
             label: 'Presentes Hoje', value: presentes.length,
-            sub: `${faltas} falta(s) · ${fmtPct(taxaDia)} taxa`,
-            icon: <UserCheck size={18} />, color: '#16a34a', bg: '#f0fdf4',
-            extra: <span style={{ fontSize: 12, fontWeight: 800, color: TAXA_COR(taxaDia) }}>↑ {fmtPct(taxaDia)}</span>,
+            sub: `${faltas} falta(s) · taxa: ${fmtPct(taxaDia)}`,
+            icon: <UserCheck size={18} />, color: presentes.length > 0 ? '#16a34a' : '#64748b', bg: presentes.length > 0 ? '#f0fdf4' : '#f8fafc',
           },
           {
-            label: 'Taxa Presença', value: fmtPct(taxaDia),
+            label: 'Taxa Presença Hoje', value: fmtPct(taxaDia),
             sub: obraFiltro === 'todas' ? `Semana: ${fmtPct(taxaSemana)} · Mês: ${fmtPct(taxaMes)}` : 'hoje nesta obra',
             icon: <CalendarCheck size={18} />, color: TAXA_COR(taxaDia), bg: taxaDia >= 80 ? '#f0fdf4' : taxaDia >= 50 ? '#fffbeb' : '#fef2f2',
           },
@@ -604,6 +603,8 @@ export default function GestorDashboard() {
           { icon: '🩺', label: 'Atestados', to: '/gestor/atestados', cor: '#7c3aed' },
           { icon: '⚠️', label: 'Acidentes', to: '/gestor/acidentes', cor: '#dc2626' },
           { icon: '🌦️', label: 'Meteorologia', to: '/gestor/meteorologia', cor: '#0369a1' },
+          { icon: '💰', label: 'Financeiro', to: '/gestor/financeiro', cor: '#059669' },
+          { icon: '🔧', label: 'Equipamentos', to: '/gestor/equipamentos', cor: '#b45309' },
           { icon: '📊', label: 'Relatórios', to: '/gestor/relatorios', cor: '#64748b' },
         ].map(a => (
           <button key={a.to} onClick={() => navigate(a.to)} style={{
