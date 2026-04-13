@@ -1211,13 +1211,18 @@ export default function ValeTransportePage() {
                       }
                     </div>
                   </div>
+                  {sabadoDaObra && !editando ? (
+                    <div title="Definido pela obra — não editável"
+                      style={{ cursor: 'not-allowed', opacity: 0.7, color: '#1d4ed8' }}>
+                      <ToggleRight size={30} />
+                    </div>
+                  ) : (
                   <button
-                    onClick={() => !sabadoDaObra && setField('contar_sabado', !form.contar_sabado)}
-                    disabled={sabadoDaObra}
-                    title={sabadoDaObra ? 'Definido pela configuração da obra — não editável' : 'Clique para alternar'}
-                    style={{ background: 'none', border: 'none', cursor: sabadoDaObra ? 'not-allowed' : 'pointer', color: form.contar_sabado ? '#1d4ed8' : 'var(--muted-foreground)', opacity: sabadoDaObra ? 0.6 : 1 }}>
+                    onClick={() => setField('contar_sabado', !form.contar_sabado)}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: form.contar_sabado ? '#1d4ed8' : 'var(--muted-foreground)' }}>
                     {form.contar_sabado ? <ToggleRight size={30} /> : <ToggleLeft size={30} />}
                   </button>
+                  )}
                 </div>
               </div>
 
@@ -1270,16 +1275,24 @@ export default function ValeTransportePage() {
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                     <div>
                       <Label className="text-xs" style={{ color: '#713f12' }}>Faltas (descontar dias)</Label>
-                      <Input
-                        type="number" min={0} max={30}
-                        value={form.num_faltas}
-                        onChange={e => !faltasAutoDetectadas && setField('num_faltas', e.target.value)}
-                        readOnly={faltasAutoDetectadas > 0}
-                        className="mt-1 h-8 text-sm"
-                        placeholder="0"
-                        style={faltasAutoDetectadas > 0 ? { background: '#f0fdf4', borderColor: '#86efac', cursor: 'not-allowed', fontWeight: 700, color: '#15803d' } : {}}
-                        title={faltasAutoDetectadas > 0 ? 'Faltas detectadas automaticamente no registro de ponto — não editável' : ''}
-                      />
+                      {faltasAutoDetectadas > 0 ? (
+                        <div className="mt-1 h-8" style={{
+                          display: 'flex', alignItems: 'center', paddingLeft: 10,
+                          background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 6,
+                          fontWeight: 700, color: '#15803d', fontSize: 13,
+                          cursor: 'not-allowed', userSelect: 'none',
+                        }}>
+                          {form.num_faltas}
+                        </div>
+                      ) : (
+                        <Input
+                          type="number" min={0} max={30}
+                          value={form.num_faltas}
+                          onChange={e => setField('num_faltas', e.target.value)}
+                          className="mt-1 h-8 text-sm"
+                          placeholder="0"
+                        />
+                      )}
                       <div style={{ fontSize: 10, color: faltasAutoDetectadas > 0 ? '#15803d' : '#92400e', marginTop: 3 }}>
                         {faltasAutoDetectadas > 0 ? '🔒 Detectado automaticamente no ponto' : 'Cada falta desconta 1 dia de VT'}
                       </div>
