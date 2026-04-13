@@ -426,31 +426,39 @@ export default function ValeTransportePage() {
     const tipoAuto   = modalidadeParaTipo(vtDados?.modalidade)
     const contarSab  = true
 
-    // ── Buscar faltas reais do ponto no período ────────────────────────────
-    // Consulta registro_ponto para contar dias com falta=true no período da competência
+    // ── Buscar faltas reais do ponto no período ───────────────────────────
+    // registro_ponto usa lancamento_id como FK (não colaborador_id direto)
+    // Então: ponto_lancamentos → registro_ponto
     const mesIni = primeiroDia(competencia)
     const mesFim = ultimoDia(competencia)
 
-    const { data: pontoDias } = await supabase
-      .from('registro_ponto')
-      .select('data, falta')
-      .eq('colaborador_id', colabSel.id)
-      .gte('data', mesIni)
-      .lte('data', mesFim)
+    let faltasReais = 0
+    try {
+      // 1. Busca lançamentos do colaborador na competência
+      const { data: lancsColab } = await supabase
+        .from('ponto_lancamentos')
+        .select('id')
+        .eq('colaborador_id', colabSel.id)
+        .eq('mes_referencia', competencia)
 
-    // Também busca no portal_ponto_diario (app do gestor)
-    const { data: portalDias } = await supabase
-      .from('portal_ponto_diario')
-      .select('data, falta')
-      .eq('colaborador_id', colabSel.id)
-      .gte('data', mesIni)
-      .lte('data', mesFim)
+      if (lancsColab && lancsColab.length > 0) {
+        const lancIds = lancsColab.map((l: any) => l.id)
+        // 2. Busca dias com falta=true nesses lançamentos
+        const { data: diasFalta } = await supabase
+          .from('registro_ponto')
+          .select('data')
+          .in('lancamento_id', lancIds)
+          .eq('falta', true)
+          .gte('data', mesIni)
+          .lte('data', mesFim)
 
-    // Unifica datas com falta (evita duplicatas por data)
-    const datasComFalta = new Set<string>()
-    ;(pontoDias ?? []).forEach((r: any) => { if (r.falta) datasComFalta.add(r.data) })
-    ;(portalDias ?? []).forEach((r: any) => { if (r.falta) datasComFalta.add(r.data) })
-    const faltasReais = datasComFalta.size
+        // Deduplicar por data
+        const datasUnicas = new Set((diasFalta ?? []).map((r: any) => r.data))
+        faltasReais = datasUnicas.size
+      }
+    } catch (_) {
+      // Se falhar, deixa 0 — usuário ajusta manualmente
+    }
 
     const calc = recalcularPeriodo(mesIni, mesFim, contarSab, competencia, colabSel, null, faltasReais, 0)
 
