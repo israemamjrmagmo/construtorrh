@@ -177,6 +177,8 @@ export function Layout({ children }: LayoutProps) {
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQ,    setSearchQ]    = useState('')
   const [showNotif,  setShowNotif]  = useState(false)
+  const [showUserMenu, setShowUserMenu] = useState(false)
+  const userMenuRef = useRef<HTMLDivElement>(null)
 
   const flyoutTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const searchRef   = useRef<HTMLInputElement>(null)
@@ -213,6 +215,7 @@ export function Layout({ children }: LayoutProps) {
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (notifRef.current && !notifRef.current.contains(e.target as Node)) setShowNotif(false)
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) setShowUserMenu(false)
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
@@ -653,30 +656,112 @@ export function Layout({ children }: LayoutProps) {
             )}
           </div>
 
-          {/* Avatar + nome */}
-          <button
-            style={{
-              display:'flex', alignItems:'center', gap:8, padding:'5px 10px',
-              borderRadius:9, border:'1px solid #e4e8f0',
-              background:'transparent', cursor:'pointer', transition:'all 0.15s', flexShrink:0,
-            }}
-            onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.background='#f1f5f9'; el.style.borderColor='#cbd5e1' }}
-            onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.background='transparent'; el.style.borderColor='#e4e8f0' }}
-          >
-            <div style={{
-              width:28, height:28, borderRadius:7, flexShrink:0,
-              background:`linear-gradient(135deg, ${SIDEBAR_BG} 0%, #0a3347 100%)`,
-              display:'flex', alignItems:'center', justifyContent:'center',
-              fontSize:11, fontWeight:800, color:'#fff',
-            }}>
-              {initials}
-            </div>
-            <div style={{ textAlign:'left' }} className="hidden lg:block">
-              <div style={{ fontSize:12, fontWeight:700, color:'#1e293b', whiteSpace:'nowrap', maxWidth:110, overflow:'hidden', textOverflow:'ellipsis' }}>{userLogin}</div>
-              <div style={{ fontSize:10, color:'#94a3b8', whiteSpace:'nowrap' }}>{roleMeta.label}</div>
-            </div>
-            <ChevronDown size={12} color="#94a3b8" className="hidden lg:block"/>
-          </button>
+          {/* Avatar + dropdown de usuário */}
+          <div style={{ position: 'relative', flexShrink: 0 }} ref={userMenuRef}>
+            <button
+              onClick={() => setShowUserMenu(v => !v)}
+              style={{
+                display:'flex', alignItems:'center', gap:8, padding:'5px 10px',
+                borderRadius:9, border:'1px solid #e4e8f0',
+                background: showUserMenu ? '#f1f5f9' : 'transparent',
+                cursor:'pointer', transition:'all 0.15s', flexShrink:0,
+              }}
+              onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.background='#f1f5f9'; el.style.borderColor='#cbd5e1' }}
+              onMouseLeave={e => { if (!showUserMenu) { const el = e.currentTarget as HTMLElement; el.style.background='transparent'; el.style.borderColor='#e4e8f0' }}}
+            >
+              <div style={{
+                width:28, height:28, borderRadius:7, flexShrink:0,
+                background:`linear-gradient(135deg, ${SIDEBAR_BG} 0%, #0a3347 100%)`,
+                display:'flex', alignItems:'center', justifyContent:'center',
+                fontSize:11, fontWeight:800, color:'#fff',
+              }}>
+                {initials}
+              </div>
+              <div style={{ textAlign:'left' }} className="hidden lg:block">
+                <div style={{ fontSize:12, fontWeight:700, color:'#1e293b', whiteSpace:'nowrap', maxWidth:110, overflow:'hidden', textOverflow:'ellipsis' }}>{userLogin}</div>
+                <div style={{ fontSize:10, color:'#94a3b8', whiteSpace:'nowrap' }}>{roleMeta.label}</div>
+              </div>
+              <ChevronDown size={12} color="#94a3b8" className="hidden lg:block" style={{ transition:'transform 0.2s', transform: showUserMenu ? 'rotate(180deg)' : 'rotate(0deg)' }}/>
+            </button>
+
+            {/* Dropdown menu */}
+            {showUserMenu && (
+              <div style={{
+                position:'absolute', top:'calc(100% + 8px)', right:0,
+                width:230, background:'#fff',
+                border:'1px solid #e4e8f0', borderRadius:13,
+                boxShadow:'0 8px 30px rgba(0,0,0,0.13)', zIndex:200, overflow:'hidden',
+              }}>
+                {/* Header do menu */}
+                <div style={{ padding:'14px 16px', background:'#f8fafc', borderBottom:'1px solid #f1f5f9' }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                    <div style={{
+                      width:36, height:36, borderRadius:9, flexShrink:0,
+                      background:`linear-gradient(135deg, ${SIDEBAR_BG} 0%, #0a3347 100%)`,
+                      display:'flex', alignItems:'center', justifyContent:'center',
+                      fontSize:13, fontWeight:900, color:'#fff',
+                    }}>
+                      {initials}
+                    </div>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ fontSize:13, fontWeight:700, color:'#1e293b', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{userLogin}</div>
+                      <div style={{ fontSize:10, color:'#94a3b8', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{user?.email}</div>
+                    </div>
+                  </div>
+                  <div style={{ marginTop:8, display:'inline-flex', alignItems:'center', gap:5, padding:'2px 9px', borderRadius:20, background: roleMeta.bg, border:`1px solid ${roleMeta.color}30` }}>
+                    <span style={{ fontSize:10, fontWeight:700, color: roleMeta.color }}>{roleMeta.label}</span>
+                  </div>
+                </div>
+
+                {/* Itens do menu */}
+                <div style={{ padding:'6px' }}>
+                  <button
+                    onClick={() => { navigate('/perfil'); setShowUserMenu(false) }}
+                    style={{ width:'100%', textAlign:'left', padding:'9px 12px', border:'none', background:'transparent', cursor:'pointer', display:'flex', alignItems:'center', gap:10, borderRadius:8, transition:'background 0.1s' }}
+                    onMouseEnter={e => (e.currentTarget.style.background='#f1f5f9')}
+                    onMouseLeave={e => (e.currentTarget.style.background='transparent')}
+                  >
+                    <div style={{ width:28, height:28, borderRadius:7, background:'#eff6ff', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                      <UserCog size={13} color="#2563eb"/>
+                    </div>
+                    <div>
+                      <div style={{ fontSize:12, fontWeight:700, color:'#1e293b' }}>Meu Perfil</div>
+                      <div style={{ fontSize:10, color:'#94a3b8' }}>Informações e senha</div>
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => { navigate('/configuracoes'); setShowUserMenu(false) }}
+                    style={{ width:'100%', textAlign:'left', padding:'9px 12px', border:'none', background:'transparent', cursor:'pointer', display:'flex', alignItems:'center', gap:10, borderRadius:8, transition:'background 0.1s' }}
+                    onMouseEnter={e => (e.currentTarget.style.background='#f1f5f9')}
+                    onMouseLeave={e => (e.currentTarget.style.background='transparent')}
+                  >
+                    <div style={{ width:28, height:28, borderRadius:7, background:'#f1f5f9', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                      <Settings size={13} color="#64748b"/>
+                    </div>
+                    <div>
+                      <div style={{ fontSize:12, fontWeight:700, color:'#1e293b' }}>Configurações</div>
+                      <div style={{ fontSize:10, color:'#94a3b8' }}>Sistema e preferências</div>
+                    </div>
+                  </button>
+
+                  <div style={{ height:1, background:'#f1f5f9', margin:'4px 0' }}/>
+
+                  <button
+                    onClick={handleSignOut}
+                    style={{ width:'100%', textAlign:'left', padding:'9px 12px', border:'none', background:'transparent', cursor:'pointer', display:'flex', alignItems:'center', gap:10, borderRadius:8, transition:'background 0.1s' }}
+                    onMouseEnter={e => (e.currentTarget.style.background='#fef2f2')}
+                    onMouseLeave={e => (e.currentTarget.style.background='transparent')}
+                  >
+                    <div style={{ width:28, height:28, borderRadius:7, background:'#fef2f2', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                      <LogOut size={13} color="#dc2626"/>
+                    </div>
+                    <div style={{ fontSize:12, fontWeight:700, color:'#dc2626' }}>Sair da conta</div>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </header>
 
         {/* ── CONTENT ───────────────────────────────────────────────── */}
