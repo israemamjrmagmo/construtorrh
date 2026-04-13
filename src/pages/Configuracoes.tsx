@@ -138,8 +138,15 @@ const PARAMS: ParamConfig[] = [
     descricao: 'Percentual RAT — varia conforme risco da atividade: 1%, 2% ou 3% (padrão: 3,5% com FAP)',
     tipo: 'number',
     sufixo: '%',
-
     defaultVal: '3.5',
+  },
+  {
+    chave: 'terceiros_aliquota',
+    label: 'Terceiros — Sistema S',
+    descricao: 'Contribuições ao Sistema S (SESI/SENAI/SEBRAE/INCRA/SENAT etc.) — varia por atividade econômica. Padrão: 0% (desativado). Aplica-se somente nos próximos fechamentos.',
+    tipo: 'number',
+    sufixo: '%',
+    defaultVal: '0',
   },
 ]
 
@@ -356,6 +363,7 @@ export default function Configuracoes() {
         fgts_aliquota:          '8',
         inss_patronal_aliquota: '20',
         rat_aliquota:           '3.5',
+        terceiros_aliquota:     '0',
       }
       for (const [chave, val] of Object.entries(defaults)) {
         if (!map[chave] || map[chave] === '') map[chave] = val
@@ -963,7 +971,7 @@ export default function Configuracoes() {
                 </div>
                 <p className="text-sm text-muted-foreground mb-4">Percentuais de desconto e encargos aplicados na folha de pagamento.</p>
                 <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-                  {PARAMS.filter(p=>['vt_desconto_pct','inss_aliquota','fgts_aliquota','inss_patronal_aliquota','rat_aliquota'].includes(p.chave)).map((param) => (
+                  {PARAMS.filter(p=>['vt_desconto_pct','inss_aliquota','fgts_aliquota','inss_patronal_aliquota','rat_aliquota','terceiros_aliquota'].includes(p.chave)).map((param) => (
                     <div key={param.chave} style={{
                       display:'grid', gridTemplateColumns:'1fr 140px',
                       gap:12, alignItems:'center',

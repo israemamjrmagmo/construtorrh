@@ -41,6 +41,7 @@ interface LinhaEncargo {
   fgts:           number
   inssPatronal:   number
   rat:            number
+  terceiros:      number
   totalEmpresa:   number
 }
 
@@ -97,6 +98,7 @@ export default function EncargosPage() {
   const [fgtsAliq,        setFgtsAliq]        = useState(0.08)
   const [inssPatronalAliq, setInssPatronalAliq] = useState(0.20)
   const [ratAliq,         setRatAliq]         = useState(0.035)
+  const [terceirosAliq,   setTerceirosAliq]   = useState(0)
   // coeficientes de HE lidos do banco
   const [heCoef50,  setHeCoef50]  = useState(1.6)   // HE dia útil (padrão CLT = 60%)
   const [heCoef100, setHeCoef100] = useState(2.0)   // Dom/Feriado (padrão = 100%)
@@ -104,13 +106,14 @@ export default function EncargosPage() {
   // Carrega alíquotas e coeficientes configurados no banco
   useEffect(() => {
     supabase.from('configuracoes').select('chave, valor')
-      .in('chave', ['fgts_aliquota', 'inss_patronal_aliquota', 'rat_aliquota', 'he_percentual_60', 'he_percentual_100'])
+      .in('chave', ['fgts_aliquota', 'inss_patronal_aliquota', 'rat_aliquota', 'terceiros_aliquota', 'he_percentual_60', 'he_percentual_100'])
       .then(({ data }) => {
         const m: Record<string,string> = {}
         ;(data ?? []).forEach((r: any) => { m[r.chave] = r.valor })
         if (m['fgts_aliquota'])          setFgtsAliq(parseFloat(m['fgts_aliquota']) / 100 || 0.08)
         if (m['inss_patronal_aliquota']) setInssPatronalAliq(parseFloat(m['inss_patronal_aliquota']) / 100 || 0.20)
         if (m['rat_aliquota'])           setRatAliq(parseFloat(m['rat_aliquota']) / 100 || 0.035)
+        if (m['terceiros_aliquota'])      setTerceirosAliq(parseFloat(m['terceiros_aliquota']) / 100 || 0)
         if (m['he_percentual_60'])  setHeCoef50 (1 + (parseFloat(m['he_percentual_60'])  || 60)  / 100)
         if (m['he_percentual_100']) setHeCoef100(1 + (parseFloat(m['he_percentual_100']) || 100) / 100)
       })
@@ -245,7 +248,8 @@ export default function EncargosPage() {
         const fgts         = salarioBruto * fgtsAliq
         const inssPatronal = salarioBruto * inssPatronalAliq
         const rat          = salarioBruto * ratAliq
-        const totalEmpresa = fgts + inssPatronal + rat
+        const terceiros    = salarioBruto * terceirosAliq
+        const totalEmpresa = fgts + inssPatronal + rat + terceiros
 
         resultado.push({
           colaborador_id: l.colaborador_id,
@@ -266,6 +270,7 @@ export default function EncargosPage() {
           fgts,
           inssPatronal,
           rat,
+          terceiros,
           totalEmpresa,
         })
       }
@@ -278,7 +283,7 @@ export default function EncargosPage() {
       setLoading(false)
       setCalculado(true)
     }
-  }, [mes, ano, fgtsAliq, inssPatronalAliq, ratAliq, heCoef50, heCoef100])
+  }, [mes, ano, fgtsAliq, inssPatronalAliq, ratAliq, terceirosAliq, heCoef50, heCoef100])
 
   // Carrega automaticamente quando muda o período
   useEffect(() => { calcular() }, [calcular])
@@ -290,7 +295,7 @@ export default function EncargosPage() {
       'Colaborador','Chapa','Função','Obra',
       'Horas','DSR','Produção','Prêmio','Bruto',
       'VT','AD','INSS','IR','Líquido',
-      'FGTS (emp.)','INSS Pat. (emp.)','RAT (emp.)','Total Emp.',
+      'FGTS (emp.)','INSS Pat. (emp.)','RAT (emp.)','Terceiros-S (emp.)','Total Emp.',
     ]
     const rows = linhas.map(l => [
       l.nome, l.chapa ?? '', l.funcao_nome, l.obra_nome,
@@ -300,7 +305,7 @@ export default function EncargosPage() {
       l.descontoVT.toFixed(2), l.descontoAD.toFixed(2),
       l.inss.toFixed(2), l.ir.toFixed(2), l.liquido.toFixed(2),
       l.fgts.toFixed(2), l.inssPatronal.toFixed(2),
-      l.rat.toFixed(2), l.totalEmpresa.toFixed(2),
+      l.rat.toFixed(2), l.terceiros.toFixed(2), l.totalEmpresa.toFixed(2),
     ])
     const csv = [cab, ...rows].map(r => r.join(';')).join('\n')
     const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
@@ -340,6 +345,7 @@ export default function EncargosPage() {
     fgts:          linhasFiltradas.reduce((s, l) => s + l.fgts,          0),
     inssPatronal:  linhasFiltradas.reduce((s, l) => s + l.inssPatronal,  0),
     rat:           linhasFiltradas.reduce((s, l) => s + l.rat,           0),
+    terceiros:     linhasFiltradas.reduce((s, l) => s + l.terceiros,     0),
     totalEmpresa:  linhasFiltradas.reduce((s, l) => s + l.totalEmpresa,  0),
   }), [linhasFiltradas])
 
@@ -481,10 +487,11 @@ export default function EncargosPage() {
                       { label: '🏛️ - INSS ¹',    tip: 'INSS retido do funcionário' },
                       { label: '📋 - IR ¹',      tip: 'IR retido do funcionário' },
                       { label: '✅ Líquido',     tip: 'Valor a pagar' },
-                      { label: 'FGTS ²',         tip: '8% sobre bruto' },
-                      { label: 'INSS Pat. ²',    tip: '20% sobre bruto' },
-                      { label: 'RAT ²',          tip: '3,5% sobre bruto' },
-                      { label: 'Total Emp. ²',   tip: 'FGTS + INSS Pat. + RAT' },
+                      { label: 'FGTS ²',         tip: `${(fgtsAliq*100).toFixed(1)}% sobre bruto` },
+                      { label: 'INSS Pat. ²',    tip: `${(inssPatronalAliq*100).toFixed(1)}% sobre bruto` },
+                      { label: 'RAT ²',          tip: `${(ratAliq*100).toFixed(1)}% sobre bruto` },
+                      ...(terceirosAliq > 0 ? [{ label: 'Terceiros-S ²', tip: `${(terceirosAliq*100).toFixed(1)}% sobre bruto (Sistema S)` }] : []),
+                      { label: 'Total Emp. ²',   tip: 'FGTS + INSS Pat. + RAT' + (terceirosAliq > 0 ? ' + Terceiros-S' : '') },
                     ].map(h => (
                       <TableHead
                         key={h.label}
@@ -523,6 +530,7 @@ export default function EncargosPage() {
                       <TableCell style={{ padding: '7px 10px', color: '#15803d' }}>{formatCurrency(l.fgts)}</TableCell>
                       <TableCell style={{ padding: '7px 10px', color: '#1e3a5f' }}>{formatCurrency(l.inssPatronal)}</TableCell>
                       <TableCell style={{ padding: '7px 10px', color: '#92400e' }}>{formatCurrency(l.rat)}</TableCell>
+                      {terceirosAliq > 0 && <TableCell style={{ padding: '7px 10px', color: '#0369a1' }}>{formatCurrency(l.terceiros)}</TableCell>}
                       <TableCell style={{ padding: '7px 10px', fontWeight: 700, color: '#7c3aed' }}>{formatCurrency(l.totalEmpresa)}</TableCell>
                     </TableRow>
                   ))}
@@ -546,6 +554,7 @@ export default function EncargosPage() {
                     <TableCell style={{ background: '#1e3a5f', color: '#86efac', padding: '8px 10px' }}>{formatCurrency(totais.fgts)}</TableCell>
                     <TableCell style={{ background: '#1e3a5f', color: '#bfdbfe', padding: '8px 10px' }}>{formatCurrency(totais.inssPatronal)}</TableCell>
                     <TableCell style={{ background: '#1e3a5f', color: '#fde68a', padding: '8px 10px' }}>{formatCurrency(totais.rat)}</TableCell>
+                    {terceirosAliq > 0 && <TableCell style={{ background: '#1e3a5f', color: '#67e8f9', padding: '8px 10px' }}>{formatCurrency(totais.terceiros)}</TableCell>}
                     <TableCell style={{ background: '#1e3a5f', color: '#c4b5fd', fontWeight: 700, padding: '8px 10px' }}>{formatCurrency(totais.totalEmpresa)}</TableCell>
                   </TableRow>
                 </TableFooter>
@@ -636,17 +645,23 @@ export default function EncargosPage() {
                 </p>
                 <div className="space-y-2">
                   <div className="flex justify-between items-center text-sm">
-                    <span style={{ color: '#15803d' }} className="font-medium">FGTS (8%)</span>
+                    <span style={{ color: '#15803d' }} className="font-medium">FGTS ({(fgtsAliq*100).toFixed(1)}%)</span>
                     <span style={{ color: '#15803d' }} className="font-bold">{formatCurrency(totais.fgts)}</span>
                   </div>
                   <div className="flex justify-between items-center text-sm">
-                    <span style={{ color: '#1e3a5f' }} className="font-medium">INSS Patronal (20%)</span>
+                    <span style={{ color: '#1e3a5f' }} className="font-medium">INSS Patronal ({(inssPatronalAliq*100).toFixed(1)}%)</span>
                     <span style={{ color: '#1e3a5f' }} className="font-bold">{formatCurrency(totais.inssPatronal)}</span>
                   </div>
                   <div className="flex justify-between items-center text-sm">
-                    <span style={{ color: '#92400e' }} className="font-medium">RAT (3,5%)</span>
+                    <span style={{ color: '#92400e' }} className="font-medium">RAT ({(ratAliq*100).toFixed(1)}%)</span>
                     <span style={{ color: '#92400e' }} className="font-bold">{formatCurrency(totais.rat)}</span>
                   </div>
+                  {terceirosAliq > 0 && (
+                    <div className="flex justify-between items-center text-sm">
+                      <span style={{ color: '#0369a1' }} className="font-medium">Terceiros — Sistema S ({(terceirosAliq*100).toFixed(1)}%)</span>
+                      <span style={{ color: '#0369a1' }} className="font-bold">{formatCurrency(totais.terceiros)}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between items-center pt-2 mt-2" style={{ borderTop: '1px solid var(--border)' }}>
                     <span className="font-bold text-base" style={{ color: '#7c3aed' }}>Total a Recolher</span>
                     <span className="font-bold text-lg" style={{ color: '#7c3aed' }}>{formatCurrency(totais.totalEmpresa)}</span>
