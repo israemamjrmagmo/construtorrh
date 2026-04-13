@@ -1091,7 +1091,14 @@ export default function ValeTransportePage() {
                                 {TIPO_OPTIONS.find(t => t.value === r.tipo)?.label ?? r.tipo ?? '—'}
                               </td>
                               <td style={{ padding: '10px 14px', textAlign: 'right' }}>{r.dias_trabalhados}</td>
-                              <td style={{ padding: '10px 14px', textAlign: 'right' }}>{formatCurrency(r.valor)}</td>
+                              <td style={{ padding: '10px 14px', textAlign: 'right' }}>
+                                <div style={{ fontWeight: 700 }}>{formatCurrency(r.valor)}</div>
+                                {r.dias_trabalhados && r.valor
+                                  ? <div style={{ fontSize: 10, color: 'var(--muted-foreground)', marginTop: 1 }}>
+                                      {r.dias_trabalhados}d × {formatCurrency((r.valor ?? 0) / (r.dias_trabalhados ?? 1))}/d
+                                    </div>
+                                  : null}
+                              </td>
                               <td style={{ padding: '10px 14px', textAlign: 'right' }}>
                                 {r.descontar_6pct
                                   ? (
@@ -1105,9 +1112,9 @@ export default function ValeTransportePage() {
                               </td>
                               <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 800, color: '#1d4ed8' }}>
                                 <div>{formatCurrency(r.valor_empresa)}</div>
-                                {r.descontar_6pct && (
-                                  <div style={{ fontSize: 10, color: 'var(--muted-foreground)', fontWeight: 400 }}>empresa paga</div>
-                                )}
+                                <div style={{ fontSize: 10, color: 'var(--muted-foreground)', fontWeight: 400 }}>
+                                  {r.descontar_6pct ? 'empresa paga' : '= bruto'}
+                                </div>
                               </td>
                               <td style={{ padding: '10px 14px', textAlign: 'center' }}>
                                 {(r.status as string | undefined) === 'pago'
@@ -1250,16 +1257,14 @@ export default function ValeTransportePage() {
                 </div>
               </div>
 
-              {/* Toggle sábado */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--muted)', borderRadius: 8, padding: '10px 14px', border: '1px solid var(--border)' }}>
+              {/* Toggle sábado — SEMPRE somente leitura, definido pela obra */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--muted)', borderRadius: 8, padding: '10px 14px', border: '1px solid var(--border)', cursor: 'not-allowed' }}>
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
-                    Contar sábado como dia trabalhado
-                    {sabadoDaObra && !editando && (
-                      <span style={{ fontSize: 9, fontWeight: 700, color: '#1d4ed8', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 4, padding: '1px 5px' }}>
-                        🔒 definido pela obra
-                      </span>
-                    )}
+                    Sábado como dia trabalhado
+                    <span style={{ fontSize: 9, fontWeight: 700, color: '#1d4ed8', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 4, padding: '1px 5px' }}>
+                      🔒 configurado na obra
+                    </span>
                   </div>
                   <div style={{ fontSize: 11, color: 'var(--muted-foreground)', marginTop: 2 }}>
                     {form.contar_sabado ? 'Contando Seg → Sáb' : 'Contando apenas Seg → Sex'}
@@ -1267,21 +1272,15 @@ export default function ValeTransportePage() {
                     <strong style={{ color: 'var(--foreground)' }}>{form.dias_trabalhados}</strong> dia(s) no período
                     {' · '}
                     {sabUtil
-                      ? <span style={{ color:'#15803d', fontWeight:600 }}>Sáb. já incluso no VT mensal</span>
-                      : <span style={{ color:'#b45309', fontWeight:600 }}>Sáb. pago separado</span>
+                      ? <span style={{ color:'#15803d', fontWeight:600 }}>✓ Sáb. incluído no VT desta obra</span>
+                      : <span style={{ color:'#b45309', fontWeight:600 }}>Sáb. pago separado nesta obra</span>
                     }
                   </div>
                 </div>
-                {sabadoDaObra && !editando ? (
-                  <div title="Definido pela obra — não editável" style={{ cursor: 'not-allowed', opacity: 0.7, color: '#1d4ed8' }}>
-                    <ToggleRight size={30} />
-                  </div>
-                ) : (
-                  <button onClick={() => setField('contar_sabado', !form.contar_sabado)}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: form.contar_sabado ? '#1d4ed8' : 'var(--muted-foreground)' }}>
-                    {form.contar_sabado ? <ToggleRight size={30} /> : <ToggleLeft size={30} />}
-                  </button>
-                )}
+                {/* Toggle visual — não clicável, reflete a configuração da obra */}
+                <div title="Definido pela obra — altere na tela de Obras" style={{ opacity: 0.7, color: sabUtil ? '#1d4ed8' : 'var(--muted-foreground)', pointerEvents: 'none' }}>
+                  {sabUtil ? <ToggleRight size={30} /> : <ToggleLeft size={30} />}
+                </div>
               </div>
 
               {/* Ajustes: faltas + sábados extras */}
