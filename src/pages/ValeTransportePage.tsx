@@ -183,6 +183,9 @@ export default function ValeTransportePage() {
 
   // ── Relatório de Fechamento ────────────────────────────────────────────────
   const [showRelatorio, setShowRelatorio] = useState(false)
+  // Controla se faltas e sábado foram preenchidos automaticamente (bloqueio de edição)
+  const [faltasAutoDetectadas, setFaltasAutoDetectadas] = useState(0)
+  const [sabadoDaObra,         setSabadoDaObra]         = useState(false)
 
   // ── Fechamento em lote por obra ──────────────────────────────────────────
   const [modalLote, setModalLote]   = useState(false)
@@ -424,7 +427,9 @@ export default function ValeTransportePage() {
 
     const vtDados    = colabSel.vt_dados as any
     const tipoAuto   = modalidadeParaTipo(vtDados?.modalidade)
-    const contarSab  = true
+    // Puxar sábado da obra — se marcado na obra, toggle fica true e bloqueado
+    const obraColab  = obras.find(o => o.id === colabSel.obra_id)
+    const contarSab  = !!(obraColab?.considera_sabado_util ?? true)
 
     // ── Buscar faltas reais do ponto no período ───────────────────────────
     // registro_ponto usa lancamento_id como FK (não colaborador_id direto)
@@ -462,15 +467,17 @@ export default function ValeTransportePage() {
 
     const calc = recalcularPeriodo(mesIni, mesFim, contarSab, competencia, colabSel, null, faltasReais, 0)
 
+    setFaltasAutoDetectadas(faltasReais)
+    setSabadoDaObra(contarSab)
     setEditando(null)
-    setVtDiarioSnap(null)   // novo lançamento sempre usa base atual do colaborador
+    setVtDiarioSnap(null)
     setForm({
       competencia,
       data_inicio:  primeiroDia(competencia),
       data_fim:     ultimoDia(competencia),
       contar_sabado: contarSab,
       tipo:         tipoAuto,
-      num_faltas: String(faltasReais),  // faltas reais do ponto
+      num_faltas: String(faltasReais),
       num_sabados_extras: '0',
       ...calc,
       observacoes: '',
@@ -479,6 +486,8 @@ export default function ValeTransportePage() {
   }
 
   function openEdit(row: VTRow) {
+    setFaltasAutoDetectadas(0)  // edição: faltas não bloqueadas
+    setSabadoDaObra(false)      // edição: sábado não bloqueado
     // Calcula e congela a taxa diária do lançamento original
     // vtDiario_snap = valor ÷ dias (taxa usada no lançamento original)
     const diasSalvos = row.dias_trabalhados ?? 0
@@ -1183,7 +1192,14 @@ export default function ValeTransportePage() {
               <div className="col-span-2">
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--muted)', borderRadius: 8, padding: '10px 14px', border: '1px solid var(--border)' }}>
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: 600 }}>Contar sábado como dia trabalhado</div>
+                    <div style={{ fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    Contar sábado como dia trabalhado
+                    {sabadoDaObra && !editando && (
+                      <span style={{ fontSize: 9, fontWeight: 700, color: '#1d4ed8', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 4, padding: '1px 5px' }}>
+                        🔒 definido pela obra
+                      </span>
+                    )}
+                  </div>
                     <div style={{ fontSize: 11, color: 'var(--muted-foreground)', marginTop: 2 }}>
                       {form.contar_sabado ? 'Contando Seg → Sáb' : 'Contando apenas Seg → Sex'}
                       {' · '}
@@ -1195,8 +1211,11 @@ export default function ValeTransportePage() {
                       }
                     </div>
                   </div>
-                  <button onClick={() => setField('contar_sabado', !form.contar_sabado)}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: form.contar_sabado ? '#1d4ed8' : 'var(--muted-foreground)' }}>
+                  <button
+                    onClick={() => !sabadoDaObra && setField('contar_sabado', !form.contar_sabado)}
+                    disabled={sabadoDaObra}
+                    title={sabadoDaObra ? 'Definido pela configuração da obra — não editável' : 'Clique para alternar'}
+                    style={{ background: 'none', border: 'none', cursor: sabadoDaObra ? 'not-allowed' : 'pointer', color: form.contar_sabado ? '#1d4ed8' : 'var(--muted-foreground)', opacity: sabadoDaObra ? 0.6 : 1 }}>
                     {form.contar_sabado ? <ToggleRight size={30} /> : <ToggleLeft size={30} />}
                   </button>
                 </div>
@@ -1251,13 +1270,18 @@ export default function ValeTransportePage() {
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                     <div>
                       <Label className="text-xs" style={{ color: '#713f12' }}>Faltas (descontar dias)</Label>
-                      <Input type="number" min={0} max={30} value={form.num_faltas}
-                        onChange={e => setField('num_faltas', e.target.value)}
+                      <Input
+                        type="number" min={0} max={30}
+                        value={form.num_faltas}
+                        onChange={e => !faltasAutoDetectadas && setField('num_faltas', e.target.value)}
+                        readOnly={faltasAutoDetectadas > 0}
                         className="mt-1 h-8 text-sm"
                         placeholder="0"
+                        style={faltasAutoDetectadas > 0 ? { background: '#f0fdf4', borderColor: '#86efac', cursor: 'not-allowed', fontWeight: 700, color: '#15803d' } : {}}
+                        title={faltasAutoDetectadas > 0 ? 'Faltas detectadas automaticamente no registro de ponto — não editável' : ''}
                       />
-                      <div style={{ fontSize: 10, color: '#92400e', marginTop: 3 }}>
-                        Cada falta desconta 1 dia de VT
+                      <div style={{ fontSize: 10, color: faltasAutoDetectadas > 0 ? '#15803d' : '#92400e', marginTop: 3 }}>
+                        {faltasAutoDetectadas > 0 ? '🔒 Detectado automaticamente no ponto' : 'Cada falta desconta 1 dia de VT'}
                       </div>
                     </div>
                     <div>
