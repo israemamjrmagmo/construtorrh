@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/useAuth'
@@ -15,7 +16,9 @@ import {
   Search, Bell, ChevronDown,
   LayoutGrid, FolderKanban, HeartPulse, Banknote, Gavel, Cog,
   BookOpen, CreditCard, Layers, ClipboardCheck, ShoppingBasket, FolderOpen, ScrollText, Receipt, KeyRound, Umbrella,
+  RefreshCw,
 } from 'lucide-react'
+import { useAutoRefresh } from '@/hooks/useAutoRefresh'
 
 // ─── Cor principal da sidebar ───────────────────────────────────────────────
 const SIDEBAR_BG = '#0d3f56'
@@ -168,6 +171,51 @@ const NAV_GROUPS = [
 
 // ─── Busca rápida ─────────────────────────────────────────────────────────────
 const SEARCH_PAGES = NAV_GROUPS.flatMap(g => g.items).map(i => ({ label: i.label, to: i.to, icon: i.icon }))
+
+// ─── Auto-Refresh Badge ───────────────────────────────────────────────────────
+// Exibe um indicador discreto no header mostrando o countdown até o próximo refresh.
+// Intervalo padrão: 2 minutos. Clique manual força refresh imediato.
+function AutoRefreshBadge() {
+  const { countdown } = useAutoRefresh(120_000)
+  const [spinning, setSpinning] = React.useState(false)
+
+  const mins = Math.floor(countdown / 60)
+  const secs = String(countdown % 60).padStart(2, '0')
+  const label = mins > 0 ? `${mins}:${secs}` : `0:${secs}`
+
+  const qc = useQueryClient()
+
+  function handleManualRefresh() {
+    setSpinning(true)
+    qc.invalidateQueries()
+    setTimeout(() => setSpinning(false), 800)
+  }
+
+  return (
+    <button
+      onClick={handleManualRefresh}
+      title={`Próxima atualização automática em ${label} — clique para atualizar agora`}
+      style={{
+        display:'flex', alignItems:'center', gap:5, flexShrink:0,
+        height:30, padding:'0 9px', borderRadius:20,
+        border:'1px solid #e2e8f0', background:'#f8fafc',
+        cursor:'pointer', transition:'all 0.15s',
+        color:'#64748b', fontSize:11, fontWeight:600,
+      }}
+      onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.background='#f1f5f9'; el.style.borderColor='#0d3f56'; el.style.color='#0d3f56' }}
+      onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.background='#f8fafc'; el.style.borderColor='#e2e8f0'; el.style.color='#64748b' }}
+    >
+      <RefreshCw
+        size={11}
+        style={{
+          transition: 'transform 0.6s ease',
+          transform: spinning ? 'rotate(360deg)' : 'none',
+        }}
+      />
+      <span style={{ letterSpacing:'0.3px', fontVariantNumeric:'tabular-nums' }}>{label}</span>
+    </button>
+  )
+}
 
 interface LayoutProps { children: React.ReactNode }
 
@@ -577,6 +625,9 @@ export function Layout({ children }: LayoutProps) {
           </div>
 
           <div style={{ flex:1 }}/>
+
+          {/* ── Auto-refresh indicator ─────────────────────────────── */}
+          <AutoRefreshBadge />
 
           {/* Notificações */}
           <div style={{ position:'relative', flexShrink:0 }} ref={notifRef}>
