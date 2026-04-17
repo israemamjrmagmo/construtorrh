@@ -238,47 +238,33 @@ export default function Premios() {
   }
 
   // ─── aprovar ───────────────────────────────────────────────────────────────
+  // NOVO FLUXO: prêmio aprovado é integrado automaticamente ao fechamento de ponto.
+  // NÃO cria pagamento avulso — o fechamento lê os prêmios aprovados e os soma ao salário.
   async function confirmarAprovar() {
     if (!aprovarRow) return
-    const { data: pag, error: errPag } = await supabase.from('pagamentos').insert({
-      colaborador_id: aprovarRow.colaborador_id,
-      obra_id:        aprovarRow.obra_id ?? null,
-      competencia:    aprovarRow.competencia ?? competencia,
-      tipo:           'premio',
-      valor_bruto:    aprovarRow.valor ?? 0,
-      valor_liquido:  aprovarRow.valor ?? 0,
-      status:         'pendente',
-      observacoes:    `Prêmio: ${aprovarRow.descricao}${aprovarRow.observacoes?' — '+aprovarRow.observacoes:''}`,
-    }).select('id').single()
-    if (errPag) { toast.error('Erro ao criar pagamento: ' + errPag.message); return }
-    const { error } = await supabase.from('premios').update({status:'aprovado', pagamento_id: pag.id}).eq('id', aprovarRow.id)
-    if (error) { await supabase.from('pagamentos').delete().eq('id',pag.id); toast.error('Erro ao aprovar: '+error.message); return }
-    toast.success('✅ Prêmio aprovado! Enviado para Pagamentos.')
+    const { error } = await supabase.from('premios')
+      .update({ status: 'aprovado', pagamento_id: null })
+      .eq('id', aprovarRow.id)
+    if (error) { toast.error('Erro ao aprovar: ' + error.message); return }
+    toast.success('✅ Prêmio aprovado! Será somado ao salário no fechamento de ponto.')
     setAprovarRow(null); fetchData(); setAbaStatus('aprovado')
   }
 
   // ─── cancelar ──────────────────────────────────────────────────────────────
   async function confirmarCancelar() {
     if (!cancelarRow) return
-    if (cancelarRow.pagamento_id) {
-      const { data: pag } = await supabase.from('pagamentos').select('status').eq('id',cancelarRow.pagamento_id).single()
-      if (pag?.status==='pago') { toast.error('❌ Pagamento já efetuado.'); setCancelarRow(null); return }
-      await supabase.from('pagamentos').delete().eq('id', cancelarRow.pagamento_id)
-    }
-    await supabase.from('premios').update({status:'cancelado', pagamento_id:null}).eq('id', cancelarRow.id)
-    toast.success('Cancelado.')
+    // Prêmios aprovados não têm pagamento_id — apenas cancela o status
+    const { error } = await supabase.from('premios')
+      .update({ status: 'cancelado', pagamento_id: null })
+      .eq('id', cancelarRow.id)
+    if (error) { toast.error('Erro ao cancelar: ' + error.message); return }
+    toast.success('Prêmio cancelado.')
     setCancelarRow(null); fetchData(); setAbaStatus('cancelado')
   }
 
   // ─── delete ────────────────────────────────────────────────────────────────
   async function handleDelete() {
     if (!deleteId) return
-    const row = rows.find(r => r.id === deleteId)
-    if (row?.pagamento_id) {
-      const { data: pag } = await supabase.from('pagamentos').select('status').eq('id',row.pagamento_id).single()
-      if (pag?.status==='pago') { toast.error('Já foi pago — não pode excluir.'); setDeleteId(null); return }
-      await supabase.from('pagamentos').delete().eq('id',row.pagamento_id)
-    }
     const { error } = await supabase.from('premios').delete().eq('id', deleteId)
     setDeleteId(null)
     if (error) toast.error('Erro ao excluir')
@@ -546,8 +532,8 @@ export default function Premios() {
                               </span>
                               <span style={{fontSize:12, color:'var(--muted-foreground)'}}>{row.descricao}</span>
                               {st === 'pago' && (
-                                <span style={{fontSize:10, color: row.pagamento_id?'#1d4ed8':'#15803d', fontWeight:600}}>
-                                  {row.pagamento_id ? '💜 Via pagamento' : '✅ Via fechamento'}
+                                <span style={{fontSize:10, color:'#1d4ed8', fontWeight:600}}>
+                                  ✅ Via fechamento de ponto
                                 </span>
                               )}
                             </div>
@@ -701,7 +687,7 @@ export default function Premios() {
           <AlertDialogDescription>
             <strong>{aprovarRow?.colaboradores?.nome}</strong> — {formatCurrency(aprovarRow?.valor??0)}<br/>
             Prêmio: <em>{aprovarRow?.descricao}</em><br/>
-            O prêmio será enviado para <strong>Pagamentos</strong> como pendente de pagamento.
+            O valor será <strong>somado automaticamente ao salário</strong> no próximo fechamento de ponto. Não cria pagamento avulso.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

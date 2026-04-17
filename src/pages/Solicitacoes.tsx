@@ -1916,32 +1916,16 @@ function TabPremiacoes({ colabs, onRefresh }: { colabs: Colab[]; onRefresh: () =
 
   async function aprovar(id: string) {
     setSaving(id)
-    const row = rows.find(r => r.id === id)
-    if (!row) { setSaving(null); return }
-
-    // Criar pagamento e aprovar
-    const { data: pag, error: errPag } = await supabase.from('pagamentos').insert({
-      colaborador_id: row.colaborador_id,
-      obra_id:        row.obra_id ?? null,
-      competencia:    row.competencia,
-      tipo:           'premio',
-      valor_bruto:    row.valor ?? 0,
-      valor_liquido:  row.valor ?? 0,
-      status:         'pendente',
-      observacoes:    `Prêmio (portal): ${row.descricao}`,
-    }).select('id').single()
-
-    if (errPag) { toast.error('Erro ao criar pagamento'); setSaving(null); return }
-
+    // NOVO FLUXO: não cria pagamento avulso.
+    // O prêmio aprovado será integrado automaticamente ao salário no fechamento de ponto.
     const { error } = await supabase.from('premios')
-      .update({ status: 'aprovado', pagamento_id: pag.id })
+      .update({ status: 'aprovado', pagamento_id: null })
       .eq('id', id)
 
     if (error) {
-      await supabase.from('pagamentos').delete().eq('id', pag.id)
       toast.error('Erro ao aprovar: ' + error.message)
     } else {
-      toast.success('✅ Premiação aprovada e enviada para Pagamentos!')
+      toast.success('✅ Premiação aprovada! Será somada ao salário no fechamento de ponto.')
     }
     setSaving(null)
     fetchPremios()
@@ -2030,7 +2014,7 @@ function TabPremiacoes({ colabs, onRefresh }: { colabs: Colab[]; onRefresh: () =
                 </div>
               </div>
               <div style={{ marginTop: 10, padding: '8px 12px', background: '#fffbeb', borderRadius: 8, fontSize: 11, color: '#92400e', fontWeight: 600 }}>
-                ⚠️ Ao aprovar, a premiação será enviada para <strong>Pagamentos</strong> e integrada automaticamente ao fechamento de ponto do colaborador.
+                ⚠️ Ao aprovar, o valor será <strong>somado automaticamente ao salário</strong> no fechamento de ponto. Não gera pagamento separado.
               </div>
             </div>
           ))}
