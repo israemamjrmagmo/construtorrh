@@ -37,6 +37,8 @@ interface Atividade {
   categoria: string | null
   ativo: boolean
   codigo: string | null
+  comissao_encarregado: number | null
+  comissao_cabo: number | null
 }
 
 /** Preço de uma atividade em uma obra específica */
@@ -47,6 +49,9 @@ interface AtividadePreco {
   preco_unitario: number
   preco_maximo: number | null
   ativo: boolean
+  comissao_encarregado: number | null
+  comissao_cabo: number | null
+  encarregado_id: string | null
 }
 
 interface Obra {
@@ -67,6 +72,7 @@ const CATEGORIAS = [
 
 const ATIV_EMPTY = (): Omit<Atividade, 'id'> => ({
   descricao: '', unidade: 'm²', categoria: null, ativo: true, codigo: null,
+  comissao_encarregado: null, comissao_cabo: null,
 })
 
 // ─── Helper: badge de status ──────────────────────────────────────────────────
@@ -110,6 +116,8 @@ export default function Playbooks() {
   const [editandoPreco, setEditandoPreco] = useState<string | null>(null)
   const [valorTemp, setValorTemp]         = useState('')
   const [valorMaxTemp, setValorMaxTemp]   = useState('')
+  const [comissaoEncTemp, setComissaoEncTemp] = useState('')
+  const [comissaoCaboTemp, setComissaoCaboTemp] = useState('')
   const [modalCopiar, setModalCopiar]     = useState(false)
   const [obraOrigem, setObraOrigem]       = useState('')
   const [copiando, setCopiando]           = useState(false)
@@ -206,7 +214,8 @@ export default function Playbooks() {
   }
   function openEditAtiv(a: Atividade) {
     setEditAtiv(a)
-    setFormAtiv({ descricao: a.descricao, unidade: a.unidade, categoria: a.categoria, ativo: a.ativo, codigo: a.codigo })
+    setFormAtiv({ descricao: a.descricao, unidade: a.unidade, categoria: a.categoria, ativo: a.ativo, codigo: a.codigo,
+      comissao_encarregado: a.comissao_encarregado, comissao_cabo: a.comissao_cabo })
     setModalAtiv(true)
   }
   const setFA = <K extends keyof typeof formAtiv>(k: K, v: (typeof formAtiv)[K]) =>
@@ -221,6 +230,8 @@ export default function Playbooks() {
       categoria: formAtiv.categoria,
       ativo: formAtiv.ativo,
       codigo: formAtiv.codigo?.trim() || null,
+      comissao_encarregado: formAtiv.comissao_encarregado ?? null,
+      comissao_cabo: formAtiv.comissao_cabo ?? null,
     }
     const { error } = editAtiv
       ? await supabase.from('playbook_atividades').update(payload).eq('id', editAtiv.id)
@@ -248,9 +259,12 @@ export default function Playbooks() {
     setSavingPreco(ativId)
     const existing = precosMap.get(`${ativId}::${obraSel.id}`)
     const precoMax = valorMaxTemp.trim() !== '' ? (parseFloat(valorMaxTemp) || 0) : null
-    const payload = { atividade_id: ativId, obra_id: obraSel.id, preco_unitario: valor, preco_maximo: precoMax, ativo: true }
+    const comissaoEnc = comissaoEncTemp.trim() !== '' ? parseFloat(comissaoEncTemp) : null
+    const comissaoCabo = comissaoCaboTemp.trim() !== '' ? parseFloat(comissaoCaboTemp) : null
+    const payload = { atividade_id: ativId, obra_id: obraSel.id, preco_unitario: valor, preco_maximo: precoMax, ativo: true,
+      comissao_encarregado: comissaoEnc, comissao_cabo: comissaoCabo }
     const res = existing
-      ? await supabase.from('playbook_precos').update({ preco_unitario: valor, preco_maximo: precoMax }).eq('id', existing.id)
+      ? await supabase.from('playbook_precos').update({ preco_unitario: valor, preco_maximo: precoMax, comissao_encarregado: comissaoEnc, comissao_cabo: comissaoCabo }).eq('id', existing.id)
       : await supabase.from('playbook_precos').insert(payload)
     if (res.error) { setSavingPreco(null); toast.error(traduzirErro(res.error.message)); return }
     // Sincroniza playbook_itens (FK de ponto_producao aponta para esta tabela)
@@ -559,8 +573,10 @@ export default function Playbooks() {
                           <TableHead>Atividade</TableHead>
                           <TableHead style={{ width: 80, textAlign: 'center' }}>Unidade</TableHead>
                           <TableHead style={{ width: 110 }}>Categoria</TableHead>
-                          <TableHead style={{ width: 160, textAlign: 'right' }}>Preço Negociado (R$)</TableHead>
-                          <TableHead style={{ width: 160, textAlign: 'right' }}>Preço Máximo (R$)</TableHead>
+                          <TableHead style={{ width: 130, textAlign: 'right' }}>Preço Negociado</TableHead>
+                          <TableHead style={{ width: 120, textAlign: 'right' }}>Preço Máximo</TableHead>
+                          <TableHead style={{ width: 90, textAlign: 'right' }}>% Enc.</TableHead>
+                          <TableHead style={{ width: 90, textAlign: 'right' }}>% Cabo</TableHead>
                           <TableHead style={{ width: 60, textAlign: 'center' }}>Ações</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -611,6 +627,8 @@ export default function Playbooks() {
                                         setEditandoPreco(a.id)
                                         setValorTemp(precoAtual ? String(precoAtual.preco_unitario) : '')
                                         setValorMaxTemp(precoAtual?.preco_maximo != null ? String(precoAtual.preco_maximo) : '')
+                                        setComissaoEncTemp(precoAtual?.comissao_encarregado != null ? String(precoAtual.comissao_encarregado) : '')
+                                        setComissaoCaboTemp(precoAtual?.comissao_cabo != null ? String(precoAtual.comissao_cabo) : '')
                                       }}
                                       title="Clique para editar o preço"
                                     >
@@ -639,10 +657,48 @@ export default function Playbooks() {
                                         setEditandoPreco(a.id)
                                         setValorTemp(precoAtual ? String(precoAtual.preco_unitario) : '')
                                         setValorMaxTemp(precoAtual?.preco_maximo != null ? String(precoAtual.preco_maximo) : '')
+                                        setComissaoEncTemp(precoAtual?.comissao_encarregado != null ? String(precoAtual.comissao_encarregado) : '')
+                                        setComissaoCaboTemp(precoAtual?.comissao_cabo != null ? String(precoAtual.comissao_cabo) : '')
                                       }}
                                       title="Clique para editar o preço máximo"
                                     >
                                       {precoAtual?.preco_maximo != null ? formatCurrency(precoAtual.preco_maximo) : '—'}
+                                    </span>
+                                  )}
+                                </TableCell>
+                                {/* % Encarregado */}
+                                <TableCell style={{ textAlign: 'right' }}>
+                                  {emEdicao ? (
+                                    <div style={{ position:'relative' }}>
+                                      <Input type="number" step="0.01" min="0" max="100"
+                                        value={comissaoEncTemp}
+                                        onChange={e => setComissaoEncTemp(e.target.value)}
+                                        placeholder="—"
+                                        style={{ width:80, textAlign:'right', paddingRight:20 }}
+                                      />
+                                      <span style={{ position:'absolute', right:6, top:'50%', transform:'translateY(-50%)', fontSize:10, color:'#94a3b8' }}>%</span>
+                                    </div>
+                                  ) : (
+                                    <span style={{ fontSize:12, fontWeight:600, color: precoAtual?.comissao_encarregado ? '#15803d' : '#cbd5e1' }}>
+                                      {precoAtual?.comissao_encarregado != null ? `${precoAtual.comissao_encarregado}%` : (a.comissao_encarregado != null ? `${a.comissao_encarregado}% ⬡` : '—')}
+                                    </span>
+                                  )}
+                                </TableCell>
+                                {/* % Cabo */}
+                                <TableCell style={{ textAlign: 'right' }}>
+                                  {emEdicao ? (
+                                    <div style={{ position:'relative' }}>
+                                      <Input type="number" step="0.01" min="0" max="100"
+                                        value={comissaoCaboTemp}
+                                        onChange={e => setComissaoCaboTemp(e.target.value)}
+                                        placeholder="—"
+                                        style={{ width:80, textAlign:'right', paddingRight:20 }}
+                                      />
+                                      <span style={{ position:'absolute', right:6, top:'50%', transform:'translateY(-50%)', fontSize:10, color:'#94a3b8' }}>%</span>
+                                    </div>
+                                  ) : (
+                                    <span style={{ fontSize:12, fontWeight:600, color: precoAtual?.comissao_cabo ? '#b45309' : '#cbd5e1' }}>
+                                      {precoAtual?.comissao_cabo != null ? `${precoAtual.comissao_cabo}%` : (a.comissao_cabo != null ? `${a.comissao_cabo}% ⬡` : '—')}
                                     </span>
                                   )}
                                 </TableCell>
@@ -654,7 +710,7 @@ export default function Playbooks() {
                                         <CheckCircle2 size={13} color="#fff" />
                                       </Button>
                                       <Button variant="ghost" size="icon" style={{ width: 28, height: 28 }}
-                                        onClick={() => { setEditandoPreco(null); setValorTemp(''); setValorMaxTemp('') }}>
+                                        onClick={() => { setEditandoPreco(null); setValorTemp(''); setValorMaxTemp(''); setComissaoEncTemp(''); setComissaoCaboTemp('') }}>
                                         ✕
                                       </Button>
                                     </div>
@@ -733,6 +789,34 @@ export default function Playbooks() {
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>{CATEGORIAS.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
               </Select>
+            </div>
+            {/* ── Comissões padrão ── */}
+            <div style={{ background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:10, padding:'12px 14px' }}>
+              <div style={{ fontSize:12, fontWeight:700, color:'#15803d', marginBottom:10 }}>
+                💰 Comissão Padrão (herdada pela obra se não sobrescrita)
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1">
+                  <Label className="text-xs text-muted-foreground">% Encarregado</Label>
+                  <div style={{ position:'relative' }}>
+                    <Input type="number" step="0.01" min="0" max="100"
+                      value={formAtiv.comissao_encarregado ?? ''}
+                      onChange={e => setFA('comissao_encarregado', e.target.value !== '' ? parseFloat(e.target.value) : null)}
+                      placeholder="0.00" style={{ paddingRight:26 }} />
+                    <span style={{ position:'absolute', right:8, top:'50%', transform:'translateY(-50%)', fontSize:11, color:'#94a3b8' }}>%</span>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <Label className="text-xs text-muted-foreground">% Cabo</Label>
+                  <div style={{ position:'relative' }}>
+                    <Input type="number" step="0.01" min="0" max="100"
+                      value={formAtiv.comissao_cabo ?? ''}
+                      onChange={e => setFA('comissao_cabo', e.target.value !== '' ? parseFloat(e.target.value) : null)}
+                      placeholder="0.00" style={{ paddingRight:26 }} />
+                    <span style={{ position:'absolute', right:8, top:'50%', transform:'translateY(-50%)', fontSize:11, color:'#94a3b8' }}>%</span>
+                  </div>
+                </div>
+              </div>
             </div>
             <div className="flex items-center gap-3">
               <button type="button" onClick={() => setFA('ativo', !formAtiv.ativo)}

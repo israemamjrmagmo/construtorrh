@@ -19,6 +19,7 @@ const Documentos     = React.lazy(() => import('@/pages/Documentos'))
 const Ponto          = React.lazy(() => import('@/pages/Ponto'))
 const Pagamentos     = React.lazy(() => import('@/pages/Pagamentos'))
 const Premios        = React.lazy(() => import('@/pages/Premios'))
+const ComissaoEquipe = React.lazy(() => import('@/pages/ComissaoEquipe'))
 const ValeTransportePage = React.lazy(() => import('@/pages/ValeTransportePage'))
 const Provisoes      = React.lazy(() => import('@/pages/Provisoes'))
 const ProvisaoRescisao = React.lazy(() => import('@/pages/ProvisaoRescisao'))
@@ -331,6 +332,16 @@ export default function App() {
                   <PrivateRoute>
                     <Layout>
                       <Premios />
+                    </Layout>
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/comissao-equipe"
+                element={
+                  <PrivateRoute>
+                    <Layout>
+                      <ComissaoEquipe />
                     </Layout>
                   </PrivateRoute>
                 }

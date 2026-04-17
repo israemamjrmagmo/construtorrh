@@ -16,7 +16,7 @@ import {
   Search, Bell, ChevronDown,
   LayoutGrid, FolderKanban, HeartPulse, Banknote, Gavel, Cog,
   BookOpen, CreditCard, Layers, ClipboardCheck, ShoppingBasket, FolderOpen, ScrollText, Receipt, KeyRound, Umbrella,
-  RefreshCw,
+  RefreshCw, Trophy,
 } from 'lucide-react'
 import { useAutoRefresh } from '@/hooks/useAutoRefresh'
 
@@ -40,6 +40,7 @@ const PAGE_TITLES: Record<string, { label: string; icon: React.ElementType; colo
   '/cesta-basica':      { label: 'Cesta Básica',        icon: ShoppingBasket,  color: '#f59e0b' },
   '/adiantamentos':     { label: 'Adiantamentos',       icon: Wallet,          color: '#10b981' },
   '/premios':           { label: 'Prêmios',             icon: Award,           color: '#f59e0b' },
+  '/comissao-equipe':   { label: 'Comissão de Equipe',  icon: Trophy,          color: '#f59e0b' },
   '/fechamento-ponto':  { label: 'Fechamento de Ponto', icon: Lock,            color: '#f97316' },
   '/pagamentos':        { label: 'Pagamentos',          icon: DollarSign,      color: '#22c55e' },
   '/encargos':          { label: 'Encargos',            icon: Briefcase,       color: '#8b5cf6' },
@@ -110,6 +111,7 @@ const NAV_GROUPS = [
       { to: '/cesta-basica',  label: 'Cesta Básica',   icon: ShoppingBasket,color: '#f59e0b' },
       { to: '/adiantamentos', label: 'Adiantamentos',  icon: Wallet,        color: '#34d399' },
       { to: '/premios',       label: 'Prêmios',        icon: Award,         color: '#fbbf24' },
+      { to: '/comissao-equipe', label: 'Comissão de Equipe', icon: Trophy, color: '#f59e0b' },
     ],
   },
   {
