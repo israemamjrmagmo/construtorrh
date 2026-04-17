@@ -629,9 +629,9 @@ export default function FechamentoPonto() {
         (diasNormais - faltas) * vtDiario + vtAdicionalSabDom
       )
 
-      // ── Base de desconto: CLT = horas+DSR+prêmio / Autônomo = total recebido ──
-      // Prêmios são verbas salariais — incidem INSS e IR sobre eles
-      const baseDesconto = tipo === 'clt' ? (valorHoras + dsr + premio) : valorTotal
+      // ── Base de desconto: CLT = horas+DSR (prêmio/bônus ISENTO de INSS e IR) ──
+      // Prêmio é verba indenizatória — não integra base de cálculo de encargos
+      const baseDesconto = tipo === 'clt' ? (valorHoras + dsr) : valorTotal
 
       // 6% SOMENTE: CLT + descontar_6pct=true no VT do mês + obra com desconta_vt=true
       // Regra: o flag desconta_vt da OBRA é a fonte primária de verdade.
