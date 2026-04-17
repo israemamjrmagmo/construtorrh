@@ -347,7 +347,7 @@ function TelaHolerite({ h, colab, empresa, aceite, onVoltar }: {
 
   const rendimentos = [
     { cod:'0001', desc:'Salário / Valor Horas', val:h.salario_base,   cor:'#3b82f6' },
-    { cod:'0002', desc:'Produção',              val:h.valor_producao, cor:'#10b981' },
+    // campo Produção removido (fluxo interno de fechamento)
     { cod:'0003', desc:'DSR',                   val:h.valor_dsr,      cor:'#6366f1' },
     { cod:'0004', desc:'Prêmios',               val:h.valor_premio,   cor:'#f59e0b' },
   ].filter(r => r.val && r.val > 0)
@@ -553,10 +553,10 @@ function TelaHolerite({ h, colab, empresa, aceite, onVoltar }: {
             )}
             <div style={{ marginTop:8 }}>
               <LinhaDetalhe codigo={empresa?.codigos?.salario??'0001'} descricao="Salário / Valor Horas" valor={h.salario_base} cor="#16a34a"/>
-              <LinhaDetalhe codigo={empresa?.codigos?.producao??'0002'} descricao="Produção"              valor={h.valor_producao} cor="#16a34a"/>
+              {/* Produção ocultada no holerite — integrada via fechamento */}
               <LinhaDetalhe codigo={empresa?.codigos?.dsr??'0003'} descricao="DSR"                   valor={h.valor_dsr} cor="#16a34a"/>
               <LinhaDetalhe codigo={empresa?.codigos?.premio??'0004'} descricao="Prêmios"               valor={h.valor_premio} cor="#16a34a"/>
-              {!h.salario_base&&!h.valor_producao&&bruto>0&&<LinhaDetalhe codigo={empresa?.codigos?.salario??'0001'} descricao="Total Rendimentos" valor={bruto} cor="#16a34a"/>}
+              {!h.salario_base&&bruto>0&&<LinhaDetalhe codigo={empresa?.codigos?.salario??'0001'} descricao="Total Rendimentos" valor={bruto} cor="#16a34a"/>}
               <div style={{ display:'flex', justifyContent:'space-between', padding:'10px 16px', background:'#f0fdf4', borderTop:'2px solid #bbf7d0' }}>
                 <span style={{ fontWeight:700, fontSize:13, color:'#15803d' }}>Total Rendimentos</span>
                 <span style={{ fontWeight:800, fontSize:14, color:'#15803d' }}>{fmtR(bruto)}</span>
@@ -874,7 +874,7 @@ function AbaContracheque({ sessao, holerites, lancamentos, colab, empresa, aceit
                         {[
                           { ic:'⏱', label:'H. Normais', val:`${totalHorasNormais.toFixed(1)}h` },
                           { ic:'⚡', label:'H. Extras',  val:`${totalHorasExtras.toFixed(1)}h` },
-                          { ic:'📦', label:'Produção',   val:fmtR(totalProducao) },
+                
                           { ic:'💰', label:'Total',      val:fmtR(totalBrutoLanc), bold:true },
                         ].map(({ ic, label, val, bold }) => (
                           <div key={label} style={{ display:'flex', gap:5, fontSize:11, color:'#374151', alignItems:'center' }}>

@@ -46,6 +46,7 @@ const PortalEpis         = React.lazy(() => import('@/pages/portal/PortalEpis'))
 const PortalDocumentos   = React.lazy(() => import('@/pages/portal/PortalDocumentos'))
 const PortalFerias       = React.lazy(() => import('@/pages/portal/PortalFerias'))
 const PortalPlaybook     = React.lazy(() => import('@/pages/portal/PortalPlaybook'))
+const PortalPremiacoes   = React.lazy(() => import('@/pages/portal/PortalPremiacoes'))
 const PortalProjetos     = React.lazy(() => import('@/pages/portal/PortalProjetos'))
 const PortalLancamentos  = React.lazy(() => import('@/pages/portal/PortalLancamentos'))
 const PortalClima        = React.lazy(() => import('@/pages/portal/PortalClima'))
@@ -152,6 +153,7 @@ export default function App() {
               <Route path="/portal/documentos"    element={<PortalDocumentos />} />
               <Route path="/portal/ferias"        element={<PortalFerias />} />
               <Route path="/portal/playbook"      element={<PortalPlaybook />} />
+              <Route path="/portal/premiacoes"   element={<PortalPremiacoes />} />
               <Route path="/portal/projetos"      element={<PortalProjetos />} />
               <Route path="/portal/lancamentos"   element={<PortalLancamentos />} />
               <Route path="/portal/clima"          element={<PortalClima />} />

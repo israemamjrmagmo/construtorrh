@@ -244,6 +244,7 @@ export default function FechamentoPonto() {
       { data: feriadosRaw },
       { data: adiantRaw },
       { data: vtDescRaw },
+      { data: premiosRaw },
       valorHoraResult,
       funcoesResult,
     ] = await Promise.all([
@@ -283,6 +284,16 @@ export default function FechamentoPonto() {
             .select('colaborador_id')
             .eq('competencia', mr)
             .eq('descontar_6pct', true)
+            .in('colaborador_id', colabIds)
+        : Promise.resolve({ data: [] as any[] }),
+
+      // ── Prêmios aprovados do mês ──────────────────────────────────────────
+      // Inclui prêmios lançados pelo encarregado no portal ou pelo admin
+      colabIds.length
+        ? supabase.from('premios')
+            .select('colaborador_id,valor')
+            .eq('competencia', mr)
+            .in('status', ['aprovado'])
             .in('colaborador_id', colabIds)
         : Promise.resolve({ data: [] as any[] }),
 
@@ -328,6 +339,13 @@ export default function FechamentoPonto() {
     const setDescontoVT6: Set<string> = new Set(
       (vtDescRaw ?? []).map((v: any) => v.colaborador_id)
     )
+
+    // ── Mapa de prêmios aprovados por colaborador ─────────────────────────
+    // Somar todos os prêmios com status 'aprovado' da competência do mês
+    const mapaPremios: Record<string, number> = {}
+    ;(premiosRaw ?? []).forEach((p: any) => {
+      mapaPremios[p.colaborador_id] = (mapaPremios[p.colaborador_id] ?? 0) + (p.valor ?? 0)
+    })
 
     // Mapa funcao_valores: chave "funcao_id_tipo_contrato"
     // (já preenchido via cache acima — mapaValorH / mapaFuncaoFallback)
@@ -539,6 +557,14 @@ export default function FechamentoPonto() {
           + extraSemProd100 * vh * heCoef100
         // Total = horas (dias sem prod) + produção
         valorTotal = valorHoras + valorProd
+      }
+
+      // ── Prêmios do mês (lançados no admin ou pelo encarregado no portal) ──
+      // Prêmios com status 'aprovado' são somados ao valor_premio do fechamento
+      const premioDoMes = mapaPremios[l.colaborador_id] ?? 0
+      if (premioDoMes > 0) {
+        premio += premioDoMes
+        valorTotal += premioDoMes
       }
 
       // ── Adiantamento: desconto de adiantamentos pagos não descontados ─────

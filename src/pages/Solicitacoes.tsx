@@ -4,7 +4,7 @@ import { fetchEmpresaData, CABECALHO_CSS, gerarCabecalhoHTML } from '@/lib/relat
 import { useProfile } from '@/hooks/useProfile'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
-import { Users, AlertTriangle, ShieldCheck, FileImage, RefreshCw, Download, X, Check, Eye, FileBarChart2, FileText, Pencil, Trash2, Save } from 'lucide-react'
+import { Users, AlertTriangle, ShieldCheck, FileImage, RefreshCw, Download, X, Check, Eye, FileBarChart2, FileText, Pencil, Trash2, Save, Trophy } from 'lucide-react'
 
 // ─── tipos ────────────────────────────────────────────────────────────────────
 interface Obra      { id: string; nome: string }
@@ -1893,14 +1893,161 @@ function TabRelatorio({ obras, colabs }: { obras: Obra[]; colabs: Colab[] }) {
   )
 }
 
+
+// ─── ABA PREMIAÇÕES ───────────────────────────────────────────────────────────
+function TabPremiacoes({ colabs, onRefresh }: { colabs: Colab[]; onRefresh: () => void }) {
+  const [rows, setRows]     = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [comp, setComp]     = useState(() => new Date().toISOString().slice(0, 7))
+  const [saving, setSaving] = useState<string | null>(null)
+
+  const fetchPremios = useCallback(async () => {
+    setLoading(true)
+    const { data } = await supabase
+      .from('premios')
+      .select('id,colaborador_id,descricao,valor,competencia,status,observacoes,created_at,obra_id,colaboradores(nome,chapa),obras(nome)')
+      .eq('status', 'pendente')
+      .order('created_at', { ascending: false })
+    setRows(data ?? [])
+    setLoading(false)
+  }, [])
+
+  useEffect(() => { fetchPremios() }, [fetchPremios])
+
+  async function aprovar(id: string) {
+    setSaving(id)
+    const row = rows.find(r => r.id === id)
+    if (!row) { setSaving(null); return }
+
+    // Criar pagamento e aprovar
+    const { data: pag, error: errPag } = await supabase.from('pagamentos').insert({
+      colaborador_id: row.colaborador_id,
+      obra_id:        row.obra_id ?? null,
+      competencia:    row.competencia,
+      tipo:           'premio',
+      valor_bruto:    row.valor ?? 0,
+      valor_liquido:  row.valor ?? 0,
+      status:         'pendente',
+      observacoes:    `Prêmio (portal): ${row.descricao}`,
+    }).select('id').single()
+
+    if (errPag) { toast.error('Erro ao criar pagamento'); setSaving(null); return }
+
+    const { error } = await supabase.from('premios')
+      .update({ status: 'aprovado', pagamento_id: pag.id })
+      .eq('id', id)
+
+    if (error) {
+      await supabase.from('pagamentos').delete().eq('id', pag.id)
+      toast.error('Erro ao aprovar: ' + error.message)
+    } else {
+      toast.success('✅ Premiação aprovada e enviada para Pagamentos!')
+    }
+    setSaving(null)
+    fetchPremios()
+    onRefresh()
+  }
+
+  async function recusar(id: string) {
+    setSaving(id)
+    const { error } = await supabase.from('premios')
+      .update({ status: 'cancelado' })
+      .eq('id', id)
+    if (error) toast.error('Erro: ' + error.message)
+    else toast.success('Premiação recusada.')
+    setSaving(null)
+    fetchPremios()
+    onRefresh()
+  }
+
+  return (
+    <div style={{ padding: '16px 0' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+        <div>
+          <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--foreground)' }}>🏆 Premiações Pendentes</div>
+          <div style={{ fontSize: 12, color: 'var(--muted-foreground)', marginTop: 2 }}>
+            Solicitações de premiação enviadas pelo encarregado via portal de obras
+          </div>
+        </div>
+        <button onClick={fetchPremios} style={{ padding: '6px 14px', borderRadius: 8, border: '1.5px solid var(--border)', background: 'var(--background)', cursor: 'pointer', fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <RefreshCw size={13} /> Atualizar
+        </button>
+      </div>
+
+      {loading ? (
+        <div style={{ padding: 40, textAlign: 'center', color: 'var(--muted-foreground)' }}>Carregando…</div>
+      ) : rows.length === 0 ? (
+        <div style={{ padding: 60, textAlign: 'center', color: 'var(--muted-foreground)' }}>
+          <Trophy size={40} style={{ display: 'block', margin: '0 auto 12px', opacity: .2 }} />
+          <div style={{ fontWeight: 600 }}>Nenhuma premiação pendente</div>
+          <div style={{ fontSize: 12, marginTop: 4, opacity: .7 }}>As solicitações enviadas pelo portal aparecerão aqui</div>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {rows.map(row => (
+            <div key={row.id} style={{ background: 'var(--card)', border: '1.5px solid var(--border)', borderRadius: 12, padding: '14px 16px' }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--foreground)' }}>
+                    👷 {row.colaboradores?.nome ?? '—'}
+                    {row.colaboradores?.chapa && <span style={{ fontFamily: 'monospace', fontSize: 11, marginLeft: 6, opacity: .6 }}>#{row.colaboradores.chapa}</span>}
+                  </div>
+                  <div style={{ fontSize: 13, color: 'var(--muted-foreground)', marginTop: 4 }}>
+                    <strong>Serviço:</strong> {row.descricao}
+                  </div>
+                  {row.obras?.nome && (
+                    <div style={{ fontSize: 12, color: 'var(--muted-foreground)', marginTop: 2 }}>
+                      🏗️ {row.obras.nome}
+                    </div>
+                  )}
+                  {row.observacoes && (
+                    <div style={{ fontSize: 11, color: 'var(--muted-foreground)', marginTop: 4, fontStyle: 'italic' }}>
+                      💬 {row.observacoes}
+                    </div>
+                  )}
+                  <div style={{ fontSize: 11, color: 'var(--muted-foreground)', marginTop: 6 }}>
+                    Competência: <strong>{row.competencia ?? '—'}</strong> · {new Date(row.created_at).toLocaleDateString('pt-BR')}
+                  </div>
+                </div>
+                <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                  <div style={{ fontWeight: 900, fontSize: 18, color: '#f59e0b' }}>
+                    {(row.valor ?? 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, marginTop: 10, justifyContent: 'flex-end' }}>
+                    <button
+                      disabled={saving === row.id}
+                      onClick={() => aprovar(row.id)}
+                      style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: '#15803d', color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: 12, display: 'flex', alignItems: 'center', gap: 5 }}>
+                      <Check size={13} /> Aprovar
+                    </button>
+                    <button
+                      disabled={saving === row.id}
+                      onClick={() => recusar(row.id)}
+                      style={{ padding: '7px 14px', borderRadius: 8, border: '1.5px solid #fecaca', background: '#fff5f5', color: '#dc2626', cursor: 'pointer', fontWeight: 700, fontSize: 12, display: 'flex', alignItems: 'center', gap: 5 }}>
+                      <X size={13} /> Recusar
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div style={{ marginTop: 10, padding: '8px 12px', background: '#fffbeb', borderRadius: 8, fontSize: 11, color: '#92400e', fontWeight: 600 }}>
+                ⚠️ Ao aprovar, a premiação será enviada para <strong>Pagamentos</strong> e integrada automaticamente ao fechamento de ponto do colaborador.
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── PÁGINA PRINCIPAL ─────────────────────────────────────────────────────────
 export default function Solicitacoes() {
   const { profile: perfil } = useProfile()
-  const [aba, setAba] = useState<'cadastros'|'ocorrencias'|'epis'|'documentos'|'desligamentos'|'relatorio'>('cadastros')
+  const [aba, setAba] = useState<'cadastros'|'ocorrencias'|'epis'|'documentos'|'desligamentos'|'relatorio'|'premiacoes'>('cadastros')
   const [obras,  setObras]  = useState<Obra[]>([])
   const [funcoes,setFuncoes]= useState<Funcao[]>([])
   const [colabs, setColabs] = useState<Colab[]>([])
-  const [counts, setCounts] = useState({ cadastros:0, ocorrencias:0, epis:0, documentos:0, desligamentos:0 })
+  const [counts, setCounts] = useState({ cadastros:0, ocorrencias:0, epis:0, documentos:0, desligamentos:0, premiacoes:0 })
 
   const fetchBase = useCallback(async () => {
     const [o, f, c] = await Promise.all([
@@ -1914,12 +2061,13 @@ export default function Solicitacoes() {
   }, [])
 
   const fetchCounts = useCallback(async () => {
-    const [cad, ocor, epi, doc, deslig] = await Promise.all([
+    const [cad, ocor, epi, doc, deslig, prem] = await Promise.all([
       supabase.from('portal_solicitacoes').select('id', { count:'exact', head:true }).eq('tipo','novo_colaborador').eq('status','pendente'),
       supabase.from('portal_ocorrencias').select('id', { count:'exact', head:true }).is('sincronizado_em', null),
       supabase.from('portal_epi_solicitacoes').select('id', { count:'exact', head:true }).eq('status','pendente'),
       supabase.from('portal_documentos').select('id', { count:'exact', head:true }).eq('status','pendente'),
       supabase.from('portal_solicitacoes').select('id', { count:'exact', head:true }).eq('tipo','desligamento').eq('status','pendente'),
+      supabase.from('premios').select('id', { count:'exact', head:true }).eq('status','pendente'),
     ])
     setCounts({
       cadastros:     cad.count    ?? 0,
@@ -1927,6 +2075,7 @@ export default function Solicitacoes() {
       epis:          epi.count    ?? 0,
       documentos:    doc.count    ?? 0,
       desligamentos: deslig.count ?? 0,
+      premiacoes:    prem.count   ?? 0,
     })
   }, [])
 
@@ -1939,9 +2088,10 @@ export default function Solicitacoes() {
     { id:'documentos',   label:'📎 Documentos',     count: counts.documentos,   icon: FileImage },
     { id:'desligamentos',label:'🚪 Desligamentos',  count: counts.desligamentos,icon: FileText },
     { id:'relatorio',    label:'📊 Rel. Presença',  count: 0,                   icon: FileBarChart2 },
+    { id:'premiacoes',   label:'🏆 Premiações',      count: counts.premiacoes,   icon: Trophy },
   ] as const
 
-  const totalPendente = counts.cadastros + counts.ocorrencias + counts.epis + counts.documentos + counts.desligamentos
+  const totalPendente = counts.cadastros + counts.ocorrencias + counts.epis + counts.documentos + counts.desligamentos + counts.premiacoes
 
   return (
     <div className="page-root">
@@ -1986,6 +2136,7 @@ export default function Solicitacoes() {
       {aba === 'documentos'   && <TabDocumentos    obras={obras} colabs={colabs} perfil={perfil} />}
       {aba === 'desligamentos'&& <TabDesligamentos obras={obras} perfil={perfil} />}
       {aba === 'relatorio'    && <TabRelatorio     obras={obras} colabs={colabs} />}
+      {aba === 'premiacoes'   && <TabPremiacoes    colabs={colabs} onRefresh={fetchCounts} />}
     </div>
   )
 }

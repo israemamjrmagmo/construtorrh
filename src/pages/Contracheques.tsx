@@ -156,12 +156,11 @@ function ModalHolerite({ open, onClose, colaborador, onSaved }: {
 
   useEffect(() => {
     const base   = parseFloat(salarioBase)   || 0
-    const prod   = parseFloat(valorProducao) || 0
     const dsr    = parseFloat(valorDsr)      || 0
     const premio = parseFloat(valorPremio)   || 0
-    const total  = base + prod + dsr + premio
+    const total  = base + dsr + premio
     if (total > 0) setBruto(total.toFixed(2))
-  }, [salarioBase, valorProducao, valorDsr, valorPremio])
+  }, [salarioBase, valorDsr, valorPremio])
 
   useEffect(() => {
     const b    = parseFloat(bruto)         || 0
@@ -526,10 +525,7 @@ function ModalHolerite({ open, onClose, colaborador, onSaved }: {
                     <span style={lbl}>Salário / Valor Horas (R$)</span>
                     <input type="number" step="0.01" value={salarioBase} onChange={e => setSalarioBase(e.target.value)} style={inp} placeholder="0,00" />
                   </div>
-                  <div style={col}>
-                    <span style={lbl}>Produção (R$)</span>
-                    <input type="number" step="0.01" value={valorProducao} onChange={e => setValorProducao(e.target.value)} style={inp} placeholder="0,00" />
-                  </div>
+                  {/* Campo Produção removido — valor integrado via fechamento de ponto */}
                 </div>
                 <div style={row}>
                   <div style={col}>

@@ -3,7 +3,7 @@ import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import {
   ClipboardList, AlertTriangle, Home, LogOut,
   HardHat, ShieldCheck, FileImage,
-  BookOpen, FolderOpen,
+  BookOpen, FolderOpen, Trophy,
   WifiOff, Building2, Clock, Menu, X, UserPlus, CloudRain, Umbrella, Wrench,
 } from 'lucide-react'
 import { clearPortalSession, getPortalSession } from '@/hooks/usePortalAuth'
@@ -23,6 +23,7 @@ const ROUTE_LABELS: Record<string, string> = {
   '/portal/projetos':    'Projetos',
   '/portal/clima':       'Clima / Chuva',
   '/portal/equipamentos': 'Equipamentos',
+  '/portal/premiacoes':   'Premiações',
 }
 
 // ── Menu de navegação ────────────────────────────────────────────────────────
@@ -39,6 +40,7 @@ const navItems = [
   { to: '/portal/projetos',     icon: FolderOpen,    label: 'Projetos',   color: '#94a3b8', bg: '#f8fafc' },
   { to: '/portal/clima',        icon: CloudRain, label: 'Clima',       color: '#0ea5e9', bg: '#f0f9ff' },
   { to: '/portal/equipamentos',  icon: Wrench,    label: 'Equipamentos',color: '#b45309', bg: '#fffbeb' },
+  { to: '/portal/premiacoes',    icon: Trophy,    label: 'Premiações',  color: '#f59e0b', bg: '#fffbeb' },
 ]
 
 // ── Relógio isolado — só ele re-renderiza a cada 30s ─────────────────────────
