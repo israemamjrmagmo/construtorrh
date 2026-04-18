@@ -25,6 +25,8 @@ import {
 } from '@/components/ui/table'
 import { useProfile } from '@/hooks/useProfile'
 import { traduzirErro } from '@/lib/erros'
+import { SearchSelect } from '@/components/SearchSelect'
+import ColabSearchSelect from '@/components/ColabSearchSelect'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 interface Encarregado {
@@ -661,23 +663,23 @@ export default function ComissaoEquipe() {
             </div>
             <div className="flex flex-col gap-1">
               <Label className="text-xs text-muted-foreground">Obra Principal (opcional)</Label>
-              <Select value={formEnc.obra_id || '_none'} onValueChange={v=>setFormEnc(p=>({...p,obra_id:v==='_none'?'':v}))}>
-                <SelectTrigger><SelectValue placeholder="Selecione uma obra…"/></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="_none">— Nenhuma —</SelectItem>
-                  {obras.map(o=><SelectItem key={o.id} value={o.id}>{o.nome}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <SearchSelect
+                options={['', ...obras.map(o => o.nome)]}
+                value={obras.find(o => o.id === formEnc.obra_id)?.nome ?? ''}
+                onChange={v => setFormEnc(p => ({ ...p, obra_id: obras.find(o => o.nome === v)?.id ?? '' }))}
+                placeholder="— Nenhuma obra —"
+              />
             </div>
             <div className="flex flex-col gap-1">
               <Label className="text-xs text-muted-foreground">Colaborador vinculado (opcional)</Label>
-              <Select value={formEnc.colaborador_id || '_none'} onValueChange={v=>setFormEnc(p=>({...p,colaborador_id:v==='_none'?'':v}))}>
-                <SelectTrigger><SelectValue placeholder="Vincular a um colaborador…"/></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="_none">— Nenhum —</SelectItem>
-                  {colaboradores.map(c=><SelectItem key={c.id} value={c.id}>{c.nome}{c.chapa?` (${c.chapa})`:''}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <ColabSearchSelect
+                colabs={colaboradores.map(c => ({ id: c.id, nome: c.nome, chapa: c.chapa ?? undefined }))}
+                value={formEnc.colaborador_id}
+                onChange={v => setFormEnc(p => ({ ...p, colaborador_id: v }))}
+                label="COLABORADOR (opcional)"
+                opcional
+                opcionalLabel="— Nenhum colaborador —"
+              />
             </div>
             <div className="flex flex-col gap-1">
               <Label className="text-xs text-muted-foreground">Observações</Label>
@@ -715,36 +717,34 @@ export default function ComissaoEquipe() {
             <div className="grid grid-cols-2 gap-3">
               {/* Encarregado */}
               <div className="flex flex-col gap-1">
-                <Label className="text-xs text-muted-foreground">Encarregado *</Label>
-                <Select value={formCom.encarregado_id||'_none'} onValueChange={v=>setFormCom(p=>({...p,encarregado_id:v==='_none'?'':v}))}>
-                  <SelectTrigger><SelectValue placeholder="Selecione…"/></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="_none">— Selecione —</SelectItem>
-                    {encarregados.filter(e=>e.ativo).map(e=><SelectItem key={e.id} value={e.id}>{e.nome}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <SearchSelect
+                  options={encarregados.filter(e => e.ativo).map(e => e.nome)}
+                  value={encarregados.find(e => e.id === formCom.encarregado_id)?.nome ?? ''}
+                  onChange={v => setFormCom(p => ({ ...p, encarregado_id: encarregados.find(e => e.nome === v)?.id ?? '' }))}
+                  placeholder="🔍 Encarregado *"
+                  style={{ height: 42, borderRadius: 10, border: '1.5px solid #e5e7eb' }}
+                />
               </div>
               {/* Colaborador */}
               <div className="flex flex-col gap-1">
-                <Label className="text-xs text-muted-foreground">Colaborador *</Label>
-                <Select value={formCom.colaborador_id||'_none'} onValueChange={v=>setFormCom(p=>({...p,colaborador_id:v==='_none'?'':v}))}>
-                  <SelectTrigger><SelectValue placeholder="Selecione…"/></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="_none">— Selecione —</SelectItem>
-                    {colaboradores.map(c=><SelectItem key={c.id} value={c.id}>{c.nome}{c.chapa?` (${c.chapa})`:''}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <ColabSearchSelect
+                  colabs={colaboradores.map(c => ({ id: c.id, nome: c.nome, chapa: c.chapa ?? undefined }))}
+                  value={formCom.colaborador_id}
+                  onChange={v => setFormCom(p => ({ ...p, colaborador_id: v }))}
+                  label="COLABORADOR *"
+                  required
+                />
               </div>
               {/* Obra */}
               <div className="flex flex-col gap-1">
                 <Label className="text-xs text-muted-foreground">Obra</Label>
-                <Select value={formCom.obra_id||'_none'} onValueChange={v=>setFormCom(p=>({...p,obra_id:v==='_none'?'':v}))}>
-                  <SelectTrigger><SelectValue placeholder="Selecione…"/></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="_none">— Nenhuma —</SelectItem>
-                    {obras.map(o=><SelectItem key={o.id} value={o.id}>{o.nome}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <SearchSelect
+                  options={obras.map(o => o.nome)}
+                  value={obras.find(o => o.id === formCom.obra_id)?.nome ?? ''}
+                  onChange={v => setFormCom(p => ({ ...p, obra_id: obras.find(o => o.nome === v)?.id ?? '' }))}
+                  placeholder="— Nenhuma —"
+                  style={{ height: 42, borderRadius: 10, border: '1.5px solid #e5e7eb' }}
+                />
               </div>
               {/* Competência */}
               <div className="flex flex-col gap-1">
@@ -758,13 +758,19 @@ export default function ComissaoEquipe() {
             {/* Atividade */}
             <div className="flex flex-col gap-1">
               <Label className="text-xs text-muted-foreground">Atividade (Playbook)</Label>
-              <Select value={formCom.playbook_atividade_id||'_none'} onValueChange={v=>onSelectAtividade(v==='_none'?'':v)}>
-                <SelectTrigger><SelectValue placeholder="Selecione do playbook (preenche % automaticamente)…"/></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="_none">— Manual (sem vínculo) —</SelectItem>
-                  {atividades.map(a=><SelectItem key={a.id} value={a.id}>{a.descricao} · {a.categoria ?? 'Geral'} {a.comissao_encarregado!=null?`(${a.comissao_encarregado}% enc.)`:''}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <SearchSelect
+                options={['', ...atividades.map(a => `${a.descricao} · ${a.categoria ?? 'Geral'}${a.comissao_encarregado != null ? ` (${a.comissao_encarregado}% enc.)` : ''}`)]}
+                value={atividades.find(a => a.id === formCom.playbook_atividade_id)
+                  ? `${atividades.find(a => a.id === formCom.playbook_atividade_id)!.descricao} · ${atividades.find(a => a.id === formCom.playbook_atividade_id)!.categoria ?? 'Geral'}${atividades.find(a => a.id === formCom.playbook_atividade_id)!.comissao_encarregado != null ? ` (${atividades.find(a => a.id === formCom.playbook_atividade_id)!.comissao_encarregado}% enc.)` : ''}`
+                  : ''}
+                onChange={v => {
+                  if (!v) { onSelectAtividade(''); return }
+                  const atv = atividades.find(a => `${a.descricao} · ${a.categoria ?? 'Geral'}${a.comissao_encarregado != null ? ` (${a.comissao_encarregado}% enc.)` : ''}` === v)
+                  if (atv) onSelectAtividade(atv.id)
+                }}
+                placeholder="🔍 Selecione do playbook (preenche % automaticamente)…"
+                style={{ height: 42, borderRadius: 10, border: '1.5px solid #e5e7eb' }}
+              />
             </div>
             <div className="flex flex-col gap-1">
               <Label className="text-xs text-muted-foreground">Descrição da atividade (se manual)</Label>
