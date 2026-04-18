@@ -165,7 +165,6 @@ export default function Playbooks() {
       { data: prodPPD },
       { data: prodProd },
       { data: encRaw },
-      { data: vinculosRaw },
     ] = await Promise.all([
       supabase.from('playbook_atividades').select('*').order('categoria').order('descricao'),
       supabase.from('obras').select('id, nome, codigo, status').order('nome'),
@@ -173,8 +172,14 @@ export default function Playbooks() {
       supabase.from('portal_ponto_diario').select('playbook_item_id').not('playbook_item_id', 'is', null),
       supabase.from('portal_producao').select('playbook_item_id').not('playbook_item_id', 'is', null),
       supabase.from('colaboradores').select('id, nome, chapa, funcao').eq('status', 'ativo').order('nome'),
-      supabase.from('obra_vinculos_equipe').select('*, colaboradores(nome, chapa, funcao)').eq('ativo', true),
     ])
+    // Busca defensiva — tabela pode não existir ainda (executar MIGRACAO_ENC_CABO_VINCULOS.sql)
+    const { data: vinculosRaw } = await supabase
+      .from('obra_vinculos_equipe')
+      .select('*, colaboradores(nome, chapa, funcao)')
+      .eq('ativo', true)
+      .catch(() => ({ data: [] }))
+
     setAtividades((ativRaw ?? []) as Atividade[])
     setObras((obrasRaw ?? []) as Obra[])
     setPrecos((precosRaw ?? []) as AtividadePreco[])
@@ -1080,7 +1085,7 @@ export default function Playbooks() {
 
       {/* ════════ Modal Vincular Equipe (Encarregado/Cabo por Obra) ══════════ */}
       <Dialog open={modalEquipe} onOpenChange={o => { setModalEquipe(o); if (!o) setFormVinculo({ colaborador_id: '', funcao: 'encarregado' }) }}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-2xl" style={{ maxHeight:'90vh', overflowY:'auto' }}>
           <DialogHeader>
             <DialogTitle style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <Users size={16} color="#0d3f56" />
@@ -1094,21 +1099,24 @@ export default function Playbooks() {
             </div>
 
             {/* Formulário de novo vínculo */}
-            <div style={{ background:'#f8fafc', border:'1px solid #e2e8f0', borderRadius:10, padding:'14px' }}>
-              <div style={{ fontSize:12, fontWeight:700, color:'#1e293b', marginBottom:10 }}>➕ Adicionar vínculo</div>
-              <div className="grid grid-cols-3 gap-3">
-                <div className="col-span-2 flex flex-col gap-1">
-                  <Label className="text-xs text-muted-foreground">Colaborador *</Label>
+            <div style={{ background:'#f8fafc', border:'1px solid #e2e8f0', borderRadius:10, padding:'16px' }}>
+              <div style={{ fontSize:12, fontWeight:700, color:'#1e293b', marginBottom:12 }}>➕ Adicionar vínculo</div>
+              <div style={{ display:'flex', gap:12, alignItems:'flex-end', flexWrap:'wrap' }}>
+                {/* Colaborador — ocupa maior parte do espaço */}
+                <div style={{ flex:'1 1 320px', minWidth:280 }}>
+                  <Label className="text-xs text-muted-foreground" style={{ display:'block', marginBottom:4 }}>Colaborador *</Label>
                   <ColabSearchSelect
                     colabs={encarregados}
                     value={formVinculo.colaborador_id}
                     onChange={v => setFormVinculo(p => ({ ...p, colaborador_id: v }))}
-                    label="COLABORADOR"
+                    label=""
                     required
+                    placeholder="🔍 Buscar por nome ou chapa…"
                   />
                 </div>
-                <div className="flex flex-col gap-1">
-                  <Label className="text-xs text-muted-foreground">Função *</Label>
+                {/* Função */}
+                <div style={{ flex:'0 0 160px' }}>
+                  <Label className="text-xs text-muted-foreground" style={{ display:'block', marginBottom:4 }}>Função *</Label>
                   <Select value={formVinculo.funcao} onValueChange={v => setFormVinculo(p => ({ ...p, funcao: v as 'encarregado'|'cabo' }))}>
                     <SelectTrigger style={{ height:42 }}><SelectValue /></SelectTrigger>
                     <SelectContent>
@@ -1117,11 +1125,14 @@ export default function Playbooks() {
                     </SelectContent>
                   </Select>
                 </div>
+                {/* Botão */}
+                <div style={{ flex:'0 0 auto', paddingBottom:1 }}>
+                  <Button disabled={!formVinculo.colaborador_id || savingEquipe} onClick={handleSalvarVinculo}
+                    style={{ height:42, background:'#0d3f56', color:'#fff', gap:6, whiteSpace:'nowrap' }}>
+                    <Link2 size={13} /> {savingEquipe ? 'Salvando…' : 'Vincular'}
+                  </Button>
+                </div>
               </div>
-              <Button disabled={!formVinculo.colaborador_id || savingEquipe} onClick={handleSalvarVinculo}
-                style={{ marginTop:10, background:'#0d3f56', color:'#fff', gap:6 }}>
-                <Link2 size={13} /> {savingEquipe ? 'Salvando…' : 'Vincular'}
-              </Button>
             </div>
 
             {/* Lista de vínculos atuais */}

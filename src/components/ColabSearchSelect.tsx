@@ -86,14 +86,16 @@ export default function ColabSearchSelect({
 
   return (
     <div ref={wrapRef} style={{ position: 'relative' }}>
-      {/* Label */}
-      <label style={{
-        display: 'block', fontSize: 11, fontWeight: 700,
-        color: '#374151', textTransform: 'uppercase',
-        letterSpacing: '0.05em', marginBottom: 4,
-      }}>
-        {label}
-      </label>
+      {/* Label — omite se label="" */}
+      {label && (
+        <label style={{
+          display: 'block', fontSize: 11, fontWeight: 700,
+          color: '#374151', textTransform: 'uppercase',
+          letterSpacing: '0.05em', marginBottom: 4,
+        }}>
+          {label}
+        </label>
+      )}
 
       {/* Campo principal — mostra selecionado ou placeholder */}
       {!aberto ? (
