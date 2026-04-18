@@ -3,7 +3,7 @@ import { toast } from 'sonner'
 import {
   Plus, Pencil, Trash2, BookOpen, Search, Tag, Building2,
   ChevronRight, HardHat, Globe, DollarSign, Settings, Copy,
-  CheckCircle2, AlertCircle, Layers,
+  CheckCircle2, AlertCircle, Layers, Users, Link2,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { formatCurrency } from '@/lib/utils'
@@ -53,7 +53,18 @@ interface AtividadePreco {
   ativo: boolean
   comissao_encarregado: number | null
   comissao_cabo: number | null
+  valor_premiacao_enc: number | null
+  valor_premiacao_cabo: number | null
   encarregado_id: string | null
+}
+
+interface ObraVinculo {
+  id: string
+  obra_id: string
+  colaborador_id: string
+  funcao: 'encarregado' | 'cabo'
+  ativo: boolean
+  colaboradores?: { nome: string; chapa: string | null; funcao: string | null }
 }
 
 interface Obra {
@@ -127,11 +138,22 @@ export default function Playbooks() {
   const [ativSelecionadas, setAtivSelecionadas]   = useState<Set<string>>(new Set())
   const [adicionando, setAdicionando]             = useState(false)
 
-  // ─── Popup vínculo de profissional ────────────────────────────────────────
+  // ─── Popup vínculo de profissional (legado) ──────────────────────────────
   const [encarregados, setEncarregados]   = useState<ColabOption[]>([])
-  const [modalVinculo, setModalVinculo]   = useState<string | null>(null) // atividade_id sendo vinculada
+  const [modalVinculo, setModalVinculo]   = useState<string | null>(null)
   const [encVinculoTemp, setEncVinculoTemp] = useState('')
   const [savingVinculo, setSavingVinculo] = useState(false)
+
+  // ─── Vínculos de Equipe (Encarregado/Cabo por Obra) ───────────────────────
+  const [vinculos, setVinculos]           = useState<ObraVinculo[]>([])
+  const [modalEquipe, setModalEquipe]     = useState(false)
+  const [formVinculo, setFormVinculo]     = useState({ colaborador_id: '', funcao: 'encarregado' as 'encarregado' | 'cabo' })
+  const [savingEquipe, setSavingEquipe]   = useState(false)
+  const [deleteVinculo, setDeleteVinculo] = useState<ObraVinculo | null>(null)
+
+  // ─── Premiação como valor R$ (substitui %) ────────────────────────────────
+  const [premioEncTemp, setPremioEncTemp]   = useState('')
+  const [premioCaboTemp, setPremioCaboTemp] = useState('')
 
   // ── Fetch tudo ──────────────────────────────────────────────────────────────
   const fetchData = useCallback(async () => {
@@ -143,6 +165,7 @@ export default function Playbooks() {
       { data: prodPPD },
       { data: prodProd },
       { data: encRaw },
+      { data: vinculosRaw },
     ] = await Promise.all([
       supabase.from('playbook_atividades').select('*').order('categoria').order('descricao'),
       supabase.from('obras').select('id, nome, codigo, status').order('nome'),
@@ -150,11 +173,13 @@ export default function Playbooks() {
       supabase.from('portal_ponto_diario').select('playbook_item_id').not('playbook_item_id', 'is', null),
       supabase.from('portal_producao').select('playbook_item_id').not('playbook_item_id', 'is', null),
       supabase.from('colaboradores').select('id, nome, chapa, funcao').eq('status', 'ativo').order('nome'),
+      supabase.from('obra_vinculos_equipe').select('*, colaboradores(nome, chapa, funcao)').eq('ativo', true),
     ])
     setAtividades((ativRaw ?? []) as Atividade[])
     setObras((obrasRaw ?? []) as Obra[])
     setPrecos((precosRaw ?? []) as AtividadePreco[])
     setEncarregados((encRaw ?? []).map((c: any) => ({ id: c.id, nome: c.nome, chapa: c.chapa, funcao: c.funcao })))
+    setVinculos((vinculosRaw ?? []) as ObraVinculo[])
     // Contar usos de cada atividade
     const cnt: Record<string, number> = {}
     ;[...(prodPPD ?? []), ...(prodProd ?? [])].forEach((p: any) => {
@@ -269,13 +294,22 @@ export default function Playbooks() {
     if (!obraSel) return
     setSavingPreco(ativId)
     const existing = precosMap.get(`${ativId}::${obraSel.id}`)
-    const precoMax = valorMaxTemp.trim() !== '' ? (parseFloat(valorMaxTemp) || 0) : null
-    const comissaoEnc = comissaoEncTemp.trim() !== '' ? parseFloat(comissaoEncTemp) : null
+    const precoMax     = valorMaxTemp.trim() !== '' ? (parseFloat(valorMaxTemp) || 0) : null
+    const comissaoEnc  = comissaoEncTemp.trim() !== '' ? parseFloat(comissaoEncTemp) : null
     const comissaoCabo = comissaoCaboTemp.trim() !== '' ? parseFloat(comissaoCaboTemp) : null
-    const payload = { atividade_id: ativId, obra_id: obraSel.id, preco_unitario: valor, preco_maximo: precoMax, ativo: true,
-      comissao_encarregado: comissaoEnc, comissao_cabo: comissaoCabo }
+    const premioEnc    = premioEncTemp.trim() !== '' ? parseFloat(premioEncTemp) : null
+    const premioCabo   = premioCaboTemp.trim() !== '' ? parseFloat(premioCaboTemp) : null
+    const payload = {
+      atividade_id: ativId, obra_id: obraSel.id, preco_unitario: valor, preco_maximo: precoMax, ativo: true,
+      comissao_encarregado: comissaoEnc, comissao_cabo: comissaoCabo,
+      valor_premiacao_enc: premioEnc, valor_premiacao_cabo: premioCabo,
+    }
     const res = existing
-      ? await supabase.from('playbook_precos').update({ preco_unitario: valor, preco_maximo: precoMax, comissao_encarregado: comissaoEnc, comissao_cabo: comissaoCabo }).eq('id', existing.id)
+      ? await supabase.from('playbook_precos').update({
+          preco_unitario: valor, preco_maximo: precoMax,
+          comissao_encarregado: comissaoEnc, comissao_cabo: comissaoCabo,
+          valor_premiacao_enc: premioEnc, valor_premiacao_cabo: premioCabo,
+        }).eq('id', existing.id)
       : await supabase.from('playbook_precos').insert(payload)
     if (res.error) { setSavingPreco(null); toast.error(traduzirErro(res.error.message)); return }
     // Sincroniza playbook_itens (FK de ponto_producao aponta para esta tabela)
@@ -359,6 +393,35 @@ export default function Playbooks() {
     toast.success(`${ok} preço(s) copiados de "${obras.find(o => o.id === obraOrigem)?.nome}"!`)
     fetchData()
   }
+
+  // ─── CRUD Vínculos de Equipe ──────────────────────────────────────────────
+  async function handleSalvarVinculo() {
+    if (!obraSel || !formVinculo.colaborador_id) { toast.error('Selecione o colaborador'); return }
+    setSavingEquipe(true)
+    const { error } = await supabase.from('obra_vinculos_equipe').upsert({
+      obra_id: obraSel.id,
+      colaborador_id: formVinculo.colaborador_id,
+      funcao: formVinculo.funcao,
+      ativo: true,
+    }, { onConflict: 'obra_id,colaborador_id,funcao' })
+    setSavingEquipe(false)
+    if (error) { toast.error(error.message); return }
+    toast.success('Vínculo salvo!')
+    setFormVinculo({ colaborador_id: '', funcao: 'encarregado' })
+    fetchData()
+  }
+
+  async function handleDeleteVinculo() {
+    if (!deleteVinculo) return
+    await supabase.from('obra_vinculos_equipe').delete().eq('id', deleteVinculo.id)
+    toast.success('Vínculo removido!')
+    setDeleteVinculo(null); fetchData()
+  }
+
+  const vinculosObra = useMemo(() =>
+    obraSel ? vinculos.filter(v => v.obra_id === obraSel.id) : [],
+    [vinculos, obraSel]
+  )
 
   // ─── Render ────────────────────────────────────────────────────────────────
   return (
@@ -569,11 +632,24 @@ export default function Playbooks() {
                       {totalObra > 0 && <span style={{ marginLeft: 10, color: '#b45309' }}>· Soma: {formatCurrency(totalObra)}</span>}
                     </div>
                   </div>
-                  {canCreate && (
-                    <Button variant="outline" size="sm" onClick={() => { setObraOrigem(''); setModalCopiar(true) }} style={{ gap: 5 }}>
-                      <Copy size={13} /> Copiar preços de outra obra
-                    </Button>
-                  )}
+                  <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+                    {canCreate && (
+                      <Button variant="outline" size="sm" onClick={() => { setObraOrigem(''); setModalCopiar(true) }} style={{ gap: 5 }}>
+                        <Copy size={13} /> Copiar preços de outra obra
+                      </Button>
+                    )}
+                    {canEdit && (
+                      <Button size="sm" onClick={() => setModalEquipe(true)}
+                        style={{ gap:5, background:'#0d3f56', color:'#fff' }}>
+                        <Users size={13} /> Vincular Equipe
+                        {vinculosObra.length > 0 && (
+                          <span style={{ background:'rgba(255,255,255,0.25)', borderRadius:20, padding:'1px 7px', fontSize:10, fontWeight:700 }}>
+                            {vinculosObra.length}
+                          </span>
+                        )}
+                      </Button>
+                    )}
+                  </div>
                 </div>
 
                 {/* Alerta de atividades sem preço */}
@@ -603,8 +679,8 @@ export default function Playbooks() {
                           <TableHead style={{ width: 110 }}>Categoria</TableHead>
                           <TableHead style={{ width: 130, textAlign: 'right' }}>Preço Negociado</TableHead>
                           <TableHead style={{ width: 120, textAlign: 'right' }}>Preço Máximo</TableHead>
-                          <TableHead style={{ width: 90, textAlign: 'right' }}>% Enc.</TableHead>
-                          <TableHead style={{ width: 90, textAlign: 'right' }}>% Cabo</TableHead>
+                          <TableHead style={{ width: 100, textAlign: 'right' }}>R$ Enc.</TableHead>
+                          <TableHead style={{ width: 100, textAlign: 'right' }}>R$ Cabo</TableHead>
                           <TableHead style={{ width: 130 }}>Profissional</TableHead>
                           <TableHead style={{ width: 60, textAlign: 'center' }}>Ações</TableHead>
                         </TableRow>
@@ -658,6 +734,8 @@ export default function Playbooks() {
                                         setValorMaxTemp(precoAtual?.preco_maximo != null ? String(precoAtual.preco_maximo) : '')
                                         setComissaoEncTemp(precoAtual?.comissao_encarregado != null ? String(precoAtual.comissao_encarregado) : '')
                                         setComissaoCaboTemp(precoAtual?.comissao_cabo != null ? String(precoAtual.comissao_cabo) : '')
+                                        setPremioEncTemp(precoAtual?.valor_premiacao_enc != null ? String(precoAtual.valor_premiacao_enc) : '')
+                                        setPremioCaboTemp(precoAtual?.valor_premiacao_cabo != null ? String(precoAtual.valor_premiacao_cabo) : '')
                                       }}
                                       title="Clique para editar o preço"
                                     >
@@ -688,6 +766,8 @@ export default function Playbooks() {
                                         setValorMaxTemp(precoAtual?.preco_maximo != null ? String(precoAtual.preco_maximo) : '')
                                         setComissaoEncTemp(precoAtual?.comissao_encarregado != null ? String(precoAtual.comissao_encarregado) : '')
                                         setComissaoCaboTemp(precoAtual?.comissao_cabo != null ? String(precoAtual.comissao_cabo) : '')
+                                        setPremioEncTemp(precoAtual?.valor_premiacao_enc != null ? String(precoAtual.valor_premiacao_enc) : '')
+                                        setPremioCaboTemp(precoAtual?.valor_premiacao_cabo != null ? String(precoAtual.valor_premiacao_cabo) : '')
                                       }}
                                       title="Clique para editar o preço máximo"
                                     >
@@ -695,39 +775,43 @@ export default function Playbooks() {
                                     </span>
                                   )}
                                 </TableCell>
-                                {/* % Encarregado */}
+                                {/* R$ Encarregado */}
                                 <TableCell style={{ textAlign: 'right' }}>
                                   {emEdicao ? (
                                     <div style={{ position:'relative' }}>
-                                      <Input type="number" step="0.01" min="0" max="100"
-                                        value={comissaoEncTemp}
-                                        onChange={e => setComissaoEncTemp(e.target.value)}
-                                        placeholder="—"
-                                        style={{ width:80, textAlign:'right', paddingRight:20 }}
+                                      <span style={{ position:'absolute', left:7, top:'50%', transform:'translateY(-50%)', fontSize:10, color:'#94a3b8' }}>R$</span>
+                                      <Input type="number" step="0.01" min="0"
+                                        value={premioEncTemp}
+                                        onChange={e => setPremioEncTemp(e.target.value)}
+                                        placeholder="0,00"
+                                        style={{ width:90, textAlign:'right', paddingLeft:24 }}
                                       />
-                                      <span style={{ position:'absolute', right:6, top:'50%', transform:'translateY(-50%)', fontSize:10, color:'#94a3b8' }}>%</span>
                                     </div>
                                   ) : (
-                                    <span style={{ fontSize:12, fontWeight:600, color: precoAtual?.comissao_encarregado ? '#15803d' : '#cbd5e1' }}>
-                                      {precoAtual?.comissao_encarregado != null ? `${precoAtual.comissao_encarregado}%` : (a.comissao_encarregado != null ? `${a.comissao_encarregado}% ⬡` : '—')}
+                                    <span style={{ fontSize:12, fontWeight:700, color: precoAtual?.valor_premiacao_enc ? '#15803d' : '#cbd5e1' }}>
+                                      {precoAtual?.valor_premiacao_enc != null && precoAtual.valor_premiacao_enc > 0
+                                        ? formatCurrency(precoAtual.valor_premiacao_enc)
+                                        : '—'}
                                     </span>
                                   )}
                                 </TableCell>
-                                {/* % Cabo */}
+                                {/* R$ Cabo */}
                                 <TableCell style={{ textAlign: 'right' }}>
                                   {emEdicao ? (
                                     <div style={{ position:'relative' }}>
-                                      <Input type="number" step="0.01" min="0" max="100"
-                                        value={comissaoCaboTemp}
-                                        onChange={e => setComissaoCaboTemp(e.target.value)}
-                                        placeholder="—"
-                                        style={{ width:80, textAlign:'right', paddingRight:20 }}
+                                      <span style={{ position:'absolute', left:7, top:'50%', transform:'translateY(-50%)', fontSize:10, color:'#94a3b8' }}>R$</span>
+                                      <Input type="number" step="0.01" min="0"
+                                        value={premioCaboTemp}
+                                        onChange={e => setPremioCaboTemp(e.target.value)}
+                                        placeholder="0,00"
+                                        style={{ width:90, textAlign:'right', paddingLeft:24 }}
                                       />
-                                      <span style={{ position:'absolute', right:6, top:'50%', transform:'translateY(-50%)', fontSize:10, color:'#94a3b8' }}>%</span>
                                     </div>
                                   ) : (
-                                    <span style={{ fontSize:12, fontWeight:600, color: precoAtual?.comissao_cabo ? '#b45309' : '#cbd5e1' }}>
-                                      {precoAtual?.comissao_cabo != null ? `${precoAtual.comissao_cabo}%` : (a.comissao_cabo != null ? `${a.comissao_cabo}% ⬡` : '—')}
+                                    <span style={{ fontSize:12, fontWeight:700, color: precoAtual?.valor_premiacao_cabo ? '#b45309' : '#cbd5e1' }}>
+                                      {precoAtual?.valor_premiacao_cabo != null && precoAtual.valor_premiacao_cabo > 0
+                                        ? formatCurrency(precoAtual.valor_premiacao_cabo)
+                                        : '—'}
                                     </span>
                                   )}
                                 </TableCell>
@@ -768,7 +852,7 @@ export default function Playbooks() {
                                         <CheckCircle2 size={13} color="#fff" />
                                       </Button>
                                       <Button variant="ghost" size="icon" style={{ width: 28, height: 28 }}
-                                        onClick={() => { setEditandoPreco(null); setValorTemp(''); setValorMaxTemp(''); setComissaoEncTemp(''); setComissaoCaboTemp('') }}>
+                                        onClick={() => { setEditandoPreco(null); setValorTemp(''); setValorMaxTemp(''); setComissaoEncTemp(''); setComissaoCaboTemp(''); setPremioEncTemp(''); setPremioCaboTemp('') }}>
                                         ✕
                                       </Button>
                                     </div>
@@ -848,30 +932,33 @@ export default function Playbooks() {
                 <SelectContent>{CATEGORIAS.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
               </Select>
             </div>
-            {/* ── Comissões padrão ── */}
+            {/* ── Premiação padrão R$ por unidade ── */}
             <div style={{ background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:10, padding:'12px 14px' }}>
-              <div style={{ fontSize:12, fontWeight:700, color:'#15803d', marginBottom:10 }}>
-                💰 Comissão Padrão (herdada pela obra se não sobrescrita)
+              <div style={{ fontSize:12, fontWeight:700, color:'#15803d', marginBottom:6 }}>
+                💰 Premiação Padrão — Valor por unidade produzida (herdado pela obra)
+              </div>
+              <div style={{ fontSize:11, color:'#64748b', marginBottom:10 }}>
+                Ex.: Reboco R$ 0,50/m² → pedreiro produz 100m² → Enc. recebe R$ 50,00
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="flex flex-col gap-1">
-                  <Label className="text-xs text-muted-foreground">% Encarregado</Label>
+                  <Label className="text-xs text-muted-foreground">R$/un. Encarregado</Label>
                   <div style={{ position:'relative' }}>
-                    <Input type="number" step="0.01" min="0" max="100"
+                    <span style={{ position:'absolute', left:8, top:'50%', transform:'translateY(-50%)', fontSize:11, color:'#94a3b8' }}>R$</span>
+                    <Input type="number" step="0.01" min="0"
                       value={formAtiv.comissao_encarregado ?? ''}
                       onChange={e => setFA('comissao_encarregado', e.target.value !== '' ? parseFloat(e.target.value) : null)}
-                      placeholder="0.00" style={{ paddingRight:26 }} />
-                    <span style={{ position:'absolute', right:8, top:'50%', transform:'translateY(-50%)', fontSize:11, color:'#94a3b8' }}>%</span>
+                      placeholder="0,00" style={{ paddingLeft:26 }} />
                   </div>
                 </div>
                 <div className="flex flex-col gap-1">
-                  <Label className="text-xs text-muted-foreground">% Cabo</Label>
+                  <Label className="text-xs text-muted-foreground">R$/un. Cabo</Label>
                   <div style={{ position:'relative' }}>
-                    <Input type="number" step="0.01" min="0" max="100"
+                    <span style={{ position:'absolute', left:8, top:'50%', transform:'translateY(-50%)', fontSize:11, color:'#94a3b8' }}>R$</span>
+                    <Input type="number" step="0.01" min="0"
                       value={formAtiv.comissao_cabo ?? ''}
                       onChange={e => setFA('comissao_cabo', e.target.value !== '' ? parseFloat(e.target.value) : null)}
-                      placeholder="0.00" style={{ paddingRight:26 }} />
-                    <span style={{ position:'absolute', right:8, top:'50%', transform:'translateY(-50%)', fontSize:11, color:'#94a3b8' }}>%</span>
+                      placeholder="0,00" style={{ paddingLeft:26 }} />
                   </div>
                 </div>
               </div>
@@ -970,51 +1057,139 @@ export default function Playbooks() {
         </DialogContent>
       </Dialog>
 
-      {/* ════════ Modal Vínculo de Profissional ══════════════════════════════ */}
+      {/* ════════ Modal Vínculo Legado (compatibilidade) ════════════════════ */}
       <Dialog open={!!modalVinculo} onOpenChange={o => { if (!o) { setModalVinculo(null); setEncVinculoTemp('') } }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <UserCheck size={16} color="#15803d" />
-              Vincular Profissional à Atividade
+              <UserCheck size={16} color="#15803d" /> Vincular Profissional à Atividade
             </DialogTitle>
           </DialogHeader>
           <div className="py-3 space-y-4">
-            {modalVinculo && (() => {
-              const atv = atividades.find(a => a.id === modalVinculo)
-              return (
-                <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 8, padding: '10px 14px', fontSize: 13 }}>
-                  <span style={{ fontWeight: 700, color: '#0369a1' }}>Atividade: </span>
-                  <span style={{ color: '#1e293b' }}>{atv?.descricao ?? '—'}</span>
-                  <span style={{ color: '#64748b', marginLeft: 8, fontSize: 11 }}>· {obraSel?.nome}</span>
-                </div>
-              )
-            })()}
-            <ColabSearchSelect
-              colabs={encarregados}
-              value={encVinculoTemp}
-              onChange={setEncVinculoTemp}
-              label="PROFISSIONAL RESPONSÁVEL"
-              opcional
-              opcionalLabel="— Sem vínculo (limpar) —"
-              placeholder="🔍 Buscar colaborador (nome ou chapa)…"
-            />
-            <div style={{ fontSize: 12, color: '#64748b', background: '#f8fafc', borderRadius: 8, padding: '8px 12px' }}>
-              💡 O profissional vinculado aparece como referência na atividade. Não afeta cálculo de comissão.
-            </div>
+            <ColabSearchSelect colabs={encarregados} value={encVinculoTemp} onChange={setEncVinculoTemp}
+              label="PROFISSIONAL RESPONSÁVEL" opcional opcionalLabel="— Sem vínculo (limpar) —" />
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => { setModalVinculo(null); setEncVinculoTemp('') }}>Cancelar</Button>
-            <Button
-              disabled={savingVinculo}
-              onClick={salvarVinculo}
-              style={{ background: '#15803d', color: '#fff' }}
-            >
-              {savingVinculo ? 'Salvando…' : '✅ Salvar Vínculo'}
+            <Button disabled={savingVinculo} onClick={salvarVinculo} style={{ background:'#15803d', color:'#fff' }}>
+              {savingVinculo ? 'Salvando…' : '✅ Salvar'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ════════ Modal Vincular Equipe (Encarregado/Cabo por Obra) ══════════ */}
+      <Dialog open={modalEquipe} onOpenChange={o => { setModalEquipe(o); if (!o) setFormVinculo({ colaborador_id: '', funcao: 'encarregado' }) }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Users size={16} color="#0d3f56" />
+              Equipe da Obra — {obraSel?.nome}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-2 space-y-4">
+            {/* Info */}
+            <div style={{ background:'#f0f9ff', border:'1px solid #bae6fd', borderRadius:8, padding:'10px 14px', fontSize:12, color:'#0369a1' }}>
+              📌 Sempre 1 encarregado por obra. Pode haver múltiplos cabos — o valor de premiação será dividido igualmente entre eles.
+            </div>
+
+            {/* Formulário de novo vínculo */}
+            <div style={{ background:'#f8fafc', border:'1px solid #e2e8f0', borderRadius:10, padding:'14px' }}>
+              <div style={{ fontSize:12, fontWeight:700, color:'#1e293b', marginBottom:10 }}>➕ Adicionar vínculo</div>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="col-span-2 flex flex-col gap-1">
+                  <Label className="text-xs text-muted-foreground">Colaborador *</Label>
+                  <ColabSearchSelect
+                    colabs={encarregados}
+                    value={formVinculo.colaborador_id}
+                    onChange={v => setFormVinculo(p => ({ ...p, colaborador_id: v }))}
+                    label="COLABORADOR"
+                    required
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <Label className="text-xs text-muted-foreground">Função *</Label>
+                  <Select value={formVinculo.funcao} onValueChange={v => setFormVinculo(p => ({ ...p, funcao: v as 'encarregado'|'cabo' }))}>
+                    <SelectTrigger style={{ height:42 }}><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="encarregado">👷 Encarregado</SelectItem>
+                      <SelectItem value="cabo">🔧 Cabo</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <Button disabled={!formVinculo.colaborador_id || savingEquipe} onClick={handleSalvarVinculo}
+                style={{ marginTop:10, background:'#0d3f56', color:'#fff', gap:6 }}>
+                <Link2 size={13} /> {savingEquipe ? 'Salvando…' : 'Vincular'}
+              </Button>
+            </div>
+
+            {/* Lista de vínculos atuais */}
+            {vinculosObra.length === 0 ? (
+              <div style={{ textAlign:'center', padding:'20px', color:'#94a3b8', fontSize:13 }}>
+                Nenhuma equipe vinculada a esta obra ainda.
+              </div>
+            ) : (
+              <div style={{ border:'1px solid #e2e8f0', borderRadius:8, overflow:'hidden' }}>
+                <div style={{ background:'#f8fafc', padding:'8px 12px', fontSize:11, fontWeight:700, color:'#475569', display:'grid', gridTemplateColumns:'1fr 100px 36px', gap:8 }}>
+                  <span>COLABORADOR</span><span>FUNÇÃO</span><span></span>
+                </div>
+                {vinculosObra.map((v, i) => (
+                  <div key={v.id} style={{
+                    display:'grid', gridTemplateColumns:'1fr 100px 36px', gap:8,
+                    padding:'10px 12px', alignItems:'center',
+                    borderTop: i > 0 ? '1px solid #f1f5f9' : 'none',
+                    background: i % 2 === 0 ? '#fff' : '#fafafa',
+                  }}>
+                    <div>
+                      <div style={{ fontSize:13, fontWeight:600, color:'#1e293b' }}>
+                        {v.colaboradores?.nome ?? '—'}
+                      </div>
+                      {v.colaboradores?.chapa && (
+                        <div style={{ fontSize:10, color:'#94a3b8', fontFamily:'monospace' }}>{v.colaboradores.chapa}</div>
+                      )}
+                    </div>
+                    <span style={{
+                      fontSize:11, fontWeight:700, padding:'3px 9px', borderRadius:20,
+                      background: v.funcao === 'encarregado' ? '#fff7ed' : '#f0f9ff',
+                      color: v.funcao === 'encarregado' ? '#c2410c' : '#0369a1',
+                      border: `1px solid ${v.funcao === 'encarregado' ? '#fed7aa' : '#bae6fd'}`,
+                      whiteSpace: 'nowrap',
+                    }}>
+                      {v.funcao === 'encarregado' ? '👷 Encarregado' : '🔧 Cabo'}
+                    </span>
+                    {canDelete && (
+                      <Button variant="ghost" size="icon" style={{ width:28, height:28, color:'#dc2626' }}
+                        onClick={() => setDeleteVinculo(v)}>
+                        <Trash2 size={12} />
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setModalEquipe(false)}>Fechar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ════════ Confirm Excluir Vínculo ════════════════════════════════════ */}
+      <AlertDialog open={!!deleteVinculo} onOpenChange={o => !o && setDeleteVinculo(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remover vínculo?</AlertDialogTitle>
+            <AlertDialogDescription>
+              <strong>{deleteVinculo?.colaboradores?.nome}</strong> ({deleteVinculo?.funcao}) será desvinculado desta obra.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteVinculo} style={{ background:'#dc2626', color:'#fff' }}>Remover</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* ════════ AlertDialog Excluir Atividade ═════════════════════════════ */}
       <AlertDialog open={!!deleteAtiv} onOpenChange={o => !o && setDeleteAtiv(null)}>
