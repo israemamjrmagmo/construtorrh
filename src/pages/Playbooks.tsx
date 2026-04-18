@@ -3,7 +3,7 @@ import { toast } from 'sonner'
 import {
   Plus, Pencil, Trash2, BookOpen, Search, Tag, Building2,
   ChevronRight, HardHat, Globe, DollarSign, Settings, Copy,
-  CheckCircle2, AlertCircle, Layers, Users, Link2,
+  CheckCircle2, AlertCircle, Layers,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { formatCurrency } from '@/lib/utils'
@@ -56,6 +56,7 @@ interface AtividadePreco {
   valor_premiacao_enc: number | null
   valor_premiacao_cabo: number | null
   encarregado_id: string | null
+  cabo_id: string | null
 }
 
 interface ObraVinculo {
@@ -138,17 +139,17 @@ export default function Playbooks() {
   const [ativSelecionadas, setAtivSelecionadas]   = useState<Set<string>>(new Set())
   const [adicionando, setAdicionando]             = useState(false)
 
-  // ─── Popup vínculo de profissional (legado) ──────────────────────────────
+  // ─── Lista de colaboradores (para popup de vínculo) ────────────────────────
   const [encarregados, setEncarregados]   = useState<ColabOption[]>([])
-  const [modalVinculo, setModalVinculo]   = useState<string | null>(null)
-  const [encVinculoTemp, setEncVinculoTemp] = useState('')
-  const [savingVinculo, setSavingVinculo] = useState(false)
 
-  // ─── Vínculos de Equipe (Encarregado/Cabo por Obra) ───────────────────────
+  // ─── Popup: vincular profissional direto na atividade ────────────────────
+  type ModalVincProf = { atividadeId: string; funcao: 'enc' | 'cabo'; valorAtual: string } | null
+  const [modalVincProf, setModalVincProf] = useState<ModalVincProf>(null)
+  const [savingVincProf, setSavingVincProf] = useState(false)
+  const [vincProfTemp, setVincProfTemp]   = useState('')
+
+  // ─── Vínculos legados (mantém para não quebrar queries existentes) ─────────
   const [vinculos, setVinculos]           = useState<ObraVinculo[]>([])
-  const [modalEquipe, setModalEquipe]     = useState(false)
-  const [formVinculo, setFormVinculo]     = useState({ colaborador_id: '', funcao: 'encarregado' as 'encarregado' | 'cabo' })
-  const [savingEquipe, setSavingEquipe]   = useState(false)
   const [deleteVinculo, setDeleteVinculo] = useState<ObraVinculo | null>(null)
 
   // ─── Premiação como valor R$ (substitui %) ────────────────────────────────
@@ -171,18 +172,23 @@ export default function Playbooks() {
         supabase.from('obras').select('id, nome, codigo, status').order('nome'),
         supabase.from('portal_ponto_diario').select('playbook_item_id').not('playbook_item_id', 'is', null),
         supabase.from('portal_producao').select('playbook_item_id').not('playbook_item_id', 'is', null),
-        supabase.from('colaboradores').select('id, nome, chapa, funcao').order('nome'),
+        supabase.from('colaboradores').select('id, nome, chapa, funcao').order('nome').limit(2000),
       ])
 
       if (eAtiv) console.warn('[Playbooks] playbook_atividades:', eAtiv.message)
       if (eObras) console.warn('[Playbooks] obras:', eObras.message)
-      if (eEnc)  console.warn('[Playbooks] colaboradores:', eEnc.message)
+      if (eEnc) {
+        console.error('[Playbooks] ERRO ao buscar colaboradores:', eEnc.message, eEnc.code)
+        toast.error('Erro ao carregar colaboradores: ' + eEnc.message)
+      } else {
+        console.log('[Playbooks] colaboradores carregados:', encRaw?.length ?? 0)
+      }
 
       // ── playbook_precos: tenta com colunas novas, fallback sem elas ─────────
       let precosRaw: any[] | null = null
       const { data: precosNovo, error: ePrecoNovo } = await supabase
         .from('playbook_precos')
-        .select('id, atividade_id, obra_id, preco_unitario, preco_maximo, ativo, comissao_encarregado, comissao_cabo, valor_premiacao_enc, valor_premiacao_cabo, encarregado_id')
+        .select('id, atividade_id, obra_id, preco_unitario, preco_maximo, ativo, comissao_encarregado, comissao_cabo, valor_premiacao_enc, valor_premiacao_cabo, encarregado_id, cabo_id')
       if (!ePrecoNovo) {
         precosRaw = precosNovo
       } else {
@@ -190,7 +196,7 @@ export default function Playbooks() {
         console.info('[Playbooks] colunas valor_premiacao_* não existem (execute a migração):', ePrecoNovo.message)
         const { data: precosLegado } = await supabase
           .from('playbook_precos')
-          .select('id, atividade_id, obra_id, preco_unitario, preco_maximo, ativo, comissao_encarregado, comissao_cabo, encarregado_id')
+          .select('id, atividade_id, obra_id, preco_unitario, preco_maximo, ativo, comissao_encarregado, comissao_cabo, encarregado_id, cabo_id')
         precosRaw = precosLegado
       }
 
@@ -207,7 +213,7 @@ export default function Playbooks() {
       setAtividades((ativRaw ?? []) as Atividade[])
       setObras((obrasRaw ?? []) as Obra[])
       setPrecos((precosRaw ?? []) as AtividadePreco[])
-      setEncarregados((encRaw ?? []).map((c: any) => ({ id: c.id, nome: c.nome, chapa: c.chapa, funcao: c.funcao })))
+      setEncarregados((encRaw ?? []).map((c: any) => ({ id: c.id, nome: c.nome, chapa: c.chapa ?? null, funcao: c.funcao ?? null })))
       setVinculos((vinculosRaw ?? []) as ObraVinculo[])
 
       // ── Contar usos de cada atividade ────────────────────────────────────────
@@ -408,20 +414,31 @@ export default function Playbooks() {
     setModalAddAtividade(false); setAtivSelecionadas(new Set()); fetchData()
   }
 
-  // ─── Vincular encarregado a uma atividade na obra ─────────────────────────
-  async function salvarVinculo() {
-    if (!modalVinculo || !obraSel) return
-    setSavingVinculo(true)
-    const existing = precosMap.get(`${modalVinculo}::${obraSel.id}`)
+  // ─── Vincular profissional direto na atividade (Enc ou Cabo) ──────────────
+  async function salvarVincProf() {
+    if (!modalVincProf || !obraSel) return
+    setSavingVincProf(true)
+    const existing = precosMap.get(`${modalVincProf.atividadeId}::${obraSel.id}`)
     if (existing) {
-      await supabase.from('playbook_precos')
-        .update({ encarregado_id: encVinculoTemp || null })
+      const campo = modalVincProf.funcao === 'enc' ? 'encarregado_id' : 'cabo_id'
+      const { error } = await supabase.from('playbook_precos')
+        .update({ [campo]: vincProfTemp || null })
         .eq('id', existing.id)
-      toast.success(encVinculoTemp ? 'Profissional vinculado!' : 'Vínculo removido.')
+      if (error) {
+        if (error.code === '42703') {
+          // coluna cabo_id ainda não existe — orientar
+          toast.error('⚠️ Execute a migração SQL para adicionar cabo_id. Veja docs/MIGRACAO_ENC_CABO_VINCULOS.sql')
+        } else {
+          toast.error(traduzirErro(error.message))
+        }
+        setSavingVincProf(false)
+        return
+      }
+      toast.success(vincProfTemp ? 'Profissional vinculado!' : 'Vínculo removido.')
     }
-    setSavingVinculo(false)
-    setModalVinculo(null)
-    setEncVinculoTemp('')
+    setSavingVincProf(false)
+    setModalVincProf(null)
+    setVincProfTemp('')
     fetchData()
   }
 
@@ -444,30 +461,7 @@ export default function Playbooks() {
     fetchData()
   }
 
-  // ─── CRUD Vínculos de Equipe ──────────────────────────────────────────────
-  async function handleSalvarVinculo() {
-    if (!obraSel || !formVinculo.colaborador_id) { toast.error('Selecione o colaborador'); return }
-    setSavingEquipe(true)
-    const { error } = await supabase.from('obra_vinculos_equipe').upsert({
-      obra_id: obraSel.id,
-      colaborador_id: formVinculo.colaborador_id,
-      funcao: formVinculo.funcao,
-      ativo: true,
-    }, { onConflict: 'obra_id,colaborador_id,funcao' })
-    setSavingEquipe(false)
-    if (error) {
-      if (error.message.includes('does not exist') || error.code === '42P01') {
-        toast.error('⚠️ Execute a migração SQL no Supabase antes de vincular equipe. Veja docs/MIGRACAO_ENC_CABO_VINCULOS.sql')
-      } else {
-        toast.error(traduzirErro(error.message))
-      }
-      return
-    }
-    toast.success('Vínculo salvo!')
-    setFormVinculo({ colaborador_id: '', funcao: 'encarregado' })
-    fetchData()
-  }
-
+  // ─── CRUD Vínculos de Equipe (legado — mantido mas sem UI) ──────────────────
   async function handleDeleteVinculo() {
     if (!deleteVinculo) return
     await supabase.from('obra_vinculos_equipe').delete().eq('id', deleteVinculo.id)
@@ -695,17 +689,6 @@ export default function Playbooks() {
                         <Copy size={13} /> Copiar preços de outra obra
                       </Button>
                     )}
-                    {canEdit && (
-                      <Button size="sm" onClick={() => setModalEquipe(true)}
-                        style={{ gap:5, background:'#0d3f56', color:'#fff' }}>
-                        <Users size={13} /> Vincular Equipe
-                        {vinculosObra.length > 0 && (
-                          <span style={{ background:'rgba(255,255,255,0.25)', borderRadius:20, padding:'1px 7px', fontSize:10, fontWeight:700 }}>
-                            {vinculosObra.length}
-                          </span>
-                        )}
-                      </Button>
-                    )}
                   </div>
                 </div>
 
@@ -736,9 +719,8 @@ export default function Playbooks() {
                           <TableHead style={{ width: 110 }}>Categoria</TableHead>
                           <TableHead style={{ width: 130, textAlign: 'right' }}>Preço Negociado</TableHead>
                           <TableHead style={{ width: 120, textAlign: 'right' }}>Preço Máximo</TableHead>
-                          <TableHead style={{ width: 100, textAlign: 'right' }}>R$ Enc.</TableHead>
-                          <TableHead style={{ width: 100, textAlign: 'right' }}>R$ Cabo</TableHead>
-                          <TableHead style={{ width: 130 }}>Profissional</TableHead>
+                          <TableHead style={{ width: 130, textAlign: 'right' }}>R$ Enc.</TableHead>
+                          <TableHead style={{ width: 130, textAlign: 'right' }}>R$ Cabo</TableHead>
                           <TableHead style={{ width: 60, textAlign: 'center' }}>Ações</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -832,7 +814,7 @@ export default function Playbooks() {
                                     </span>
                                   )}
                                 </TableCell>
-                                {/* R$ Encarregado */}
+                                {/* R$ Encarregado + vincular */}
                                 <TableCell style={{ textAlign: 'right' }}>
                                   {emEdicao ? (
                                     <div style={{ position:'relative' }}>
@@ -844,15 +826,36 @@ export default function Playbooks() {
                                         style={{ width:90, textAlign:'right', paddingLeft:24 }}
                                       />
                                     </div>
-                                  ) : (
-                                    <span style={{ fontSize:12, fontWeight:700, color: precoAtual?.valor_premiacao_enc ? '#15803d' : '#cbd5e1' }}>
-                                      {precoAtual?.valor_premiacao_enc != null && precoAtual.valor_premiacao_enc > 0
-                                        ? formatCurrency(precoAtual.valor_premiacao_enc)
-                                        : '—'}
-                                    </span>
-                                  )}
+                                  ) : (() => {
+                                    const enc = encarregados.find(e => e.id === precoAtual?.encarregado_id)
+                                    return (
+                                      <div style={{ display:'flex', alignItems:'center', justifyContent:'flex-end', gap:4 }}>
+                                        <span style={{ fontSize:12, fontWeight:700, color: precoAtual?.valor_premiacao_enc ? '#15803d' : '#cbd5e1' }}>
+                                          {precoAtual?.valor_premiacao_enc != null && precoAtual.valor_premiacao_enc > 0
+                                            ? formatCurrency(precoAtual.valor_premiacao_enc) : '—'}
+                                        </span>
+                                        {canEdit && precoAtual && (
+                                          <button type="button"
+                                            title={enc ? `Enc.: ${enc.nome}` : 'Vincular Encarregado'}
+                                            onClick={() => { setModalVincProf({ atividadeId: a.id, funcao:'enc', valorAtual: precoAtual?.encarregado_id ?? '' }); setVincProfTemp(precoAtual?.encarregado_id ?? '') }}
+                                            style={{
+                                              display:'flex', alignItems:'center', gap:3,
+                                              padding:'3px 6px', borderRadius:6, fontSize:10, fontWeight:600, cursor:'pointer',
+                                              border: enc ? '1.5px solid #bbf7d0' : '1.5px solid #e5e7eb',
+                                              background: enc ? '#f0fdf4' : '#f8fafc',
+                                              color: enc ? '#15803d' : '#94a3b8',
+                                              whiteSpace:'nowrap', flexShrink:0,
+                                            }}
+                                          >
+                                            <UserCheck size={10}/>
+                                            {enc ? enc.nome.split(' ')[0] : 'Enc.'}
+                                          </button>
+                                        )}
+                                      </div>
+                                    )
+                                  })()}
                                 </TableCell>
-                                {/* R$ Cabo */}
+                                {/* R$ Cabo + vincular */}
                                 <TableCell style={{ textAlign: 'right' }}>
                                   {emEdicao ? (
                                     <div style={{ position:'relative' }}>
@@ -864,40 +867,32 @@ export default function Playbooks() {
                                         style={{ width:90, textAlign:'right', paddingLeft:24 }}
                                       />
                                     </div>
-                                  ) : (
-                                    <span style={{ fontSize:12, fontWeight:700, color: precoAtual?.valor_premiacao_cabo ? '#b45309' : '#cbd5e1' }}>
-                                      {precoAtual?.valor_premiacao_cabo != null && precoAtual.valor_premiacao_cabo > 0
-                                        ? formatCurrency(precoAtual.valor_premiacao_cabo)
-                                        : '—'}
-                                    </span>
-                                  )}
-                                </TableCell>
-                                {/* Profissional vinculado */}
-                                <TableCell>
-                                  {(() => {
-                                    const enc = encarregados.find(e => e.id === precoAtual?.encarregado_id)
+                                  ) : (() => {
+                                    const cab = encarregados.find(e => e.id === (precoAtual as any)?.cabo_id)
                                     return (
-                                      <button
-                                        type="button"
-                                        title={enc ? `Vinculado: ${enc.nome}` : 'Vincular profissional'}
-                                        onClick={() => {
-                                          if (!canEdit) return
-                                          setModalVinculo(a.id)
-                                          setEncVinculoTemp(precoAtual?.encarregado_id ?? '')
-                                        }}
-                                        style={{
-                                          display: 'flex', alignItems: 'center', gap: 5,
-                                          padding: '4px 8px', borderRadius: 7, fontSize: 11, fontWeight: 600,
-                                          border: `1.5px solid ${enc ? '#bbf7d0' : '#e5e7eb'}`,
-                                          background: enc ? '#f0fdf4' : '#f8fafc',
-                                          color: enc ? '#15803d' : '#94a3b8',
-                                          cursor: canEdit ? 'pointer' : 'default',
-                                          whiteSpace: 'nowrap', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis',
-                                        }}
-                                      >
-                                        <UserCheck size={11} />
-                                        {enc ? enc.nome.split(' ')[0] : 'Vincular'}
-                                      </button>
+                                      <div style={{ display:'flex', alignItems:'center', justifyContent:'flex-end', gap:4 }}>
+                                        <span style={{ fontSize:12, fontWeight:700, color: precoAtual?.valor_premiacao_cabo ? '#b45309' : '#cbd5e1' }}>
+                                          {precoAtual?.valor_premiacao_cabo != null && precoAtual.valor_premiacao_cabo > 0
+                                            ? formatCurrency(precoAtual.valor_premiacao_cabo) : '—'}
+                                        </span>
+                                        {canEdit && precoAtual && (
+                                          <button type="button"
+                                            title={cab ? `Cabo: ${cab.nome}` : 'Vincular Cabo'}
+                                            onClick={() => { setModalVincProf({ atividadeId: a.id, funcao:'cabo', valorAtual: (precoAtual as any)?.cabo_id ?? '' }); setVincProfTemp((precoAtual as any)?.cabo_id ?? '') }}
+                                            style={{
+                                              display:'flex', alignItems:'center', gap:3,
+                                              padding:'3px 6px', borderRadius:6, fontSize:10, fontWeight:600, cursor:'pointer',
+                                              border: cab ? '1.5px solid #bae6fd' : '1.5px solid #e5e7eb',
+                                              background: cab ? '#f0f9ff' : '#f8fafc',
+                                              color: cab ? '#0369a1' : '#94a3b8',
+                                              whiteSpace:'nowrap', flexShrink:0,
+                                            }}
+                                          >
+                                            <UserCheck size={10}/>
+                                            {cab ? cab.nome.split(' ')[0] : 'Cabo'}
+                                          </button>
+                                        )}
+                                      </div>
                                     )
                                   })()}
                                 </TableCell>
@@ -1114,145 +1109,40 @@ export default function Playbooks() {
         </DialogContent>
       </Dialog>
 
-      {/* ════════ Modal Vínculo Legado (compatibilidade) ════════════════════ */}
-      <Dialog open={!!modalVinculo} onOpenChange={o => { if (!o) { setModalVinculo(null); setEncVinculoTemp('') } }}>
-        <DialogContent className="max-w-md">
+      {/* ════════ Modal ─ Vincular Profissional à Atividade (Enc ou Cabo) ════════ */}
+      <Dialog open={!!modalVincProf} onOpenChange={o => { if (!o) { setModalVincProf(null); setVincProfTemp('') } }}>
+        <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <UserCheck size={16} color="#15803d" /> Vincular Profissional à Atividade
+            <DialogTitle style={{ display:'flex', alignItems:'center', gap:8 }}>
+              <UserCheck size={16} color={modalVincProf?.funcao === 'enc' ? '#15803d' : '#0369a1'} />
+              {modalVincProf?.funcao === 'enc' ? '👷 Vincular Encarregado' : '🔧 Vincular Cabo'}
             </DialogTitle>
           </DialogHeader>
-          <div className="py-3 space-y-4">
-            <ColabSearchSelect colabs={encarregados} value={encVinculoTemp} onChange={setEncVinculoTemp}
-              label="PROFISSIONAL RESPONSÁVEL" opcional opcionalLabel="— Sem vínculo (limpar) —" />
+          <div className="py-3">
+            <ColabSearchSelect
+              colabs={encarregados}
+              value={vincProfTemp}
+              onChange={setVincProfTemp}
+              label="PROFISSIONAL"
+              opcional
+              opcionalLabel="— Sem vínculo (remover) —"
+              placeholder="🔍 Buscar por nome ou chapa…"
+            />
+            {encarregados.length === 0 && (
+              <p style={{ marginTop:10, fontSize:12, color:'#dc2626', fontWeight:600 }}>
+                ⚠️ Nenhum colaborador carregado. Verifique a permissão RLS da tabela <code>colaboradores</code> no Supabase.
+              </p>
+            )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setModalVinculo(null); setEncVinculoTemp('') }}>Cancelar</Button>
-            <Button disabled={savingVinculo} onClick={salvarVinculo} style={{ background:'#15803d', color:'#fff' }}>
-              {savingVinculo ? 'Salvando…' : '✅ Salvar'}
+            <Button variant="outline" onClick={() => { setModalVincProf(null); setVincProfTemp('') }}>Cancelar</Button>
+            <Button disabled={savingVincProf} onClick={salvarVincProf}
+              style={{ background: modalVincProf?.funcao === 'enc' ? '#15803d' : '#0369a1', color:'#fff' }}>
+              {savingVincProf ? 'Salvando…' : '✅ Salvar'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* ════════ Modal Vincular Equipe (Encarregado/Cabo por Obra) ══════════ */}
-      <Dialog open={modalEquipe} onOpenChange={o => { setModalEquipe(o); if (!o) setFormVinculo({ colaborador_id: '', funcao: 'encarregado' }) }}>
-        <DialogContent className="max-w-2xl" style={{ maxHeight:'90vh', overflowY:'auto' }}>
-          <DialogHeader>
-            <DialogTitle style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Users size={16} color="#0d3f56" />
-              Equipe da Obra — {obraSel?.nome}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="py-2 space-y-4">
-            {/* Info */}
-            <div style={{ background:'#f0f9ff', border:'1px solid #bae6fd', borderRadius:8, padding:'10px 14px', fontSize:12, color:'#0369a1' }}>
-              📌 Sempre 1 encarregado por obra. Pode haver múltiplos cabos — o valor de premiação será dividido igualmente entre eles.
-            </div>
-
-            {/* Formulário de novo vínculo */}
-            <div style={{ background:'#f8fafc', border:'1px solid #e2e8f0', borderRadius:10, padding:'16px' }}>
-              <div style={{ fontSize:12, fontWeight:700, color:'#1e293b', marginBottom:12 }}>➕ Adicionar vínculo</div>
-              <div style={{ display:'flex', gap:12, alignItems:'flex-end', flexWrap:'wrap' }}>
-                {/* Colaborador — ocupa maior parte do espaço */}
-                <div style={{ flex:'1 1 320px', minWidth:280 }}>
-                  <Label className="text-xs text-muted-foreground" style={{ display:'block', marginBottom:4 }}>Colaborador *</Label>
-                  <ColabSearchSelect
-                    colabs={encarregados}
-                    value={formVinculo.colaborador_id}
-                    onChange={v => setFormVinculo(p => ({ ...p, colaborador_id: v }))}
-                    label=""
-                    required
-                    placeholder="🔍 Buscar por nome ou chapa…"
-                  />
-                </div>
-                {/* Função */}
-                <div style={{ flex:'0 0 160px' }}>
-                  <Label className="text-xs text-muted-foreground" style={{ display:'block', marginBottom:4 }}>Função *</Label>
-                  <Select value={formVinculo.funcao} onValueChange={v => setFormVinculo(p => ({ ...p, funcao: v as 'encarregado'|'cabo' }))}>
-                    <SelectTrigger style={{ height:42 }}><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="encarregado">👷 Encarregado</SelectItem>
-                      <SelectItem value="cabo">🔧 Cabo</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                {/* Botão */}
-                <div style={{ flex:'0 0 auto', paddingBottom:1 }}>
-                  <Button disabled={!formVinculo.colaborador_id || savingEquipe} onClick={handleSalvarVinculo}
-                    style={{ height:42, background:'#0d3f56', color:'#fff', gap:6, whiteSpace:'nowrap' }}>
-                    <Link2 size={13} /> {savingEquipe ? 'Salvando…' : 'Vincular'}
-                  </Button>
-                </div>
-              </div>
-            </div>
-
-            {/* Lista de vínculos atuais */}
-            {vinculosObra.length === 0 ? (
-              <div style={{ textAlign:'center', padding:'20px', color:'#94a3b8', fontSize:13 }}>
-                Nenhuma equipe vinculada a esta obra ainda.
-              </div>
-            ) : (
-              <div style={{ border:'1px solid #e2e8f0', borderRadius:8, overflow:'hidden' }}>
-                <div style={{ background:'#f8fafc', padding:'8px 12px', fontSize:11, fontWeight:700, color:'#475569', display:'grid', gridTemplateColumns:'1fr 100px 36px', gap:8 }}>
-                  <span>COLABORADOR</span><span>FUNÇÃO</span><span></span>
-                </div>
-                {vinculosObra.map((v, i) => (
-                  <div key={v.id} style={{
-                    display:'grid', gridTemplateColumns:'1fr 100px 36px', gap:8,
-                    padding:'10px 12px', alignItems:'center',
-                    borderTop: i > 0 ? '1px solid #f1f5f9' : 'none',
-                    background: i % 2 === 0 ? '#fff' : '#fafafa',
-                  }}>
-                    <div>
-                      <div style={{ fontSize:13, fontWeight:600, color:'#1e293b' }}>
-                        {v.colaboradores?.nome ?? '—'}
-                      </div>
-                      {v.colaboradores?.chapa && (
-                        <div style={{ fontSize:10, color:'#94a3b8', fontFamily:'monospace' }}>{v.colaboradores.chapa}</div>
-                      )}
-                    </div>
-                    <span style={{
-                      fontSize:11, fontWeight:700, padding:'3px 9px', borderRadius:20,
-                      background: v.funcao === 'encarregado' ? '#fff7ed' : '#f0f9ff',
-                      color: v.funcao === 'encarregado' ? '#c2410c' : '#0369a1',
-                      border: `1px solid ${v.funcao === 'encarregado' ? '#fed7aa' : '#bae6fd'}`,
-                      whiteSpace: 'nowrap',
-                    }}>
-                      {v.funcao === 'encarregado' ? '👷 Encarregado' : '🔧 Cabo'}
-                    </span>
-                    {canDelete && (
-                      <Button variant="ghost" size="icon" style={{ width:28, height:28, color:'#dc2626' }}
-                        onClick={() => setDeleteVinculo(v)}>
-                        <Trash2 size={12} />
-                      </Button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setModalEquipe(false)}>Fechar</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* ════════ Confirm Excluir Vínculo ════════════════════════════════════ */}
-      <AlertDialog open={!!deleteVinculo} onOpenChange={o => !o && setDeleteVinculo(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Remover vínculo?</AlertDialogTitle>
-            <AlertDialogDescription>
-              <strong>{deleteVinculo?.colaboradores?.nome}</strong> ({deleteVinculo?.funcao}) será desvinculado desta obra.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteVinculo} style={{ background:'#dc2626', color:'#fff' }}>Remover</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
       {/* ════════ AlertDialog Excluir Atividade ═════════════════════════════ */}
       <AlertDialog open={!!deleteAtiv} onOpenChange={o => !o && setDeleteAtiv(null)}>

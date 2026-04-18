@@ -81,3 +81,12 @@ DROP TRIGGER IF EXISTS comissoes_equipe_v2_updated_at ON comissoes_equipe_v2;
 CREATE TRIGGER comissoes_equipe_v2_updated_at
   BEFORE UPDATE ON comissoes_equipe_v2
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- ============================================================
+-- Migração v2: Adicionar cabo_id em playbook_precos
+-- Permite vincular um Cabo diretamente à atividade na obra
+-- ============================================================
+ALTER TABLE playbook_precos
+  ADD COLUMN IF NOT EXISTS cabo_id UUID REFERENCES colaboradores(id) ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS idx_playbook_precos_cabo ON playbook_precos (cabo_id);
