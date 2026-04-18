@@ -158,40 +158,49 @@ export default function Playbooks() {
   // ── Fetch tudo ──────────────────────────────────────────────────────────────
   const fetchData = useCallback(async () => {
     setLoading(true)
-    const [
-      { data: ativRaw },
-      { data: obrasRaw },
-      { data: precosRaw },
-      { data: prodPPD },
-      { data: prodProd },
-      { data: encRaw },
-    ] = await Promise.all([
-      supabase.from('playbook_atividades').select('*').order('categoria').order('descricao'),
-      supabase.from('obras').select('id, nome, codigo, status').order('nome'),
-      supabase.from('playbook_precos').select('*'),
-      supabase.from('portal_ponto_diario').select('playbook_item_id').not('playbook_item_id', 'is', null),
-      supabase.from('portal_producao').select('playbook_item_id').not('playbook_item_id', 'is', null),
-      supabase.from('colaboradores').select('id, nome, chapa, funcao').eq('status', 'ativo').order('nome'),
-    ])
-    // Busca defensiva — tabela pode não existir ainda (executar MIGRACAO_ENC_CABO_VINCULOS.sql)
-    const { data: vinculosRaw } = await supabase
-      .from('obra_vinculos_equipe')
-      .select('*, colaboradores(nome, chapa, funcao)')
-      .eq('ativo', true)
-      .catch(() => ({ data: [] }))
+    try {
+      const [
+        { data: ativRaw,  error: eAtiv  },
+        { data: obrasRaw, error: eObras },
+        { data: precosRaw },
+        { data: prodPPD },
+        { data: prodProd },
+        { data: encRaw },
+      ] = await Promise.all([
+        supabase.from('playbook_atividades').select('*').order('categoria').order('descricao'),
+        supabase.from('obras').select('id, nome, codigo, status').order('nome'),
+        supabase.from('playbook_precos').select('id, atividade_id, obra_id, preco_unitario, preco_maximo, ativo, comissao_encarregado, comissao_cabo, valor_premiacao_enc, valor_premiacao_cabo, encarregado_id'),
+        supabase.from('portal_ponto_diario').select('playbook_item_id').not('playbook_item_id', 'is', null),
+        supabase.from('portal_producao').select('playbook_item_id').not('playbook_item_id', 'is', null),
+        supabase.from('colaboradores').select('id, nome, chapa, funcao').eq('status', 'ativo').order('nome'),
+      ])
 
-    setAtividades((ativRaw ?? []) as Atividade[])
-    setObras((obrasRaw ?? []) as Obra[])
-    setPrecos((precosRaw ?? []) as AtividadePreco[])
-    setEncarregados((encRaw ?? []).map((c: any) => ({ id: c.id, nome: c.nome, chapa: c.chapa, funcao: c.funcao })))
-    setVinculos((vinculosRaw ?? []) as ObraVinculo[])
+      if (eAtiv)  console.warn('[Playbooks] playbook_atividades:', eAtiv.message)
+      if (eObras) console.warn('[Playbooks] obras:', eObras.message)
+
+      // Busca de vínculos — tabela opcional (requer MIGRACAO_ENC_CABO_VINCULOS.sql)
+      const { data: vinculosRaw, error: eVinc } = await supabase
+        .from('obra_vinculos_equipe')
+        .select('id, obra_id, colaborador_id, funcao, ativo, colaboradores(nome, chapa, funcao)')
+        .eq('ativo', true)
+      if (eVinc) console.info('[Playbooks] obra_vinculos_equipe não existe ainda (execute a migração):', eVinc.message)
+
+      setAtividades((ativRaw ?? []) as Atividade[])
+      setObras((obrasRaw ?? []) as Obra[])
+      setPrecos((precosRaw ?? []) as AtividadePreco[])
+      setEncarregados((encRaw ?? []).map((c: any) => ({ id: c.id, nome: c.nome, chapa: c.chapa, funcao: c.funcao })))
+      setVinculos((vinculosRaw ?? []) as ObraVinculo[])
+    } catch (err) {
+      console.error('[Playbooks] fetchData falhou:', err)
+    } finally {
+      setLoading(false)
+    }
     // Contar usos de cada atividade
     const cnt: Record<string, number> = {}
     ;[...(prodPPD ?? []), ...(prodProd ?? [])].forEach((p: any) => {
       if (p.playbook_item_id) cnt[p.playbook_item_id] = (cnt[p.playbook_item_id] ?? 0) + 1
     })
     setProdPorItem(cnt)
-    setLoading(false)
   }, [])
 
   useEffect(() => { fetchData() }, [fetchData])
@@ -309,13 +318,28 @@ export default function Playbooks() {
       comissao_encarregado: comissaoEnc, comissao_cabo: comissaoCabo,
       valor_premiacao_enc: premioEnc, valor_premiacao_cabo: premioCabo,
     }
-    const res = existing
+    // Tenta salvar com colunas novas; se a migração não foi rodada, salva sem elas
+    let res = existing
       ? await supabase.from('playbook_precos').update({
           preco_unitario: valor, preco_maximo: precoMax,
           comissao_encarregado: comissaoEnc, comissao_cabo: comissaoCabo,
           valor_premiacao_enc: premioEnc, valor_premiacao_cabo: premioCabo,
         }).eq('id', existing.id)
       : await supabase.from('playbook_precos').insert(payload)
+    // Fallback: se deu erro de coluna desconhecida, tenta sem as colunas novas
+    if (res.error && (res.error.message.includes('valor_premiacao') || res.error.code === '42703')) {
+      console.info('[Playbooks] colunas valor_premiacao_* não existem ainda — salvar sem elas')
+      res = existing
+        ? await supabase.from('playbook_precos').update({
+            preco_unitario: valor, preco_maximo: precoMax,
+            comissao_encarregado: comissaoEnc, comissao_cabo: comissaoCabo,
+          }).eq('id', existing.id)
+        : await supabase.from('playbook_precos').insert({
+            atividade_id: payload.atividade_id, obra_id: payload.obra_id,
+            preco_unitario: valor, preco_maximo: precoMax, ativo: true,
+            comissao_encarregado: comissaoEnc, comissao_cabo: comissaoCabo,
+          })
+    }
     if (res.error) { setSavingPreco(null); toast.error(traduzirErro(res.error.message)); return }
     // Sincroniza playbook_itens (FK de ponto_producao aponta para esta tabela)
     const atv = atividades.find(a => a.id === ativId)
@@ -410,7 +434,14 @@ export default function Playbooks() {
       ativo: true,
     }, { onConflict: 'obra_id,colaborador_id,funcao' })
     setSavingEquipe(false)
-    if (error) { toast.error(error.message); return }
+    if (error) {
+      if (error.message.includes('does not exist') || error.code === '42P01') {
+        toast.error('⚠️ Execute a migração SQL no Supabase antes de vincular equipe. Veja docs/MIGRACAO_ENC_CABO_VINCULOS.sql')
+      } else {
+        toast.error(traduzirErro(error.message))
+      }
+      return
+    }
     toast.success('Vínculo salvo!')
     setFormVinculo({ colaborador_id: '', funcao: 'encarregado' })
     fetchData()
