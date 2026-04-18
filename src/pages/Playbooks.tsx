@@ -159,48 +159,69 @@ export default function Playbooks() {
   const fetchData = useCallback(async () => {
     setLoading(true)
     try {
+      // ── Queries independentes das colunas novas (sempre funcionam) ──────────
       const [
         { data: ativRaw,  error: eAtiv  },
         { data: obrasRaw, error: eObras },
-        { data: precosRaw },
         { data: prodPPD },
         { data: prodProd },
-        { data: encRaw },
+        { data: encRaw,   error: eEnc   },
       ] = await Promise.all([
-        supabase.from('playbook_atividades').select('*').order('categoria').order('descricao'),
+        supabase.from('playbook_atividades').select('id, descricao, unidade, categoria, ativo, codigo, comissao_encarregado, comissao_cabo').order('categoria').order('descricao'),
         supabase.from('obras').select('id, nome, codigo, status').order('nome'),
-        supabase.from('playbook_precos').select('id, atividade_id, obra_id, preco_unitario, preco_maximo, ativo, comissao_encarregado, comissao_cabo, valor_premiacao_enc, valor_premiacao_cabo, encarregado_id'),
         supabase.from('portal_ponto_diario').select('playbook_item_id').not('playbook_item_id', 'is', null),
         supabase.from('portal_producao').select('playbook_item_id').not('playbook_item_id', 'is', null),
-        supabase.from('colaboradores').select('id, nome, chapa, funcao').eq('status', 'ativo').order('nome'),
+        supabase.from('colaboradores').select('id, nome, chapa, funcao').in('status', ['ativo', 'Ativo']).order('nome'),
       ])
 
-      if (eAtiv)  console.warn('[Playbooks] playbook_atividades:', eAtiv.message)
+      if (eAtiv) console.warn('[Playbooks] playbook_atividades:', eAtiv.message)
       if (eObras) console.warn('[Playbooks] obras:', eObras.message)
+      if (eEnc)  console.warn('[Playbooks] colaboradores:', eEnc.message)
 
-      // Busca de vínculos — tabela opcional (requer MIGRACAO_ENC_CABO_VINCULOS.sql)
-      const { data: vinculosRaw, error: eVinc } = await supabase
+      // ── playbook_precos: tenta com colunas novas, fallback sem elas ─────────
+      let precosRaw: any[] | null = null
+      const { data: precosNovo, error: ePrecoNovo } = await supabase
+        .from('playbook_precos')
+        .select('id, atividade_id, obra_id, preco_unitario, preco_maximo, ativo, comissao_encarregado, comissao_cabo, valor_premiacao_enc, valor_premiacao_cabo, encarregado_id')
+      if (!ePrecoNovo) {
+        precosRaw = precosNovo
+      } else {
+        // Migração ainda não executada — busca sem as colunas novas
+        console.info('[Playbooks] colunas valor_premiacao_* não existem (execute a migração):', ePrecoNovo.message)
+        const { data: precosLegado } = await supabase
+          .from('playbook_precos')
+          .select('id, atividade_id, obra_id, preco_unitario, preco_maximo, ativo, comissao_encarregado, comissao_cabo, encarregado_id')
+        precosRaw = precosLegado
+      }
+
+      // ── obra_vinculos_equipe: tabela opcional ────────────────────────────────
+      let vinculosRaw: any[] | null = null
+      const { data: vinculosData, error: eVinc } = await supabase
         .from('obra_vinculos_equipe')
         .select('id, obra_id, colaborador_id, funcao, ativo, colaboradores(nome, chapa, funcao)')
         .eq('ativo', true)
-      if (eVinc) console.info('[Playbooks] obra_vinculos_equipe não existe ainda (execute a migração):', eVinc.message)
+      if (!eVinc) vinculosRaw = vinculosData
+      else console.info('[Playbooks] obra_vinculos_equipe não existe ainda — execute a migração SQL')
 
+      // ── Atualizar estados ────────────────────────────────────────────────────
       setAtividades((ativRaw ?? []) as Atividade[])
       setObras((obrasRaw ?? []) as Obra[])
       setPrecos((precosRaw ?? []) as AtividadePreco[])
       setEncarregados((encRaw ?? []).map((c: any) => ({ id: c.id, nome: c.nome, chapa: c.chapa, funcao: c.funcao })))
       setVinculos((vinculosRaw ?? []) as ObraVinculo[])
+
+      // ── Contar usos de cada atividade ────────────────────────────────────────
+      const cnt: Record<string, number> = {}
+      ;[...(prodPPD ?? []), ...(prodProd ?? [])].forEach((p: any) => {
+        if (p.playbook_item_id) cnt[p.playbook_item_id] = (cnt[p.playbook_item_id] ?? 0) + 1
+      })
+      setProdPorItem(cnt)
+
     } catch (err) {
       console.error('[Playbooks] fetchData falhou:', err)
     } finally {
       setLoading(false)
     }
-    // Contar usos de cada atividade
-    const cnt: Record<string, number> = {}
-    ;[...(prodPPD ?? []), ...(prodProd ?? [])].forEach((p: any) => {
-      if (p.playbook_item_id) cnt[p.playbook_item_id] = (cnt[p.playbook_item_id] ?? 0) + 1
-    })
-    setProdPorItem(cnt)
   }, [])
 
   useEffect(() => { fetchData() }, [fetchData])
