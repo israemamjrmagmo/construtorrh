@@ -167,8 +167,9 @@ export default function ProvisaoRescisao() {
   const [deleting,  setDeleting]  = useState(false)
 
   // Tabs
-  const [aba,           setAba]           = useState<'resumo' | 'provisoes'>('resumo')
+  const [aba,           setAba]           = useState<'resumo' | 'por_mes' | 'por_colab'>('resumo')
   const [buscaProvisoes, setBuscaProvisoes] = useState('')
+  const [mesSelecionado, setMesSelecionado] = useState<string | null>(null)
 
   // ── Buscar dados ─────────────────────────────────────────────────────────────
 
@@ -212,10 +213,7 @@ export default function ProvisaoRescisao() {
 
       // Montar linhas de provisão — somente contracheques de colaboradores CLT
       const linhas: LinhaProvisao[] = (lancRes.data ?? [])
-        .filter((l: any) =>
-          colabCltIds.has(l.colaborador_id) &&
-          ((Number(l.salario_base) || 0) > 0 || (Number(l.valor_dsr) || 0) > 0)
-        )
+        .filter((l: any) => colabCltIds.has(l.colaborador_id))
         .map((l: any) => {
           const colab = colabMap.get(l.colaborador_id)
           const bruto  = (Number(l.salario_base) || 0) + (Number(l.valor_dsr) || 0)
@@ -382,6 +380,76 @@ export default function ProvisaoRescisao() {
     total:  linhasProvisoesFiltradas.reduce((s,l) => s + l.total, 0),
   }), [linhasProvisoesFiltradas])
 
+  // ── Agrupamento por MÊS ───────────────────────────────────────────────────
+  type GrupoMes = {
+    mes: string; n: number; bruto: number; fgts: number; ferias: number
+    decimo: number; aviso: number; multa: number; dec_av: number; fer_av: number; total: number
+  }
+  const linhasPorMes = useMemo((): GrupoMes[] => {
+    const map = new Map<string, GrupoMes>()
+    for (const l of linhasProvisao) {
+      const m = l.mes_referencia || '—'
+      const e = map.get(m) ?? { mes:m, n:0, bruto:0, fgts:0, ferias:0, decimo:0, aviso:0, multa:0, dec_av:0, fer_av:0, total:0 }
+      e.n++; e.bruto+=l.bruto; e.fgts+=l.fgts; e.ferias+=l.ferias; e.decimo+=l.decimo_terceiro
+      e.aviso+=l.aviso_previo; e.multa+=l.multa_fgts; e.dec_av+=l.dec_aviso; e.fer_av+=l.fer_aviso; e.total+=l.total
+      map.set(m, e)
+    }
+    return [...map.values()].sort((a,b) => b.mes.localeCompare(a.mes))
+  }, [linhasProvisao])
+
+  // ── Agrupamento por COLABORADOR ───────────────────────────────────────────
+  type GrupoColab = {
+    id: string; nome: string; chapa: string; meses: number; n: number
+    bruto: number; fgts: number; ferias: number; decimo: number
+    aviso: number; multa: number; dec_av: number; fer_av: number; total: number
+  }
+  const linhasPorColab = useMemo((): GrupoColab[] => {
+    const map = new Map<string, GrupoColab>()
+    const meses_set = new Map<string, Set<string>>()
+    for (const l of linhasProvisao) {
+      const e = map.get(l.colaborador_id) ?? {
+        id:l.colaborador_id, nome:l.nome, chapa:l.chapa,
+        meses:0, n:0, bruto:0, fgts:0, ferias:0, decimo:0, aviso:0, multa:0, dec_av:0, fer_av:0, total:0
+      }
+      e.n++; e.bruto+=l.bruto; e.fgts+=l.fgts; e.ferias+=l.ferias; e.decimo+=l.decimo_terceiro
+      e.aviso+=l.aviso_previo; e.multa+=l.multa_fgts; e.dec_av+=l.dec_aviso; e.fer_av+=l.fer_aviso; e.total+=l.total
+      map.set(l.colaborador_id, e)
+      const ms = meses_set.get(l.colaborador_id) ?? new Set<string>()
+      ms.add(l.mes_referencia); meses_set.set(l.colaborador_id, ms)
+    }
+    map.forEach((v, k) => { v.meses = meses_set.get(k)?.size ?? 0 })
+    return [...map.values()].sort((a,b) => a.nome.localeCompare(b.nome))
+  }, [linhasProvisao])
+
+  // ── Linhas do mês selecionado: SOMADAS por colaborador ────────────────────
+  const linhasDoMes = useMemo((): GrupoColab[] => {
+    if (!mesSelecionado) return []
+    const sub = linhasProvisao.filter(l => l.mes_referencia === mesSelecionado)
+    const map = new Map<string, GrupoColab>()
+    for (const l of sub) {
+      const e = map.get(l.colaborador_id) ?? {
+        id:l.colaborador_id, nome:l.nome, chapa:l.chapa,
+        meses:1, n:0, bruto:0, fgts:0, ferias:0, decimo:0, aviso:0, multa:0, dec_av:0, fer_av:0, total:0
+      }
+      e.n++; e.bruto+=l.bruto; e.fgts+=l.fgts; e.ferias+=l.ferias; e.decimo+=l.decimo_terceiro
+      e.aviso+=l.aviso_previo; e.multa+=l.multa_fgts; e.dec_av+=l.dec_aviso; e.fer_av+=l.fer_aviso; e.total+=l.total
+      map.set(l.colaborador_id, e)
+    }
+    return [...map.values()].sort((a,b) => a.nome.localeCompare(b.nome))
+  }, [linhasProvisao, mesSelecionado])
+
+  // ── Filtro colaborador (aba por_colab) ───────────────────────────────────
+  const colabFiltrado = useMemo(() => {
+    const q = buscaProvisoes.toLowerCase()
+    return !q ? linhasPorColab : linhasPorColab.filter(l => l.nome.toLowerCase().includes(q) || l.chapa.toLowerCase().includes(q))
+  }, [linhasPorColab, buscaProvisoes])
+
+  // ── Filtro mês (aba por_mes) ──────────────────────────────────────────────
+  const mesFiltrado = useMemo(() => {
+    const q = buscaProvisoes.toLowerCase()
+    return !q ? linhasPorMes : linhasPorMes.filter(g => g.mes.includes(q))
+  }, [linhasPorMes, buscaProvisoes])
+
   // ── Filtro da tabela de rescisões ─────────────────────────────────────────────
 
   const filtered = rescisoes.filter(r => {
@@ -539,8 +607,9 @@ tfoot td:first-child{text-align:left}
       {/* ── Abas de navegação ─────────────────────────────────────────────────── */}
       <div style={{ display: 'flex', gap: 0, borderBottom: '2px solid var(--border)', marginBottom: 20 }}>
         {([
-          { key: 'resumo',    label: '📊 Resumo & Rescisões',         icon: null },
-          { key: 'provisoes', label: '📋 Provisões por Colaborador',  icon: null },
+          { key: 'resumo',    label: '📊 Resumo & Rescisões' },
+          { key: 'por_mes',   label: '📅 Por Mês' },
+          { key: 'por_colab', label: '👷 Por Colaborador' },
         ] as const).map(t => (
           <button key={t.key} onClick={() => setAba(t.key)}
             style={{
@@ -914,86 +983,151 @@ tfoot td:first-child{text-align:left}
       )}
       {/* fim aba resumo */}
 
-      {/* ══ ABA: Provisões por Colaborador ══════════════════════════════════ */}
-      {aba === 'provisoes' && (
+      {/* ══ ABA: Por Mês ══════════════════════════════════════════════════════ */}
+      {aba === 'por_mes' && (
         <div>
-          {/* Toolbar: busca + PDF */}
+          {/* Toolbar */}
           <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:16, flexWrap:'wrap' }}>
-            <div style={{ position:'relative', flex:1, minWidth:220, maxWidth:400 }}>
-              <Search size={13} style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', color:'var(--muted-foreground)' }} />
-              <input value={buscaProvisoes} onChange={e => setBuscaProvisoes(e.target.value)}
-                placeholder="Filtrar por nome, chapa ou competência…"
-                style={{ width:'100%', height:38, paddingLeft:30, paddingRight:10, fontSize:13, border:'1.5px solid var(--border)', borderRadius:9, background:'var(--background)', color:'var(--foreground)', boxSizing:'border-box' }} />
-            </div>
-            <span style={{ fontSize:12, color:'var(--muted-foreground)' }}>{linhasProvisoesFiltradas.length} lançamento(s)</span>
-            {linhasProvisoesFiltradas.length > 0 && (
-              <button onClick={gerarPdfProvisoes}
-                style={{ display:'flex', alignItems:'center', gap:5, padding:'7px 14px', borderRadius:8, border:'1.5px solid #1a56a0', background:'#eff6ff', color:'#1a56a0', fontWeight:700, fontSize:12, cursor:'pointer' }}>
-                <Printer size={13} /> PDF
+            {mesSelecionado ? (
+              <button onClick={() => setMesSelecionado(null)}
+                style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 14px', borderRadius:8,
+                  background:'#eff6ff', border:'1px solid #bfdbfe', color:'#1a56a0', fontWeight:700, cursor:'pointer', fontSize:13 }}>
+                ← Voltar aos Meses
               </button>
+            ) : null}
+            {mesSelecionado ? (
+              <span style={{ fontWeight:700, color:'#1a56a0', fontSize:15 }}>
+                📅 {mesSelecionado} — {linhasDoMes.length} colaborador(es)
+              </span>
+            ) : (
+              <div style={{ position:'relative', flex:1, minWidth:180, maxWidth:320 }}>
+                <Search size={13} style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', color:'var(--muted-foreground)' }} />
+                <input value={buscaProvisoes} onChange={e => { setBuscaProvisoes(e.target.value) }}
+                  placeholder="Filtrar mês…"
+                  style={{ width:'100%', paddingLeft:30, paddingRight:10, height:36, borderRadius:8,
+                    border:'1px solid var(--border)', background:'var(--input)', fontSize:13 }} />
+              </div>
             )}
+            <Button variant="outline" size="sm" style={{ gap:6, marginLeft:'auto' }} onClick={gerarPdfProvisoes}>
+              <Printer size={14} /> PDF
+            </Button>
           </div>
 
-          {/* Tabela estilo Encargos */}
-          {loading ? (
-            <div style={{ padding:40, textAlign:'center', color:'var(--muted-foreground)' }}>Carregando…</div>
-          ) : linhasProvisoesFiltradas.length === 0 ? (
-            <div style={{ padding:60, textAlign:'center', color:'var(--muted-foreground)' }}>
-              <ClipboardList size={36} style={{ opacity:.2, margin:'0 auto 12px', display:'block' }} />
-              <div style={{ fontWeight:700 }}>Nenhuma provisão encontrada</div>
-              <div style={{ fontSize:12, marginTop:4 }}>Os dados aparecem quando há fechamentos CLT aprovados.</div>
-            </div>
-          ) : (
+          {/* Tabela de meses ou drill-down */}
+          {!mesSelecionado ? (
             <div style={{ overflowX:'auto', borderRadius:10, border:'1px solid var(--border)', background:'var(--card)' }}>
               <table style={{ width:'100%', borderCollapse:'collapse', fontSize:11 }}>
                 <thead>
                   <tr>
                     {[
-                      { label: 'Colaborador' }, { label: 'Chapa' }, { label: 'Tipo' },
-                      { label: 'Base Sal+DSR' }, { label: 'FGTS 8%' }, { label: 'Férias 11,11%' },
-                      { label: '13º 8,33%' },   { label: 'Aviso Prév. 8,33%' }, { label: 'Multa 3,2%' }, { label: '13°s/Aviso' }, { label: 'Fér.s/Aviso' },
-                      { label: 'TOTAL' },
-                    ].map((h, i) => (
-                      <th key={i} style={{ background:'#1e3a5f', color:'#fff', fontWeight:700, padding:'8px 10px', textAlign: i < 3 ? 'left' : 'right', whiteSpace:'nowrap', fontSize:11 }}>
-                        {h.label}
-                      </th>
+                      { label:'Competência', align:'left' }, { label:'Fechamentos', align:'center' },
+                      { label:'Base Sal+DSR', align:'right' }, { label:'FGTS 8%', align:'right' },
+                      { label:'Férias 11,11%', align:'right' }, { label:'13° 8,33%', align:'right' },
+                      { label:'Aviso 8,33%', align:'right' }, { label:'Multa 3,2%', align:'right' },
+                      { label:'13°s/Av', align:'right' }, { label:'Fér.s/Av', align:'right' },
+                      { label:'TOTAL', align:'right' },
+                    ].map((h,i) => (
+                      <th key={i} style={{ background:'#1e3a5f', color:'#fff', fontWeight:700, padding:'9px 10px',
+                        textAlign: h.align as any, whiteSpace:'nowrap', fontSize:11 }}>{h.label}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {linhasProvisoesFiltradas.map((l, idx) => (
-                    <tr key={`${l.colaborador_id}-${idx}`} style={{ background: idx % 2 === 0 ? 'var(--card)' : 'var(--muted)' }}>
-                      <td style={{ padding:'7px 10px', whiteSpace:'nowrap' }}>
-                        <div style={{ fontWeight:700, fontSize:12 }}>{l.nome}</div>
+                  {mesFiltrado.length === 0 ? (
+                    <tr><td colSpan={11} style={{ textAlign:'center', padding:24, color:'var(--muted-foreground)' }}>Nenhum mês encontrado</td></tr>
+                  ) : mesFiltrado.map((g, idx) => (
+                    <tr key={g.mes} onClick={() => setMesSelecionado(g.mes)}
+                      style={{ background: idx%2===0 ? 'var(--card)' : 'var(--muted)', cursor:'pointer' }}
+                      onMouseEnter={e => (e.currentTarget.style.background='#eff6ff')}
+                      onMouseLeave={e => (e.currentTarget.style.background = idx%2===0 ? 'var(--card)' : 'var(--muted)')}>
+                      <td style={{ padding:'8px 10px', fontWeight:700, fontSize:13, color:'#1a56a0' }}>
+                        {g.mes} <span style={{ fontSize:10, color:'#6b7280', fontWeight:400 }}>▶ detalhar</span>
                       </td>
-                      <td style={{ padding:'7px 10px', color:'var(--muted-foreground)', fontSize:11 }}>{l.chapa || '—'}</td>
-                      <td style={{ padding:'7px 10px', fontSize:12 }}><span style={{ background:'#eff6ff', color:'#1a56a0', borderRadius:6, padding:'2px 8px', fontSize:11, fontWeight:700 }}>{l.tipo_pagamento}</span></td>
+                      <td style={{ padding:'8px 10px', textAlign:'center', color:'#6b7280' }}>{g.n}</td>
+                      <td style={{ padding:'8px 10px', textAlign:'right', fontWeight:600, color:'#1e3a5f' }}>{formatCurrency(g.bruto)}</td>
+                      <td style={{ padding:'8px 10px', textAlign:'right', color:'#15803d' }}>{formatCurrency(g.fgts)}</td>
+                      <td style={{ padding:'8px 10px', textAlign:'right', color:'#15803d' }}>{formatCurrency(g.ferias)}</td>
+                      <td style={{ padding:'8px 10px', textAlign:'right', color:'#b45309' }}>{formatCurrency(g.decimo)}</td>
+                      <td style={{ padding:'8px 10px', textAlign:'right', color:'#0891b2' }}>{formatCurrency(g.aviso)}</td>
+                      <td style={{ padding:'8px 10px', textAlign:'right', color:'#dc2626' }}>{formatCurrency(g.multa)}</td>
+                      <td style={{ padding:'8px 10px', textAlign:'right', color:'#7c3aed' }}>{formatCurrency(g.dec_av)}</td>
+                      <td style={{ padding:'8px 10px', textAlign:'right', color:'#065f46' }}>{formatCurrency(g.fer_av)}</td>
+                      <td style={{ padding:'8px 10px', textAlign:'right', fontWeight:800, color:'#7c3aed', fontSize:12 }}>{formatCurrency(g.total)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <td style={{ background:'#1e3a5f', color:'#fff', fontWeight:700, padding:'8px 10px' }}>
+                      TOTAL ({mesFiltrado.length} {mesFiltrado.length===1?'mês':'meses'})
+                    </td>
+                    <td style={{ background:'#1e3a5f', color:'#93c5fd', textAlign:'center', padding:'8px 10px', fontWeight:600 }}>
+                      {mesFiltrado.reduce((s,g)=>s+g.n,0)}
+                    </td>
+                    {(['bruto','fgts','ferias','decimo','aviso','multa','dec_av','fer_av','total'] as const).map((k,i) => (
+                      <td key={k} style={{ background:'#1e3a5f', color: i===8?'#c4b5fd':'#86efac', textAlign:'right', padding:'8px 10px', fontWeight: i===8?800:600 }}>
+                        {formatCurrency(mesFiltrado.reduce((s,g)=>s+g[k],0))}
+                      </td>
+                    ))}
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          ) : (
+            /* Drill-down: colaboradores do mês selecionado (somado por colaborador) */
+            <div style={{ overflowX:'auto', borderRadius:10, border:'1px solid var(--border)', background:'var(--card)' }}>
+              <div style={{ padding:'10px 14px', background:'#eff6ff', borderBottom:'1px solid #bfdbfe',
+                color:'#1a56a0', fontWeight:700, fontSize:13 }}>
+                📅 {mesSelecionado} — soma de todos os fechamentos do mês por colaborador
+              </div>
+              <table style={{ width:'100%', borderCollapse:'collapse', fontSize:11 }}>
+                <thead>
+                  <tr>
+                    {[
+                      { label:'Colaborador', align:'left' }, { label:'Chapa', align:'left' },
+                      { label:'Fechamentos', align:'center' }, { label:'Base Sal+DSR', align:'right' },
+                      { label:'FGTS 8%', align:'right' }, { label:'Férias 11,11%', align:'right' },
+                      { label:'13° 8,33%', align:'right' }, { label:'Aviso 8,33%', align:'right' },
+                      { label:'Multa 3,2%', align:'right' }, { label:'13°s/Av', align:'right' },
+                      { label:'Fér.s/Av', align:'right' }, { label:'TOTAL', align:'right' },
+                    ].map((h,i) => (
+                      <th key={i} style={{ background:'#1e3a5f', color:'#fff', fontWeight:700, padding:'8px 10px',
+                        textAlign: h.align as any, whiteSpace:'nowrap', fontSize:11 }}>{h.label}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {linhasDoMes.map((l, idx) => (
+                    <tr key={l.id} style={{ background: idx%2===0 ? 'var(--card)' : 'var(--muted)' }}>
+                      <td style={{ padding:'7px 10px', fontWeight:700, fontSize:12 }}>{l.nome}</td>
+                      <td style={{ padding:'7px 10px', color:'var(--muted-foreground)', fontSize:11 }}>{l.chapa||'—'}</td>
+                      <td style={{ padding:'7px 10px', textAlign:'center', color:'#6b7280' }}>{l.n}</td>
                       <td style={{ padding:'7px 10px', textAlign:'right', fontWeight:600, color:'#1e3a5f' }}>{formatCurrency(l.bruto)}</td>
                       <td style={{ padding:'7px 10px', textAlign:'right', color:'#15803d' }}>{formatCurrency(l.fgts)}</td>
                       <td style={{ padding:'7px 10px', textAlign:'right', color:'#15803d' }}>{formatCurrency(l.ferias)}</td>
-                      <td style={{ padding:'7px 10px', textAlign:'right', color:'#b45309' }}>{formatCurrency(l.decimo_terceiro)}</td>
-                      <td style={{ padding:'7px 10px', textAlign:'right', color:'#0891b2' }}>{formatCurrency(l.aviso_previo)}</td>
-                      <td style={{ padding:'7px 10px', textAlign:'right', color:'#dc2626' }}>{formatCurrency(l.multa_fgts)}</td>
-                      <td style={{ padding:'7px 10px', textAlign:'right', color:'#7c3aed' }}>{formatCurrency(l.dec_aviso)}</td>
-                      <td style={{ padding:'7px 10px', textAlign:'right', color:'#065f46' }}>{formatCurrency(l.fer_aviso)}</td>
+                      <td style={{ padding:'7px 10px', textAlign:'right', color:'#b45309' }}>{formatCurrency(l.decimo)}</td>
+                      <td style={{ padding:'7px 10px', textAlign:'right', color:'#0891b2' }}>{formatCurrency(l.aviso)}</td>
+                      <td style={{ padding:'7px 10px', textAlign:'right', color:'#dc2626' }}>{formatCurrency(l.multa)}</td>
+                      <td style={{ padding:'7px 10px', textAlign:'right', color:'#7c3aed' }}>{formatCurrency(l.dec_av)}</td>
+                      <td style={{ padding:'7px 10px', textAlign:'right', color:'#065f46' }}>{formatCurrency(l.fer_av)}</td>
                       <td style={{ padding:'7px 10px', textAlign:'right', fontWeight:800, color:'#7c3aed', fontSize:12 }}>{formatCurrency(l.total)}</td>
                     </tr>
                   ))}
                 </tbody>
                 <tfoot>
-                  <tr style={{ fontSize:11 }}>
+                  <tr>
                     <td colSpan={3} style={{ background:'#1e3a5f', color:'#fff', fontWeight:700, padding:'8px 10px' }}>
-                      TOTAIS ({linhasProvisoesFiltradas.length} lançamentos)
+                      TOTAIS DO MÊS
                     </td>
-                    <td style={{ background:'#1e3a5f', color:'#bfdbfe', textAlign:'right', padding:'8px 10px' }}>{formatCurrency(totaisProvFiltrados.bruto)}</td>
-                    <td style={{ background:'#1e3a5f', color:'#86efac', textAlign:'right', padding:'8px 10px' }}>{formatCurrency(totaisProvFiltrados.fgts)}</td>
-                    <td style={{ background:'#1e3a5f', color:'#86efac', textAlign:'right', padding:'8px 10px' }}>{formatCurrency(totaisProvFiltrados.ferias)}</td>
-                    <td style={{ background:'#1e3a5f', color:'#fde68a', textAlign:'right', padding:'8px 10px' }}>{formatCurrency(totaisProvFiltrados.decimo)}</td>
-                    <td style={{ background:'#1e3a5f', color:'#67e8f9', textAlign:'right', padding:'8px 10px' }}>{formatCurrency(totaisProvFiltrados.aviso)}</td>
-                    <td style={{ background:'#1e3a5f', color:'#fca5a5', textAlign:'right', padding:'8px 10px' }}>{formatCurrency(totaisProvFiltrados.multa)}</td>
-                    <td style={{ background:'#1e3a5f', color:'#d8b4fe', textAlign:'right', padding:'8px 10px' }}>{formatCurrency(totaisProvFiltrados.dec_av)}</td>
-                    <td style={{ background:'#1e3a5f', color:'#6ee7b7', textAlign:'right', padding:'8px 10px' }}>{formatCurrency(totaisProvFiltrados.fer_av)}</td>
-                    <td style={{ background:'#1e3a5f', color:'#c4b5fd', fontWeight:800, textAlign:'right', padding:'8px 10px', fontSize:12 }}>{formatCurrency(totaisProvFiltrados.total)}</td>
+                    <td style={{ background:'#1e3a5f', color:'#bfdbfe', textAlign:'right', padding:'8px 10px' }}>{formatCurrency(linhasDoMes.reduce((s,l)=>s+l.bruto,0))}</td>
+                    <td style={{ background:'#1e3a5f', color:'#86efac', textAlign:'right', padding:'8px 10px' }}>{formatCurrency(linhasDoMes.reduce((s,l)=>s+l.fgts,0))}</td>
+                    <td style={{ background:'#1e3a5f', color:'#86efac', textAlign:'right', padding:'8px 10px' }}>{formatCurrency(linhasDoMes.reduce((s,l)=>s+l.ferias,0))}</td>
+                    <td style={{ background:'#1e3a5f', color:'#fde68a', textAlign:'right', padding:'8px 10px' }}>{formatCurrency(linhasDoMes.reduce((s,l)=>s+l.decimo,0))}</td>
+                    <td style={{ background:'#1e3a5f', color:'#67e8f9', textAlign:'right', padding:'8px 10px' }}>{formatCurrency(linhasDoMes.reduce((s,l)=>s+l.aviso,0))}</td>
+                    <td style={{ background:'#1e3a5f', color:'#fca5a5', textAlign:'right', padding:'8px 10px' }}>{formatCurrency(linhasDoMes.reduce((s,l)=>s+l.multa,0))}</td>
+                    <td style={{ background:'#1e3a5f', color:'#d8b4fe', textAlign:'right', padding:'8px 10px' }}>{formatCurrency(linhasDoMes.reduce((s,l)=>s+l.dec_av,0))}</td>
+                    <td style={{ background:'#1e3a5f', color:'#6ee7b7', textAlign:'right', padding:'8px 10px' }}>{formatCurrency(linhasDoMes.reduce((s,l)=>s+l.fer_av,0))}</td>
+                    <td style={{ background:'#1e3a5f', color:'#c4b5fd', fontWeight:800, textAlign:'right', padding:'8px 10px', fontSize:12 }}>{formatCurrency(linhasDoMes.reduce((s,l)=>s+l.total,0))}</td>
                   </tr>
                 </tfoot>
               </table>
@@ -1002,96 +1136,90 @@ tfoot td:first-child{text-align:left}
         </div>
       )}
 
-      {/* ══ MODAL: Lançar Rescisão ══════════════════════════════════════════════ */}
-      {modalOpen && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-          <div style={{ background: 'var(--background)', borderRadius: 14, width: '100%', maxWidth: 580, boxShadow: '0 25px 50px rgba(0,0,0,.3)', overflow: 'hidden', maxHeight: '90vh', overflowY: 'auto' }}>
-            {/* Header */}
-            <div style={{ background: 'linear-gradient(135deg, #1e3a5f, #1e40af)', padding: '20px 24px', position: 'sticky', top: 0, zIndex: 1 }}>
-              <h2 style={{ fontWeight: 800, fontSize: 17, margin: 0, color: '#fff', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Calculator size={18} /> Lançar Rescisão
-              </h2>
-              <p style={{ fontSize: 12, color: 'rgba(255,255,255,.75)', margin: '4px 0 0' }}>
-                Informe os valores devidos ao colaborador
-              </p>
+      {/* ══ ABA: Por Colaborador ═══════════════════════════════════════════════ */}
+      {aba === 'por_colab' && (
+        <div>
+          {/* Toolbar */}
+          <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:16, flexWrap:'wrap' }}>
+            <div style={{ position:'relative', flex:1, minWidth:180, maxWidth:380 }}>
+              <Search size={13} style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', color:'var(--muted-foreground)' }} />
+              <input value={buscaProvisoes} onChange={e => setBuscaProvisoes(e.target.value)}
+                placeholder="Filtrar por nome ou chapa…"
+                style={{ width:'100%', paddingLeft:30, paddingRight:10, height:36, borderRadius:8,
+                  border:'1px solid var(--border)', background:'var(--input)', fontSize:13 }} />
             </div>
-
-            <div style={{ padding: 24 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                {/* Colaborador */}
-                <div style={{ gridColumn: '1/-1' }}>
-                  <Label className="mb-1 block">Colaborador *</Label>
-                  <Select value={form.colaborador_id} onValueChange={v => setF('colaborador_id', v)}>
-                    <SelectTrigger><SelectValue placeholder="Selecionar…" /></SelectTrigger>
-                    <SelectContent>
-                      {colaboradores.map(c => (
-                        <SelectItem key={c.id} value={c.id}>{c.nome}{c.chapa ? ` — ${c.chapa}` : ''}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                {/* Data */}
-                <div>
-                  <Label className="mb-1 block">Data da Rescisão *</Label>
-                  <Input type="date" value={form.data_rescisao} onChange={e => setF('data_rescisao', e.target.value)} />
-                </div>
-                {/* Tipo */}
-                <div>
-                  <Label className="mb-1 block">Tipo de Rescisão *</Label>
-                  <Select value={form.tipo} onValueChange={v => setF('tipo', v)}>
-                    <SelectTrigger><SelectValue placeholder="Selecionar…" /></SelectTrigger>
-                    <SelectContent>
-                      {(Object.keys(TIPO_LABELS) as TipoRescisao[]).map(k => (
-                        <SelectItem key={k} value={k}>{TIPO_LABELS[k]}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Separador */}
-                <div style={{ gridColumn: '1/-1', borderTop: '1px solid var(--border)', paddingTop: 4, fontSize: 11, fontWeight: 700, color: 'var(--muted-foreground)', textTransform: 'uppercase', letterSpacing: 1 }}>
-                  Componentes
-                </div>
-
-                {[
-                  { key: 'valor_saldo_fgts'           as keyof FormData, label: '🏛️ Saldo FGTS'            },
-                  { key: 'valor_aviso_previo'          as keyof FormData, label: '📋 Aviso Prévio'           },
-                  { key: 'valor_ferias_proporcionais'  as keyof FormData, label: '🌴 Férias Proporcionais'   },
-                  { key: 'valor_13_proporcional'       as keyof FormData, label: '🎁 13º Proporcional'       },
-                  { key: 'valor_multa_fgts'            as keyof FormData, label: '⚡ Multa FGTS (40%)'       },
-                  { key: 'valor_outros'                as keyof FormData, label: '📦 Outros'                 },
-                ].map(({ key, label }) => (
-                  <div key={key}>
-                    <Label className="mb-1 block" style={{ fontSize: 12 }}>{label}</Label>
-                    <Input type="number" min="0" step="0.01" placeholder="0,00"
-                      value={form[key] as string} onChange={e => setF(key, e.target.value)} />
-                  </div>
-                ))}
-
-                {/* Total calculado */}
-                <div style={{ gridColumn: '1/-1', background: '#eff6ff', border: '1.5px solid #bfdbfe', borderRadius: 10, padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontWeight: 700, fontSize: 14, color: '#1d4ed8' }}>Total da Rescisão</span>
-                  <span style={{ fontWeight: 800, fontSize: 22, color: '#1d4ed8' }}>{formatCurrency(totalCalc)}</span>
-                </div>
-
-                {/* Observações */}
-                <div style={{ gridColumn: '1/-1' }}>
-                  <Label className="mb-1 block">Observações</Label>
-                  <Textarea placeholder="Informações adicionais…" rows={2}
-                    value={form.observacoes} onChange={e => setF('observacoes', e.target.value)} />
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
-                <Button variant="outline" onClick={() => setModalOpen(false)}>Cancelar</Button>
-                <Button disabled={saving} onClick={handleSave} style={{ gap: 6 }}>
-                  {saving ? 'Salvando…' : <><Plus size={14} /> Lançar Rescisão</>}
-                </Button>
-              </div>
-            </div>
+            <span style={{ fontSize:12, color:'var(--muted-foreground)' }}>{colabFiltrado.length} colaborador(es)</span>
+            <Button variant="outline" size="sm" style={{ gap:6, marginLeft:'auto' }} onClick={gerarPdfProvisoes}>
+              <Printer size={14} /> PDF
+            </Button>
           </div>
+
+          {colabFiltrado.length === 0 ? (
+            <div style={{ textAlign:'center', padding:40, color:'var(--muted-foreground)' }}>
+              <div style={{ fontWeight:700 }}>Nenhum colaborador encontrado</div>
+            </div>
+          ) : (
+            <div style={{ overflowX:'auto', borderRadius:10, border:'1px solid var(--border)', background:'var(--card)' }}>
+              <table style={{ width:'100%', borderCollapse:'collapse', fontSize:11 }}>
+                <thead>
+                  <tr>
+                    {[
+                      { label:'Colaborador', align:'left' }, { label:'Chapa', align:'left' },
+                      { label:'Meses', align:'center' }, { label:'Base Total', align:'right' },
+                      { label:'FGTS 8%', align:'right' }, { label:'Férias 11,11%', align:'right' },
+                      { label:'13° 8,33%', align:'right' }, { label:'Aviso 8,33%', align:'right' },
+                      { label:'Multa 3,2%', align:'right' }, { label:'13°s/Av', align:'right' },
+                      { label:'Fér.s/Av', align:'right' }, { label:'TOTAL ACUM.', align:'right' },
+                    ].map((h,i) => (
+                      <th key={i} style={{ background:'#1e3a5f', color:'#fff', fontWeight:700, padding:'9px 10px',
+                        textAlign: h.align as any, whiteSpace:'nowrap', fontSize:11 }}>{h.label}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {colabFiltrado.map((l, idx) => (
+                    <tr key={l.id} style={{ background: idx%2===0 ? 'var(--card)' : 'var(--muted)' }}>
+                      <td style={{ padding:'7px 10px' }}>
+                        <div style={{ fontWeight:700, fontSize:12 }}>{l.nome}</div>
+                      </td>
+                      <td style={{ padding:'7px 10px', color:'var(--muted-foreground)', fontSize:11 }}>{l.chapa||'—'}</td>
+                      <td style={{ padding:'7px 10px', textAlign:'center' }}>
+                        <span style={{ background:'#eff6ff', color:'#1a56a0', borderRadius:6, padding:'2px 8px', fontSize:11, fontWeight:700 }}>{l.meses}m</span>
+                      </td>
+                      <td style={{ padding:'7px 10px', textAlign:'right', fontWeight:600, color:'#1e3a5f' }}>{formatCurrency(l.bruto)}</td>
+                      <td style={{ padding:'7px 10px', textAlign:'right', color:'#15803d' }}>{formatCurrency(l.fgts)}</td>
+                      <td style={{ padding:'7px 10px', textAlign:'right', color:'#15803d' }}>{formatCurrency(l.ferias)}</td>
+                      <td style={{ padding:'7px 10px', textAlign:'right', color:'#b45309' }}>{formatCurrency(l.decimo)}</td>
+                      <td style={{ padding:'7px 10px', textAlign:'right', color:'#0891b2' }}>{formatCurrency(l.aviso)}</td>
+                      <td style={{ padding:'7px 10px', textAlign:'right', color:'#dc2626' }}>{formatCurrency(l.multa)}</td>
+                      <td style={{ padding:'7px 10px', textAlign:'right', color:'#7c3aed' }}>{formatCurrency(l.dec_av)}</td>
+                      <td style={{ padding:'7px 10px', textAlign:'right', color:'#065f46' }}>{formatCurrency(l.fer_av)}</td>
+                      <td style={{ padding:'7px 10px', textAlign:'right', fontWeight:800, color:'#7c3aed', fontSize:12 }}>{formatCurrency(l.total)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <td colSpan={3} style={{ background:'#1e3a5f', color:'#fff', fontWeight:700, padding:'8px 10px' }}>
+                      TOTAIS ACUMULADOS ({colabFiltrado.length} colaboradores)
+                    </td>
+                    <td style={{ background:'#1e3a5f', color:'#bfdbfe', textAlign:'right', padding:'8px 10px' }}>{formatCurrency(colabFiltrado.reduce((s,l)=>s+l.bruto,0))}</td>
+                    <td style={{ background:'#1e3a5f', color:'#86efac', textAlign:'right', padding:'8px 10px' }}>{formatCurrency(colabFiltrado.reduce((s,l)=>s+l.fgts,0))}</td>
+                    <td style={{ background:'#1e3a5f', color:'#86efac', textAlign:'right', padding:'8px 10px' }}>{formatCurrency(colabFiltrado.reduce((s,l)=>s+l.ferias,0))}</td>
+                    <td style={{ background:'#1e3a5f', color:'#fde68a', textAlign:'right', padding:'8px 10px' }}>{formatCurrency(colabFiltrado.reduce((s,l)=>s+l.decimo,0))}</td>
+                    <td style={{ background:'#1e3a5f', color:'#67e8f9', textAlign:'right', padding:'8px 10px' }}>{formatCurrency(colabFiltrado.reduce((s,l)=>s+l.aviso,0))}</td>
+                    <td style={{ background:'#1e3a5f', color:'#fca5a5', textAlign:'right', padding:'8px 10px' }}>{formatCurrency(colabFiltrado.reduce((s,l)=>s+l.multa,0))}</td>
+                    <td style={{ background:'#1e3a5f', color:'#d8b4fe', textAlign:'right', padding:'8px 10px' }}>{formatCurrency(colabFiltrado.reduce((s,l)=>s+l.dec_av,0))}</td>
+                    <td style={{ background:'#1e3a5f', color:'#6ee7b7', textAlign:'right', padding:'8px 10px' }}>{formatCurrency(colabFiltrado.reduce((s,l)=>s+l.fer_av,0))}</td>
+                    <td style={{ background:'#1e3a5f', color:'#c4b5fd', fontWeight:800, textAlign:'right', padding:'8px 10px', fontSize:12 }}>{formatCurrency(colabFiltrado.reduce((s,l)=>s+l.total,0))}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
         </div>
       )}
+
 
       {/* ══ CONFIRMAR EXCLUSÃO ═════════════════════════════════════════════════ */}
       <AlertDialog open={!!deleteId} onOpenChange={o => { if (!o) setDeleteId(null) }}>
