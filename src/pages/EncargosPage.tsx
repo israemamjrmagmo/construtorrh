@@ -11,7 +11,7 @@ import {
   Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
 import { traduzirErro } from '@/lib/erros'
-import { Briefcase, Download } from 'lucide-react'
+import { Briefcase, Download, Printer } from 'lucide-react'
 import { toast } from 'sonner'
 import { getUltimoDia } from '@/lib/dateUtils'
 
@@ -319,6 +319,68 @@ export default function EncargosPage() {
     URL.revokeObjectURL(url)
   }, [linhas, mes, ano])
 
+  function gerarPdfEncargos() {
+    if (!linhasFiltradas.length) return
+    const fR = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+    const hasTerceiros = terceirosAliq > 0
+    const rows = linhasFiltradas.map((l, i) => `
+      <tr style="background:${i % 2 === 0 ? '#fff' : '#f8fafc'}">
+        <td style="text-align:left;font-weight:600;white-space:nowrap;padding:4px 7px">${l.nome}<br><span style="font-size:8px;color:#666">${l.funcao_nome} · ${l.obra_nome}</span></td>
+        <td style="text-align:center;color:#666;padding:4px 7px">${l.chapa ?? '—'}</td>
+        <td style="text-align:right;padding:4px 7px">${fR(l.valorHoras)}</td>
+        <td style="text-align:right;color:#0369a1;padding:4px 7px">${fR(l.valorDSR)}</td>
+        <td style="text-align:right;color:#7c3aed;padding:4px 7px">${l.valorProducao > 0 ? fR(l.valorProducao) : '—'}</td>
+        <td style="text-align:right;color:#be185d;padding:4px 7px">${l.valorPremio > 0 ? fR(l.valorPremio) : '—'}</td>
+        <td style="text-align:right;font-weight:800;color:#15803d;padding:4px 7px">${fR(l.salarioBruto)}</td>
+        <td style="text-align:right;color:#b45309;padding:4px 7px">${l.descontoVT > 0 ? '- '+fR(l.descontoVT) : '—'}</td>
+        <td style="text-align:right;color:#0369a1;padding:4px 7px">${l.inss > 0 ? '- '+fR(l.inss) : '—'}</td>
+        <td style="text-align:right;color:#dc2626;padding:4px 7px">${l.ir > 0 ? '- '+fR(l.ir) : '—'}</td>
+        <td style="text-align:right;font-weight:800;color:#1e3a5f;padding:4px 7px">${fR(l.liquido)}</td>
+        <td style="text-align:right;color:#15803d;padding:4px 7px">${fR(l.fgts)}</td>
+        <td style="text-align:right;color:#1e3a5f;padding:4px 7px">${fR(l.inssPatronal)}</td>
+        <td style="text-align:right;color:#92400e;padding:4px 7px">${fR(l.rat)}</td>
+        ${hasTerceiros ? `<td style="text-align:right;color:#0369a1;padding:4px 7px">${fR(l.terceiros)}</td>` : ''}
+        <td style="text-align:right;font-weight:700;color:#7c3aed;padding:4px 7px">${fR(l.totalEmpresa)}</td>
+      </tr>`).join('')
+    const t = totais
+    const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
+<title>Encargos — ${MESES[mes-1]}/${ano}</title>
+<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Segoe UI',Arial,sans-serif;font-size:9px;color:#111}
+@page{size:A4 landscape;margin:8mm}@media print{body{margin:0}}
+h1{font-size:14px;font-weight:800;color:#1e3a5f;margin-bottom:2px}
+p.sub{font-size:8px;color:#666;margin-bottom:8px}
+table{width:100%;border-collapse:collapse}
+th{background:#1e3a5f;color:#fff;font-weight:700;padding:5px 7px;text-align:right;white-space:nowrap;font-size:9px}
+tr{border-bottom:1px solid #e5e7eb}
+tfoot td{background:#1e3a5f;color:#fff;font-weight:700;padding:5px 7px;text-align:right;white-space:nowrap}
+tfoot td:first-child{text-align:left}
+</style></head><body>
+<h1>Encargos Trabalhistas — ${MESES[mes-1]}/${ano}</h1>
+<p class="sub">INSS · IR · FGTS · Encargos Patronais · ${linhasFiltradas.length} colaboradores · Gerado em ${new Date().toLocaleDateString('pt-BR')}</p>
+<table><thead><tr>
+  <th style="text-align:left">Colaborador</th><th style="text-align:left">Chapa</th>
+  <th>Horas</th><th>DSR</th><th>Produção</th><th>Prêmio</th><th>Bruto</th>
+  <th>VT</th><th>INSS</th><th>IR</th><th>Líquido</th>
+  <th>FGTS</th><th>INSS Pat.</th><th>RAT</th>
+  ${hasTerceiros ? '<th>Terceiros</th>' : ''}
+  <th>Total Emp.</th>
+</tr></thead>
+<tbody>${rows}</tbody>
+<tfoot><tr>
+  <td colspan="2">TOTAIS (${t.qtd} lançamentos)</td>
+  <td>${fR(t.valorHoras)}</td><td>${fR(t.valorDSR)}</td><td>${fR(t.valorProducao)}</td><td>${fR(t.valorPremio)}</td>
+  <td>${fR(t.salarioBruto)}</td><td>${t.descontoVT>0?'- '+fR(t.descontoVT):'—'}</td><td>${fR(t.inss)}</td><td>${fR(t.ir)}</td>
+  <td>${fR(t.liquido)}</td><td>${fR(t.fgts)}</td><td>${fR(t.inssPatronal)}</td><td>${fR(t.rat)}</td>
+  ${hasTerceiros ? '<td>'+fR(t.terceiros)+'</td>' : ''}
+  <td>${fR(t.totalEmpresa)}</td>
+</tr></tfoot>
+</table>
+<script>window.onload=()=>window.print()</script>
+</body></html>`
+    const w = window.open('', '_blank')
+    if (w) { w.document.write(html); w.document.close() }
+  }
+
   // ── Filtro por busca ────────────────────────────────────────────────────────
   const linhasFiltradas = React.useMemo(() => {
     if (!busca.trim()) return linhas
@@ -359,10 +421,17 @@ export default function EncargosPage() {
         subtitle="INSS, IR, FGTS e encargos patronais — dados do Fechamento de Ponto"
         action={
           calculado && linhas.length > 0 ? (
-            <Button variant="outline" size="sm" onClick={exportarCSV}>
-              <Download className="w-4 h-4 mr-2" />
-              Exportar CSV
-            </Button>
+            <div style={{ display:'flex', gap:8 }}>
+              <Button variant="outline" size="sm" onClick={exportarCSV}>
+                <Download className="w-4 h-4 mr-2" />
+                Exportar CSV
+              </Button>
+              <Button variant="outline" size="sm" onClick={gerarPdfEncargos}
+                style={{ borderColor:'#1a56a0', color:'#1a56a0', background:'#eff6ff' }}>
+                <Printer className="w-4 h-4 mr-2" />
+                PDF
+              </Button>
+            </div>
           ) : undefined
         }
       />

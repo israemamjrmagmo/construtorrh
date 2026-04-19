@@ -43,7 +43,7 @@ import { toast } from 'sonner'
 import { SummaryCard } from '@/components/Shared'
 import {
   Calculator, Plus, Trash2, Search, TrendingDown, Wallet, Users, FileText,
-  ChevronRight, X, BarChart3,
+  ChevronRight, X, BarChart3, Printer, ClipboardList,
 } from 'lucide-react'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -160,6 +160,10 @@ export default function ProvisaoRescisao() {
   // modal excluir
   const [deleteId,  setDeleteId]  = useState<string | null>(null)
   const [deleting,  setDeleting]  = useState(false)
+
+  // Tabs
+  const [aba,           setAba]           = useState<'resumo' | 'provisoes'>('resumo')
+  const [buscaProvisoes, setBuscaProvisoes] = useState('')
 
   // ── Buscar dados ─────────────────────────────────────────────────────────────
 
@@ -336,6 +340,24 @@ export default function ProvisaoRescisao() {
     }
   }
 
+  // ── Provisões filtradas (aba) ────────────────────────────────────────────────────
+  const linhasProvisoesFiltradas = useMemo(() => {
+    const q = buscaProvisoes.toLowerCase()
+    return !q
+      ? linhasProvisao
+      : linhasProvisao.filter(l => l.nome.toLowerCase().includes(q) || l.mes_referencia.includes(q) || l.chapa.toLowerCase().includes(q))
+  }, [linhasProvisao, buscaProvisoes])
+
+  const totaisProvFiltrados = useMemo(() => ({
+    bruto:  linhasProvisoesFiltradas.reduce((s,l) => s + l.bruto, 0),
+    fgts:   linhasProvisoesFiltradas.reduce((s,l) => s + l.fgts, 0),
+    ferias: linhasProvisoesFiltradas.reduce((s,l) => s + l.ferias, 0),
+    decimo: linhasProvisoesFiltradas.reduce((s,l) => s + l.decimo_terceiro, 0),
+    aviso:  linhasProvisoesFiltradas.reduce((s,l) => s + l.aviso_previo, 0),
+    multa:  linhasProvisoesFiltradas.reduce((s,l) => s + l.multa_fgts, 0),
+    total:  linhasProvisoesFiltradas.reduce((s,l) => s + l.total, 0),
+  }), [linhasProvisoesFiltradas])
+
   // ── Filtro da tabela de rescisões ─────────────────────────────────────────────
 
   const filtered = rescisoes.filter(r => {
@@ -348,6 +370,119 @@ export default function ProvisaoRescisao() {
   // ─────────────────────────────────────────────────────────────────────────────
   // Render
   // ─────────────────────────────────────────────────────────────────────────────
+
+  // ── PDF Provisões ────────────────────────────────────────────────────────────────
+  function gerarPdfProvisoes() {
+    const fR = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+    const rows = linhasProvisoesFiltradas.map(l => `
+      <tr>
+        <td class="nome">${l.nome}</td>
+        <td class="center">${l.chapa || '—'}</td>
+        <td class="center">${l.mes_referencia}</td>
+        <td class="num">${fR(l.bruto)}</td>
+        <td class="num">${fR(l.fgts)}</td>
+        <td class="num">${fR(l.ferias)}</td>
+        <td class="num">${fR(l.decimo_terceiro)}</td>
+        <td class="num">${fR(l.aviso_previo)}</td>
+        <td class="num">${fR(l.multa_fgts)}</td>
+        <td class="num bold">${fR(l.total)}</td>
+      </tr>`).join('')
+    const tp = totaisProvFiltrados
+    const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Provisões por Colaborador</title>
+<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Segoe UI',Arial,sans-serif;font-size:10px;color:#111}
+@page{size:A4 landscape;margin:10mm}@media print{body{margin:0}}
+h1{font-size:15px;font-weight:800;color:#1e3a5f;margin-bottom:2px}
+p.sub{font-size:9px;color:#666;margin-bottom:10px}
+table{width:100%;border-collapse:collapse}
+th{background:#1e3a5f;color:#fff;font-weight:700;padding:6px 8px;text-align:right;white-space:nowrap;font-size:10px}
+th:first-child,th:nth-child(2),th:nth-child(3){text-align:left}
+td{padding:5px 8px;border-bottom:1px solid #e5e7eb;text-align:right;white-space:nowrap}
+td.nome{text-align:left;font-weight:600}td.center{text-align:center}
+td.num{font-family:monospace}td.bold{font-weight:800;color:#7c3aed}
+tr:nth-child(even){background:#f8fafc}
+tfoot td{background:#1e3a5f;color:#fff;font-weight:700;padding:6px 8px;text-align:right}
+tfoot td:first-child{text-align:left}
+</style></head><body>
+<h1>Provisões por Colaborador</h1>
+<p class="sub">Base: Sal+DSR · FGTS 8% · Férias 11,11% · 13º 8,33% · Aviso Prévio 8,33% · Multa FGTS 3,2% · ${linhasProvisoesFiltradas.length} lançamentos · Gerado em ${new Date().toLocaleDateString('pt-BR')}</p>
+<table>
+  <thead><tr>
+    <th>Colaborador</th><th>Chapa</th><th>Competência</th>
+    <th>Base Sal+DSR</th><th>FGTS 8%</th><th>Férias 11,11%</th>
+    <th>13º 8,33%</th><th>Aviso Prév. 8,33%</th><th>Multa 3,2%</th>
+    <th>TOTAL</th>
+  </tr></thead>
+  <tbody>${rows}</tbody>
+  <tfoot><tr>
+    <td colspan="3">TOTAL (${linhasProvisoesFiltradas.length} lançamentos)</td>
+    <td>${fR(tp.bruto)}</td><td>${fR(tp.fgts)}</td><td>${fR(tp.ferias)}</td>
+    <td>${fR(tp.decimo)}</td><td>${fR(tp.aviso)}</td><td>${fR(tp.multa)}</td>
+    <td>${fR(tp.total)}</td>
+  </tr></tfoot>
+</table>
+<script>window.onload=()=>window.print()</script>
+</body></html>`
+    const w = window.open('', '_blank')
+    if (w) { w.document.write(html); w.document.close() }
+  }
+
+  // ── PDF Rescisões ─────────────────────────────────────────────────────────────
+  function gerarPdfRescisoes() {
+    const fR = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+    const fD = (d: string) => d ? new Date(d + 'T00:00:00').toLocaleDateString('pt-BR') : '—'
+    const rows = filtered.map(r => {
+      const tc = TIPO_COLORS[r.tipo]
+      return `<tr>
+        <td class="nome">${r.colaboradores?.nome ?? '—'}<br><span style="font-size:9px;color:#666">${r.colaboradores?.chapa ?? ''}</span></td>
+        <td class="center"><span style="background:${tc.bg};color:${tc.color};border-radius:4px;padding:2px 6px;font-size:9px;font-weight:700">${TIPO_LABELS[r.tipo]}</span></td>
+        <td class="center">${fD(r.data_rescisao)}</td>
+        <td class="num">${r.valor_saldo_fgts > 0 ? fR(r.valor_saldo_fgts) : '—'}</td>
+        <td class="num">${r.valor_aviso_previo > 0 ? fR(r.valor_aviso_previo) : '—'}</td>
+        <td class="num">${r.valor_ferias_proporcionais > 0 ? fR(r.valor_ferias_proporcionais) : '—'}</td>
+        <td class="num">${r.valor_13_proporcional > 0 ? fR(r.valor_13_proporcional) : '—'}</td>
+        <td class="num">${r.valor_multa_fgts > 0 ? fR(r.valor_multa_fgts) : '—'}</td>
+        <td class="num">${r.valor_outros > 0 ? fR(r.valor_outros) : '—'}</td>
+        <td class="num bold">${fR(r.total_rescisao)}</td>
+      </tr>`
+    }).join('')
+    const totalGeral = filtered.reduce((s,r) => s + r.total_rescisao, 0)
+    const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Rescisões</title>
+<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Segoe UI',Arial,sans-serif;font-size:10px;color:#111}
+@page{size:A4 landscape;margin:10mm}@media print{body{margin:0}}
+h1{font-size:15px;font-weight:800;color:#1e3a5f;margin-bottom:2px}
+p.sub{font-size:9px;color:#666;margin-bottom:10px}
+table{width:100%;border-collapse:collapse}
+th{background:#1e3a5f;color:#fff;font-weight:700;padding:6px 8px;white-space:nowrap;font-size:10px}
+th:not(:nth-child(3)):not(:nth-child(n+4)){text-align:left}
+th:nth-child(n+4){text-align:right}
+td{padding:5px 8px;border-bottom:1px solid #e5e7eb;text-align:right}
+td.nome{text-align:left}td.center{text-align:center}
+td.num{font-family:monospace}td.bold{font-weight:800;color:#dc2626}
+tr:nth-child(even){background:#f8fafc}
+tfoot td{background:#1e3a5f;color:#fff;font-weight:700;padding:6px 8px;text-align:right}
+tfoot td:first-child{text-align:left}
+</style></head><body>
+<h1>Rescisões Registradas</h1>
+<p class="sub">${filtered.length} rescisão(ões) · Gerado em ${new Date().toLocaleDateString('pt-BR')}</p>
+<table>
+  <thead><tr>
+    <th>Colaborador</th><th style="text-align:center">Tipo</th><th style="text-align:center">Data</th>
+    <th style="text-align:right">Saldo FGTS</th><th style="text-align:right">Aviso Prévio</th>
+    <th style="text-align:right">Férias Prop.</th><th style="text-align:right">13º Prop.</th>
+    <th style="text-align:right">Multa 40%</th><th style="text-align:right">Outros</th>
+    <th style="text-align:right">TOTAL</th>
+  </tr></thead>
+  <tbody>${rows}</tbody>
+  <tfoot><tr>
+    <td colspan="9">TOTAL — ${filtered.length} rescisão(ões)</td>
+    <td>${fR(totalGeral)}</td>
+  </tr></tfoot>
+</table>
+<script>window.onload=()=>window.print()</script>
+</body></html>`
+    const w = window.open('', '_blank')
+    if (w) { w.document.write(html); w.document.close() }
+  }
 
   return (
     <div className="page-root">
@@ -374,6 +509,27 @@ export default function ProvisaoRescisao() {
         </Button>
       </div>
 
+      {/* ── Abas de navegação ─────────────────────────────────────────────────── */}
+      <div style={{ display: 'flex', gap: 0, borderBottom: '2px solid var(--border)', marginBottom: 20 }}>
+        {([
+          { key: 'resumo',    label: '📊 Resumo & Rescisões',         icon: null },
+          { key: 'provisoes', label: '📋 Provisões por Colaborador',  icon: null },
+        ] as const).map(t => (
+          <button key={t.key} onClick={() => setAba(t.key)}
+            style={{
+              padding: '10px 22px', fontWeight: aba === t.key ? 700 : 500,
+              borderBottom: aba === t.key ? '3px solid #1a56a0' : '3px solid transparent',
+              color: aba === t.key ? '#1a56a0' : 'var(--muted-foreground)',
+              background: 'transparent', border: 'none', cursor: 'pointer',
+              fontSize: 14, marginBottom: -2, transition: 'all .15s',
+            }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {aba === 'resumo' && (
+      <>
       {/* ── Cards clicáveis ─────────────────────────────────────────────────────── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14, marginBottom: 28 }}>
 
@@ -642,6 +798,12 @@ export default function ProvisaoRescisao() {
               className="pl-8 h-9" />
           </div>
           <span style={{ fontSize: 12, color: 'var(--muted-foreground)' }}>{filtered.length} registro(s)</span>
+          {filtered.length > 0 && (
+            <button onClick={gerarPdfRescisoes} title="Gerar PDF"
+              style={{ display:'flex', alignItems:'center', gap:5, padding:'5px 12px', borderRadius:8, border:'1.5px solid #1a56a0', background:'#eff6ff', color:'#1a56a0', fontWeight:700, fontSize:12, cursor:'pointer' }}>
+              <Printer size={13} /> PDF
+            </button>
+          )}
         </div>
 
         {loading ? (
@@ -721,6 +883,93 @@ export default function ProvisaoRescisao() {
           </div>
         )}
       </div>
+      </>
+      )}
+      {/* fim aba resumo */}
+
+      {/* ══ ABA: Provisões por Colaborador ══════════════════════════════════ */}
+      {aba === 'provisoes' && (
+        <div>
+          {/* Toolbar: busca + PDF */}
+          <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:16, flexWrap:'wrap' }}>
+            <div style={{ position:'relative', flex:1, minWidth:220, maxWidth:400 }}>
+              <Search size={13} style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', color:'var(--muted-foreground)' }} />
+              <input value={buscaProvisoes} onChange={e => setBuscaProvisoes(e.target.value)}
+                placeholder="Filtrar por nome, chapa ou competência…"
+                style={{ width:'100%', height:38, paddingLeft:30, paddingRight:10, fontSize:13, border:'1.5px solid var(--border)', borderRadius:9, background:'var(--background)', color:'var(--foreground)', boxSizing:'border-box' }} />
+            </div>
+            <span style={{ fontSize:12, color:'var(--muted-foreground)' }}>{linhasProvisoesFiltradas.length} lançamento(s)</span>
+            {linhasProvisoesFiltradas.length > 0 && (
+              <button onClick={gerarPdfProvisoes}
+                style={{ display:'flex', alignItems:'center', gap:5, padding:'7px 14px', borderRadius:8, border:'1.5px solid #1a56a0', background:'#eff6ff', color:'#1a56a0', fontWeight:700, fontSize:12, cursor:'pointer' }}>
+                <Printer size={13} /> PDF
+              </button>
+            )}
+          </div>
+
+          {/* Tabela estilo Encargos */}
+          {loading ? (
+            <div style={{ padding:40, textAlign:'center', color:'var(--muted-foreground)' }}>Carregando…</div>
+          ) : linhasProvisoesFiltradas.length === 0 ? (
+            <div style={{ padding:60, textAlign:'center', color:'var(--muted-foreground)' }}>
+              <ClipboardList size={36} style={{ opacity:.2, margin:'0 auto 12px', display:'block' }} />
+              <div style={{ fontWeight:700 }}>Nenhuma provisão encontrada</div>
+              <div style={{ fontSize:12, marginTop:4 }}>Os dados aparecem quando há fechamentos CLT aprovados.</div>
+            </div>
+          ) : (
+            <div style={{ overflowX:'auto', borderRadius:10, border:'1px solid var(--border)', background:'var(--card)' }}>
+              <table style={{ width:'100%', borderCollapse:'collapse', fontSize:11 }}>
+                <thead>
+                  <tr>
+                    {[
+                      { label: 'Colaborador' }, { label: 'Chapa' }, { label: 'Competência' },
+                      { label: 'Base Sal+DSR' }, { label: 'FGTS 8%' }, { label: 'Férias 11,11%' },
+                      { label: '13º 8,33%' },   { label: 'Aviso Prév. 8,33%' }, { label: 'Multa 3,2%' },
+                      { label: 'TOTAL' },
+                    ].map((h, i) => (
+                      <th key={i} style={{ background:'#1e3a5f', color:'#fff', fontWeight:700, padding:'8px 10px', textAlign: i < 3 ? 'left' : 'right', whiteSpace:'nowrap', fontSize:11 }}>
+                        {h.label}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {linhasProvisoesFiltradas.map((l, idx) => (
+                    <tr key={`${l.colaborador_id}-${idx}`} style={{ background: idx % 2 === 0 ? 'var(--card)' : 'var(--muted)' }}>
+                      <td style={{ padding:'7px 10px', whiteSpace:'nowrap' }}>
+                        <div style={{ fontWeight:700, fontSize:12 }}>{l.nome}</div>
+                      </td>
+                      <td style={{ padding:'7px 10px', color:'var(--muted-foreground)', fontSize:11 }}>{l.chapa || '—'}</td>
+                      <td style={{ padding:'7px 10px', fontSize:12, fontWeight:600 }}>{fmtMes(l.mes_referencia)}</td>
+                      <td style={{ padding:'7px 10px', textAlign:'right', fontWeight:600, color:'#1e3a5f' }}>{formatCurrency(l.bruto)}</td>
+                      <td style={{ padding:'7px 10px', textAlign:'right', color:'#15803d' }}>{formatCurrency(l.fgts)}</td>
+                      <td style={{ padding:'7px 10px', textAlign:'right', color:'#15803d' }}>{formatCurrency(l.ferias)}</td>
+                      <td style={{ padding:'7px 10px', textAlign:'right', color:'#b45309' }}>{formatCurrency(l.decimo_terceiro)}</td>
+                      <td style={{ padding:'7px 10px', textAlign:'right', color:'#0891b2' }}>{formatCurrency(l.aviso_previo)}</td>
+                      <td style={{ padding:'7px 10px', textAlign:'right', color:'#dc2626' }}>{formatCurrency(l.multa_fgts)}</td>
+                      <td style={{ padding:'7px 10px', textAlign:'right', fontWeight:800, color:'#7c3aed', fontSize:12 }}>{formatCurrency(l.total)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr style={{ fontSize:11 }}>
+                    <td colSpan={3} style={{ background:'#1e3a5f', color:'#fff', fontWeight:700, padding:'8px 10px' }}>
+                      TOTAIS ({linhasProvisoesFiltradas.length} lançamentos)
+                    </td>
+                    <td style={{ background:'#1e3a5f', color:'#bfdbfe', textAlign:'right', padding:'8px 10px' }}>{formatCurrency(totaisProvFiltrados.bruto)}</td>
+                    <td style={{ background:'#1e3a5f', color:'#86efac', textAlign:'right', padding:'8px 10px' }}>{formatCurrency(totaisProvFiltrados.fgts)}</td>
+                    <td style={{ background:'#1e3a5f', color:'#86efac', textAlign:'right', padding:'8px 10px' }}>{formatCurrency(totaisProvFiltrados.ferias)}</td>
+                    <td style={{ background:'#1e3a5f', color:'#fde68a', textAlign:'right', padding:'8px 10px' }}>{formatCurrency(totaisProvFiltrados.decimo)}</td>
+                    <td style={{ background:'#1e3a5f', color:'#67e8f9', textAlign:'right', padding:'8px 10px' }}>{formatCurrency(totaisProvFiltrados.aviso)}</td>
+                    <td style={{ background:'#1e3a5f', color:'#fca5a5', textAlign:'right', padding:'8px 10px' }}>{formatCurrency(totaisProvFiltrados.multa)}</td>
+                    <td style={{ background:'#1e3a5f', color:'#c4b5fd', fontWeight:800, textAlign:'right', padding:'8px 10px', fontSize:12 }}>{formatCurrency(totaisProvFiltrados.total)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ══ MODAL: Lançar Rescisão ══════════════════════════════════════════════ */}
       {modalOpen && (
