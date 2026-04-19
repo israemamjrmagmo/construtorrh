@@ -10,8 +10,9 @@ import {
   Receipt, Search, Plus, Trash2, ExternalLink, Copy,
   Eye, EyeOff, RefreshCw, User, Key, CheckCircle2,
   Upload, X, FileText, Sparkles, Loader2, Info,
-  TrendingUp, TrendingDown, Wallet, ChevronDown, ChevronUp, ShieldCheck,
+  TrendingUp, TrendingDown, Wallet, ChevronDown, ChevronUp, ShieldCheck, Download,
 } from 'lucide-react'
+import { fetchEmpresaData } from '@/lib/relatorioHeader'
 import { toast } from 'sonner'
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -77,8 +78,83 @@ async function uploadPdf(file: File) {
   return { url: supabase.storage.from(BUCKET).getPublicUrl(path).data.publicUrl, nome: file.name }
 }
 
+// ─── Helpers para PDF (igual ao portal do colaborador) ───────────────────────
+function fmtR(v: number | null | undefined) {
+  if (!v) return 'R$ 0,00'
+  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+}
+function fmtCPF2(c: string) {
+  const d = c.replace(/\D/g, '').padStart(11, '0')
+  return `${d.slice(0,3)}.${d.slice(3,6)}.${d.slice(6,9)}-${d.slice(9)}`
+}
+function abrirHtmlComoPdf(html: string, titulo: string): void {
+  try {
+    const iframe = document.createElement('iframe')
+    iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;border:none'
+    document.body.appendChild(iframe)
+    const iDoc = iframe.contentDocument || iframe.contentWindow?.document
+    if (iDoc) {
+      iDoc.open(); iDoc.write(html); iDoc.close()
+      setTimeout(() => {
+        try { iframe.contentWindow?.focus(); iframe.contentWindow?.print() } catch {}
+        setTimeout(() => document.body.removeChild(iframe), 2000)
+      }, 500)
+      return
+    }
+    document.body.removeChild(iframe)
+  } catch {}
+  try {
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href = url; a.download = titulo.replace(/[^a-z0-9]/gi, '_') + '.html'
+    document.body.appendChild(a); a.click(); document.body.removeChild(a)
+    setTimeout(() => URL.revokeObjectURL(url), 5000)
+  } catch {}
+}
+async function gerarPdfHolerite(h: Contracheque, colab: Colaborador | null, aceite: any | null) {
+  const empresa = await fetchEmpresaData()
+  const en   = empresa?.nome ?? 'Empresa'
+  const cnpj = empresa?.cnpj ? `CNPJ: ${empresa.cnpj}` : ''
+  const bruto     = h.bruto ?? 0
+  const descontos = (h.inss??0)+(h.irrf??0)+(h.desconto_vt??0)+(h.desconto_adiant??0)+(h.cesta_basica??0)||(h.descontos??0)
+  const liquido   = h.liquido ?? Math.max(0, bruto - descontos)
+  const rendimentos = [
+    { cod:'0001', desc:'Salário / Valor Horas', val:h.salario_base },
+    { cod:'0003', desc:'DSR',                   val:h.valor_dsr   },
+    { cod:'0004', desc:'Prêmios',               val:h.valor_premio },
+  ].filter(r=>r.val&&r.val>0)
+  if (!rendimentos.length && bruto > 0) rendimentos.push({ cod:'0001', desc:'Total Rendimentos', val:bruto })
+  const descs = [
+    { cod:'0101', desc:'INSS',            val:h.inss           },
+    { cod:'0102', desc:'IRRF',            val:h.irrf           },
+    { cod:'0103', desc:'Vale Transporte', val:h.desconto_vt    },
+    { cod:'0104', desc:'Adiantamento',    val:h.desconto_adiant},
+    { cod:'0105', desc:'Cesta Básica',    val:h.cesta_basica   },
+  ].filter(d=>d.val&&d.val>0)
+  if (!descs.length && descontos > 0) descs.push({ cod:'0101', desc:'Total Descontos', val:descontos })
+  const rowsR = rendimentos.map(r=>`<tr><td style="padding:7px 16px;color:#9ca3af;font-size:10px;width:50px">${r.cod}</td><td style="padding:7px 16px;font-size:13px;color:#111">${r.desc}</td><td style="padding:7px 16px;text-align:right;font-weight:700;color:#16a34a;font-size:13px;white-space:nowrap">${fmtR(r.val)}</td></tr>`).join('')
+  const rowsD = descs.map(d=>`<tr><td style="padding:7px 16px;color:#9ca3af;font-size:10px;width:50px">${d.cod}</td><td style="padding:7px 16px;font-size:13px;color:#111">${d.desc}</td><td style="padding:7px 16px;text-align:right;font-weight:700;color:#dc2626;font-size:13px;white-space:nowrap">- ${fmtR(d.val)}</td></tr>`).join('')
+  const aceiteHtml = aceite ? `<div style="margin:16px;background:#f0fdf4;border:1.5px solid #86efac;border-radius:8px;padding:12px 16px"><div style="font-size:10px;font-weight:700;color:#15803d;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">✅ Aceite Digital</div><table style="width:100%;font-size:11px;color:#374151;border-collapse:collapse"><tr><td style="padding:2px 0;color:#6b7280;width:110px">Colaborador:</td><td style="font-weight:600">${aceite.nome_colaborador??colab?.nome??'—'}</td></tr><tr><td style="padding:2px 0;color:#6b7280">Aceito em:</td><td style="font-weight:600">${new Date(aceite.aceito_em).toLocaleString('pt-BR')}</td></tr><tr><td style="padding:2px 0;color:#6b7280">IP:</td><td style="font-weight:600;font-family:monospace">${aceite.ip_address??'—'}</td></tr></table><div style="font-size:9px;color:#9ca3af;margin-top:6px">Prova de ciência do colaborador.</div></div>` : ''
+  const TIPO_LABELS2: Record<string,string> = { mensal:'Mensal', adiantamento:'Adiantamento Salarial', ferias:'Férias', '13o_1a':'13º - 1ª Parcela', '13o_2a':'13º - 2ª Parcela', rescisorio:'Rescisório' }
+  const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Contracheque — ${fmtComp(h.competencia)}</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Segoe UI',Arial,sans-serif;font-size:13px;color:#111;background:#fff}@page{size:A4 portrait;margin:0}@media print{body{margin:0}}.page{width:210mm;min-height:297mm;background:#fff;margin:0 auto}table{width:100%;border-collapse:collapse}tr{border-bottom:1px solid #f3f4f6}tr:last-child{border-bottom:none}</style></head><body><div class="page">
+  <div style="background:#1a56a0;padding:16px 20px;display:flex;justify-content:space-between;align-items:center"><div><div style="color:#fff;font-size:18px;font-weight:800;letter-spacing:-.3px">Contracheque</div><div style="color:rgba(255,255,255,.7);font-size:11px;margin-top:2px">${fmtComp(h.competencia)} · ${TIPO_LABELS2[h.tipo]??h.tipo}</div></div><div style="text-align:right"><div style="color:#fff;font-size:14px;font-weight:700">${en}</div><div style="color:rgba(255,255,255,.65);font-size:11px">${cnpj}</div></div></div>
+  <div style="background:#f0f4f8;padding:10px 20px;border-bottom:1px solid #d0dae5"><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px 16px"><div><div style="font-size:9px;text-transform:uppercase;color:#6b7280;font-weight:700;margin-bottom:2px">Matrícula</div><div style="font-size:12px;font-weight:700">${colab?.chapa??'—'}</div></div><div><div style="font-size:9px;text-transform:uppercase;color:#6b7280;font-weight:700;margin-bottom:2px">Nome</div><div style="font-size:12px;font-weight:700">${colab?.nome??'—'}</div></div><div><div style="font-size:9px;text-transform:uppercase;color:#6b7280;font-weight:700;margin-bottom:2px">CPF</div><div style="font-size:12px">${colab?.cpf?fmtCPF2(colab.cpf):'—'}</div></div><div><div style="font-size:9px;text-transform:uppercase;color:#6b7280;font-weight:700;margin-bottom:2px">Cargo</div><div style="font-size:12px">${h.funcao??colab?.funcao??'—'}</div></div><div><div style="font-size:9px;text-transform:uppercase;color:#6b7280;font-weight:700;margin-bottom:2px">Vínculo</div><div style="font-size:12px">${(h.tipo_contrato_snap??colab?.tipo_contrato??'CLT').toUpperCase()}</div></div>${h.obra_nome?`<div style="grid-column:span 2"><div style="font-size:9px;text-transform:uppercase;color:#6b7280;font-weight:700;margin-bottom:2px">Obra</div><div style="font-size:12px">${h.obra_nome}</div></div>`:''}</div></div>
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;border-bottom:2px solid #1a56a0"><div style="padding:14px 20px;text-align:center;border-right:1px solid #e5e7eb"><div style="font-size:10px;text-transform:uppercase;color:#6b7280;font-weight:700;margin-bottom:4px">Total Bruto</div><div style="font-size:20px;font-weight:800;color:#16a34a">${fmtR(bruto)}</div></div><div style="padding:14px 20px;text-align:center;border-right:1px solid #e5e7eb"><div style="font-size:10px;text-transform:uppercase;color:#6b7280;font-weight:700;margin-bottom:4px">Total Descontos</div><div style="font-size:20px;font-weight:800;color:#dc2626">- ${fmtR(descontos)}</div></div><div style="padding:14px 20px;text-align:center"><div style="font-size:10px;text-transform:uppercase;color:#6b7280;font-weight:700;margin-bottom:4px">Líquido a Receber</div><div style="font-size:20px;font-weight:800;color:#1a56a0">${fmtR(liquido)}</div></div></div>
+  <div style="background:#f9fafb;padding:8px 20px 4px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#374151;border-bottom:1px solid #e5e7eb">Rendimentos</div>
+  <table><tbody>${rowsR}</tbody></table>
+  <div style="display:flex;justify-content:space-between;padding:8px 16px;background:#f0fdf4;border-top:2px solid #bbf7d0;border-bottom:1px solid #e5e7eb"><span style="font-weight:700;font-size:13px;color:#15803d">Total Rendimentos</span><span style="font-weight:800;font-size:14px;color:#15803d">${fmtR(bruto)}</span></div>
+  <div style="background:#f9fafb;padding:8px 20px 4px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#374151;border-bottom:1px solid #e5e7eb">Descontos</div>
+  <table><tbody>${rowsD}</tbody></table>
+  <div style="display:flex;justify-content:space-between;padding:8px 16px;background:#fff1f2;border-top:2px solid #fecaca;border-bottom:1px solid #e5e7eb"><span style="font-weight:700;font-size:13px;color:#dc2626">Total Descontos</span><span style="font-weight:800;font-size:14px;color:#dc2626">- ${fmtR(descontos)}</span></div>
+  ${h.fgts&&h.fgts>0?`<div style="margin:12px 16px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center"><div><div style="font-size:11px;font-weight:700;color:#1d4ed8">🏦 FGTS depositado pela empresa</div><div style="font-size:10px;color:#3b82f6">Valor não deduzido do seu salário</div></div><span style="font-size:16px;font-weight:800;color:#1d4ed8">${fmtR(h.fgts)}</span></div>`:''}
+  <div style="margin:0 16px;padding:10px 0;border-top:1px solid #e5e7eb;display:flex;justify-content:space-between;font-size:10px;color:#9ca3af"><span>${colab?.nome??''} · Chapa ${colab?.chapa??'—'}</span><span>${h.publicado_em?new Date(h.publicado_em).toLocaleDateString('pt-BR'):'—'}</span></div>
+  ${aceiteHtml}
+</div><script>window.onload=()=>{ window.print() }</script></body></html>`
+  abrirHtmlComoPdf(html, `Contracheque_${(colab?.nome??'colab').replace(/\s+/g,'_')}_${fmtComp(h.competencia).replace('/','_')}`)
+}
+
 // ─── Utilitário: sincronizar registros de ponto para portal_ponto_diario ──────
-// Chamado automaticamente ao publicar/gerar qualquer holerite (individual ou lote)
 async function syncPontoPortal(colaboradorId: string, lancamentoId: string): Promise<{ ok: boolean; count: number; error?: string }> {
   try {
     const { data: lanc } = await supabase.from('ponto_lancamentos').select('data_inicio,data_fim').eq('id', lancamentoId).single()
@@ -1512,6 +1588,11 @@ export default function Contracheques() {
                                 style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid #e2e8f0', background: '#f8fafc', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: h.publicado ? '#dc2626' : '#16a34a', fontWeight: 600 }}>
                                 {h.publicado ? <EyeOff size={11} /> : <Eye size={11} />}
                                 {h.publicado ? 'Tirar' : 'Publicar'}
+                              </button>
+                              {/* Botão PDF — gera contracheque igual ao portal */}
+                              <button onClick={() => gerarPdfHolerite(h, selected, aceites[h.id] ?? null)} title="Gerar PDF (igual ao portal do colaborador)"
+                                style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid #bfdbfe', background: '#eff6ff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#1d4ed8', fontWeight: 600 }}>
+                                <Download size={11} /> PDF
                               </button>
                               {h.lancamento_id && (
                                 <button onClick={() => sincronizarPonto(h)} title="Sincronizar registros de ponto para o portal"
