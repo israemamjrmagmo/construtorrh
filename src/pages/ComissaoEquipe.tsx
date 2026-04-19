@@ -43,11 +43,13 @@ interface PlaybookPreco {
 /** Item concreto da obra — é o que portal_producao.playbook_item_id aponta */
 interface PbItem { id: string; obra_id: string; descricao: string; unidade: string; categoria: string | null }
 
-/** Produção lançada pelo colaborador no portal */
+/** Produção lançada pelo colaborador — tabela ponto_producao */
 interface ProducaoItem {
   id: string; colaborador_id: string; obra_id: string | null
-  playbook_item_id: string | null; quantidade: number; data: string
+  playbook_item_id: string | null; quantidade: number
+  mes_referencia: string          // formato YYYY-MM
   num_retrabalhos?: number | null
+  lancamento_id?: string | null
   colaboradores?: { nome: string; chapa: string | null }
   playbook_itens?:  { descricao: string; unidade: string; categoria: string | null }
 }
@@ -144,9 +146,9 @@ export default function ComissaoEquipe() {
         .select('id, obra_id, atividade_id, preco_unitario, valor_premiacao_enc, valor_premiacao_cabo, encarregado_id, cabo_id, playbook_atividades(descricao, unidade, categoria)'),
       supabase.from('playbook_itens')
         .select('id, obra_id, descricao, unidade, categoria'),
-      supabase.from('portal_producao')
-        .select('id, colaborador_id, obra_id, playbook_item_id, quantidade, data, num_retrabalhos, colaboradores(nome, chapa), playbook_itens(descricao, unidade, categoria)')
-        .gte('data', mesInicio).lte('data', mesFim),
+      supabase.from('ponto_producao')
+        .select('id, colaborador_id, obra_id, playbook_item_id, quantidade, mes_referencia, num_retrabalhos, lancamento_id, colaboradores(nome, chapa), playbook_itens(descricao, unidade, categoria)')
+        .eq('mes_referencia', competencia),
       supabase.from('colaboradores').select('id, nome, chapa').order('nome').limit(2000),
       supabase.from('comissoes_equipe_v2')
         .select('*, obras(nome), colaboradores(nome, chapa)')
@@ -157,7 +159,9 @@ export default function ComissaoEquipe() {
     setObras      ((obrRes.data ?? []) as Obra[])
     setPrecos     ((preRes.data ?? []) as PlaybookPreco[])
     setPbItens    ((pbRes.data  ?? []) as PbItem[])
-    setProducoes  ((proRes.data ?? []) as ProducaoItem[])
+    // ponto_producao: normalizar num_retrabalhos (campo pode não existir ainda)
+    const proData = (proRes.data ?? []).map((p: any) => ({ ...p, num_retrabalhos: p.num_retrabalhos ?? 0 }))
+    setProducoes(proData as ProducaoItem[])
     setColabs     ((colRes.data ?? []) as ColaboradorInfo[])
     setComissoes  ((comRes.data ?? []) as ComissaoRow[])
     setLoading(false)
@@ -329,7 +333,7 @@ export default function ComissaoEquipe() {
   async function salvarRetrabalho() {
     if (!modalRetrab) return
     setSalvandoRetrab(true)
-    const { error } = await supabase.from('portal_producao').update({ num_retrabalhos: novoRetrab }).eq('id', modalRetrab.producaoId)
+    const { error } = await supabase.from('ponto_producao').update({ num_retrabalhos: novoRetrab }).eq('id', modalRetrab.producaoId)
     setSalvandoRetrab(false)
     if (error) { toast.error('Erro ao salvar retrabalho.'); console.error(error) }
     else { toast.success('Retrabalho atualizado!'); setModalRetrab(null); fetchData() }
@@ -645,7 +649,7 @@ export default function ComissaoEquipe() {
                                       <span style={{ fontSize:10, color:'#0369a1' }}>↳</span>
                                       <span style={{ fontSize:12, fontWeight:600, color:'#1e293b' }}>{prod.colaboradores?.nome ?? '—'}</span>
                                       {prod.colaboradores?.chapa && <span style={{ fontSize:10, color:'#94a3b8', fontFamily:'monospace' }}>{prod.colaboradores.chapa}</span>}
-                                      <span style={{ fontSize:10, color:'#64748b' }}>· {prod.data}</span>
+                                      <span style={{ fontSize:10, color:'#64748b' }}>· {prod.mes_referencia}</span>
                                     </div>
                                   </TableCell>
                                   <TableCell style={{ textAlign:'center', paddingTop:3, paddingBottom:3 }}><span style={{ fontFamily:'monospace', fontSize:10 }}>{linha.unidade}</span></TableCell>
