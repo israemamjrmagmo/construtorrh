@@ -344,6 +344,10 @@ function TelaHolerite({ h, colab, empresa, aceite, onVoltar }: {
   const bruto     = h.bruto ?? 0
   const descontos = (h.inss??0)+(h.irrf??0)+(h.desconto_vt??0)+(h.desconto_adiant??0)+(h.cesta_basica??0) || (h.descontos??0)
   const liquido   = h.liquido ?? Math.max(0, bruto - descontos)
+  // Base tributável: Salário + DSR (prêmios não integram INSS/FGTS)
+  const baseTrib  = (h.salario_base??0) + (h.valor_dsr??0)
+  const percInss  = baseTrib>0 && h.inss ? Math.round((h.inss/baseTrib)*1000)/10 : 7.5
+  const fgtsValor = h.fgts ?? (baseTrib>0 ? Math.round(baseTrib*0.08*100)/100 : 0)
 
   const rendimentos = [
     { cod:'0001', desc:'Salário / Valor Horas', val:h.salario_base,   cor:'#3b82f6' },
@@ -371,12 +375,19 @@ function TelaHolerite({ h, colab, empresa, aceite, onVoltar }: {
         <td style="padding:7px 16px;font-size:13px;color:#111">${r.desc}</td>
         <td style="padding:7px 16px;text-align:right;font-weight:700;color:#16a34a;font-size:13px;white-space:nowrap">${fmtR(r.val)}</td>
       </tr>`).join('')
-    const rowsD = descontosList.map(d => `
+    // Pré-computar strings auxiliares para evitar template literals aninhados
+    const fgtsBaseHtml = baseTrib>0 ? '<div style="font-size:9px;color:#6b7280;margin-top:4px;border-top:1px solid #dbeafe;padding-top:4px">Base (Sal.+DSR): '+fmtR(baseTrib)+' \u00b7 8,0%</div>' : ''
+    const inssBaseHtml = (baseTrib>0 && h.inss&&h.inss>0) ? '<div style="font-size:9px;color:#9ca3af;margin-top:2px">Base: '+fmtR(baseTrib)+' \u00b7 '+percInss.toFixed(1)+'%</div>' : ''
+    const rowsD = descontosList.map(d => {
+      const isInss = d.cod === (empresa?.codigos?.inss??'0101')
+      const baseInfo = isInss ? inssBaseHtml : ''
+      return `
       <tr>
-        <td style="padding:7px 16px;color:#9ca3af;font-size:10px;width:50px">${d.cod}</td>
-        <td style="padding:7px 16px;font-size:13px;color:#111">${d.desc}</td>
-        <td style="padding:7px 16px;text-align:right;font-weight:700;color:#dc2626;font-size:13px;white-space:nowrap">- ${fmtR(d.val)}</td>
-      </tr>`).join('')
+        <td style="padding:7px 16px;color:#9ca3af;font-size:10px;width:50px;vertical-align:top">${d.cod}</td>
+        <td style="padding:7px 16px;font-size:13px;color:#111">${d.desc}${baseInfo}</td>
+        <td style="padding:7px 16px;text-align:right;font-weight:700;color:#dc2626;font-size:13px;white-space:nowrap;vertical-align:top">- ${fmtR(d.val)}</td>
+      </tr>`
+    }).join('')
     const aceiteHtml = aceite ? `
       <div style="margin:16px;background:#f0fdf4;border:1.5px solid #86efac;border-radius:8px;padding:12px 16px">
         <div style="font-size:10px;font-weight:700;color:#15803d;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">✅ Aceite Digital — Comprovante de Ciência</div>
@@ -464,14 +475,17 @@ function TelaHolerite({ h, colab, empresa, aceite, onVoltar }: {
     <span style="font-weight:800;font-size:14px;color:#dc2626">- ${fmtR(descontos)}</span>
   </div>
 
-  ${h.fgts&&h.fgts>0?`
+  ${fgtsValor>0?`
   <!-- FGTS -->
-  <div style="margin:12px 16px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center">
-    <div>
-      <div style="font-size:11px;font-weight:700;color:#1d4ed8">🏦 FGTS depositado pela empresa</div>
-      <div style="font-size:10px;color:#3b82f6">Valor não deduzido do seu salário</div>
+  <div style="margin:12px 16px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 14px">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <div style="font-size:11px;font-weight:700;color:#1d4ed8">🏦 FGTS depositado pela empresa</div>
+        <div style="font-size:10px;color:#3b82f6">Valor não deduzido do seu salário</div>
+      </div>
+      <span style="font-size:16px;font-weight:800;color:#1d4ed8">${fmtR(fgtsValor)}</span>
     </div>
-    <span style="font-size:16px;font-weight:800;color:#1d4ed8">${fmtR(h.fgts)}</span>
+    ${fgtsBaseHtml}
   </div>`:''}
 
   <!-- RODAPÉ -->
@@ -571,6 +585,11 @@ function TelaHolerite({ h, colab, empresa, aceite, onVoltar }: {
             )}
             <div style={{ marginTop:8 }}>
               <LinhaDetalhe codigo={empresa?.codigos?.inss??'0101'} descricao="INSS"            valor={h.inss}            cor="#dc2626"/>
+              {h.inss&&h.inss>0&&baseTrib>0&&(
+                <div style={{ padding:'0 16px 8px', fontSize:10, color:'#9ca3af' }}>
+                  Base: {fmtR(baseTrib)} (Sal.+DSR) · {percInss.toFixed(1)}%
+                </div>
+              )}
               <LinhaDetalhe codigo={empresa?.codigos?.irrf??'0102'} descricao="IRRF"            valor={h.irrf}            cor="#f97316"/>
               <LinhaDetalhe codigo={empresa?.codigos?.vt??'0103'} descricao="Vale Transporte" valor={h.desconto_vt}     cor="#8b5cf6"/>
               <LinhaDetalhe codigo={empresa?.codigos?.adiantamento??'0104'} descricao="Adiantamento"    valor={h.desconto_adiant} cor="#ec4899"/>
@@ -601,22 +620,28 @@ function TelaHolerite({ h, colab, empresa, aceite, onVoltar }: {
                   <span style={{ fontSize:13, fontWeight:600, color:'#111827' }}>{valor}</span>
                 </div>
               ))}
-              {h.fgts&&h.fgts>0&&(
-                <div style={{ margin:'10px 16px 4px', padding:'9px 13px', background:'#eff6ff', borderRadius:8, border:'1px solid #bfdbfe' }}>
-                  <div style={{ fontSize:11, color:'#1d4ed8', fontWeight:700, marginBottom:2 }}>FGTS — depositado pelo empregador</div>
-                  <div style={{ fontSize:15, fontWeight:800, color:'#1d4ed8' }}>{fmtR(h.fgts)}</div>
-                </div>
-              )}
+          {h.fgts&&h.fgts>0&&(
+            <div style={{ margin:'10px 16px 4px', padding:'9px 13px', background:'#eff6ff', borderRadius:8, border:'1px solid #bfdbfe' }}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                <div style={{ fontSize:11, color:'#1d4ed8', fontWeight:700, marginBottom:2 }}>FGTS — depositado pelo empregador</div>
+                <div style={{ fontSize:15, fontWeight:800, color:'#1d4ed8' }}>{fmtR(h.fgts)}</div>
+              </div>
+              {baseTrib>0&&<div style={{ fontSize:10, color:'#6b7280', marginTop:3 }}>Base (Sal.+DSR): {fmtR(baseTrib)} · 8,0%</div>}
+            </div>
+          )}
             </div>
           </Secao>
         </div>
-        {h.fgts && h.fgts > 0 && (
-          <div style={{ margin:'12px 16px 0', background:'#dcfce7', border:'1px solid #86efac', borderRadius:12, padding:'12px 16px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-            <div>
-              <div style={{ fontSize:11, color:'#15803d', fontWeight:700, marginBottom:2 }}>🏦 FGTS depositado pela empresa</div>
-              <div style={{ fontSize:10, color:'#16a34a' }}>Valor não deduzido do seu salário</div>
+        {(fgtsValor > 0) && (
+          <div style={{ margin:'12px 16px 0', background:'#dcfce7', border:'1px solid #86efac', borderRadius:12, padding:'12px 16px' }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+              <div>
+                <div style={{ fontSize:11, color:'#15803d', fontWeight:700, marginBottom:2 }}>🏦 FGTS depositado pela empresa</div>
+                <div style={{ fontSize:10, color:'#16a34a' }}>Valor não deduzido do seu salário</div>
+              </div>
+              <span style={{ color:'#15803d', fontSize:18, fontWeight:900 }}>{fmtR(fgtsValor)}</span>
             </div>
-            <span style={{ color:'#15803d', fontSize:18, fontWeight:900 }}>{fmtR(h.fgts)}</span>
+            {baseTrib>0&&<div style={{ fontSize:10, color:'#16a34a', marginTop:4, borderTop:'1px solid #86efac', paddingTop:4 }}>Base (Sal.+DSR): {fmtR(baseTrib)} · 8,0%</div>}
           </div>
         )}
         <div style={{ margin:'12px 16px 0', background:'#1a56a0', borderRadius:12, padding:'16px 20px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>

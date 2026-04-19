@@ -119,6 +119,10 @@ async function gerarPdfHolerite(h: Contracheque, colab: Colaborador | null, acei
   const bruto     = h.bruto ?? 0
   const descontos = (h.inss??0)+(h.irrf??0)+(h.desconto_vt??0)+(h.desconto_adiant??0)+(h.cesta_basica??0)||(h.descontos??0)
   const liquido   = h.liquido ?? Math.max(0, bruto - descontos)
+  // Base de cálculo: Salário + DSR (prêmios não entram no INSS/FGTS)
+  const baseTrib  = (h.salario_base??0) + (h.valor_dsr??0)
+  const percInss  = baseTrib>0 && h.inss ? Math.round((h.inss/baseTrib)*1000)/10 : 7.5
+  const fgtsValor = h.fgts ?? (baseTrib>0 ? Math.round(baseTrib*0.08*100)/100 : 0)
   const rendimentos = [
     { cod:'0001', desc:'Salário / Valor Horas', val:h.salario_base },
     { cod:'0003', desc:'DSR',                   val:h.valor_dsr   },
@@ -133,8 +137,15 @@ async function gerarPdfHolerite(h: Contracheque, colab: Colaborador | null, acei
     { cod:'0105', desc:'Cesta Básica',    val:h.cesta_basica   },
   ].filter(d=>d.val&&d.val>0)
   if (!descs.length && descontos > 0) descs.push({ cod:'0101', desc:'Total Descontos', val:descontos })
+  // Pré-computar strings para evitar template literals aninhados
+  const fgtsBaseHtml = baseTrib>0 ? '<div style="font-size:9px;color:#6b7280;margin-top:4px;border-top:1px solid #dbeafe;padding-top:4px">Base (Sal.+DSR): '+fmtR(baseTrib)+' \u00b7 8,0%</div>' : ''
+  const inssBaseHtml = (baseTrib>0&&h.inss&&h.inss>0) ? '<div style="font-size:9px;color:#9ca3af;margin-top:2px">Base: '+fmtR(baseTrib)+' \u00b7 '+percInss.toFixed(1)+'%</div>' : ''
   const rowsR = rendimentos.map(r=>`<tr><td style="padding:7px 16px;color:#9ca3af;font-size:10px;width:50px">${r.cod}</td><td style="padding:7px 16px;font-size:13px;color:#111">${r.desc}</td><td style="padding:7px 16px;text-align:right;font-weight:700;color:#16a34a;font-size:13px;white-space:nowrap">${fmtR(r.val)}</td></tr>`).join('')
-  const rowsD = descs.map(d=>`<tr><td style="padding:7px 16px;color:#9ca3af;font-size:10px;width:50px">${d.cod}</td><td style="padding:7px 16px;font-size:13px;color:#111">${d.desc}</td><td style="padding:7px 16px;text-align:right;font-weight:700;color:#dc2626;font-size:13px;white-space:nowrap">- ${fmtR(d.val)}</td></tr>`).join('')
+  const rowsD = descs.map(d=>{
+    const isInss = d.cod==='0101'
+    const baseInfo = isInss ? inssBaseHtml : ''
+    return `<tr><td style="padding:7px 16px;color:#9ca3af;font-size:10px;width:50px;vertical-align:top">${d.cod}</td><td style="padding:7px 16px;font-size:13px;color:#111">${d.desc}${baseInfo}</td><td style="padding:7px 16px;text-align:right;font-weight:700;color:#dc2626;font-size:13px;white-space:nowrap;vertical-align:top">- ${fmtR(d.val)}</td></tr>`
+  }).join('')
   const aceiteHtml = aceite ? `<div style="margin:16px;background:#f0fdf4;border:1.5px solid #86efac;border-radius:8px;padding:12px 16px"><div style="font-size:10px;font-weight:700;color:#15803d;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">✅ Aceite Digital</div><table style="width:100%;font-size:11px;color:#374151;border-collapse:collapse"><tr><td style="padding:2px 0;color:#6b7280;width:110px">Colaborador:</td><td style="font-weight:600">${aceite.nome_colaborador??colab?.nome??'—'}</td></tr><tr><td style="padding:2px 0;color:#6b7280">Aceito em:</td><td style="font-weight:600">${new Date(aceite.aceito_em).toLocaleString('pt-BR')}</td></tr><tr><td style="padding:2px 0;color:#6b7280">IP:</td><td style="font-weight:600;font-family:monospace">${aceite.ip_address??'—'}</td></tr></table><div style="font-size:9px;color:#9ca3af;margin-top:6px">Prova de ciência do colaborador.</div></div>` : ''
   const TIPO_LABELS2: Record<string,string> = { mensal:'Mensal', adiantamento:'Adiantamento Salarial', ferias:'Férias', '13o_1a':'13º - 1ª Parcela', '13o_2a':'13º - 2ª Parcela', rescisorio:'Rescisório' }
   const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Contracheque — ${fmtComp(h.competencia)}</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Segoe UI',Arial,sans-serif;font-size:13px;color:#111;background:#fff}@page{size:A4 portrait;margin:0}@media print{body{margin:0}}.page{width:210mm;min-height:297mm;background:#fff;margin:0 auto}table{width:100%;border-collapse:collapse}tr{border-bottom:1px solid #f3f4f6}tr:last-child{border-bottom:none}</style></head><body><div class="page">
@@ -147,7 +158,7 @@ async function gerarPdfHolerite(h: Contracheque, colab: Colaborador | null, acei
   <div style="background:#f9fafb;padding:8px 20px 4px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#374151;border-bottom:1px solid #e5e7eb">Descontos</div>
   <table><tbody>${rowsD}</tbody></table>
   <div style="display:flex;justify-content:space-between;padding:8px 16px;background:#fff1f2;border-top:2px solid #fecaca;border-bottom:1px solid #e5e7eb"><span style="font-weight:700;font-size:13px;color:#dc2626">Total Descontos</span><span style="font-weight:800;font-size:14px;color:#dc2626">- ${fmtR(descontos)}</span></div>
-  ${h.fgts&&h.fgts>0?`<div style="margin:12px 16px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center"><div><div style="font-size:11px;font-weight:700;color:#1d4ed8">🏦 FGTS depositado pela empresa</div><div style="font-size:10px;color:#3b82f6">Valor não deduzido do seu salário</div></div><span style="font-size:16px;font-weight:800;color:#1d4ed8">${fmtR(h.fgts)}</span></div>`:''}
+  ${fgtsValor>0?`<div style="margin:12px 16px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 14px"><div style="display:flex;justify-content:space-between;align-items:center"><div><div style="font-size:11px;font-weight:700;color:#1d4ed8">🏦 FGTS depositado pela empresa</div><div style="font-size:10px;color:#3b82f6">Valor não deduzido do seu salário</div></div><span style="font-size:16px;font-weight:800;color:#1d4ed8">${fmtR(fgtsValor)}</span></div>${fgtsBaseHtml}</div>`:""}  
   <div style="margin:0 16px;padding:10px 0;border-top:1px solid #e5e7eb;display:flex;justify-content:space-between;font-size:10px;color:#9ca3af"><span>${colab?.nome??''} · Chapa ${colab?.chapa??'—'}</span><span>${h.publicado_em?new Date(h.publicado_em).toLocaleDateString('pt-BR'):'—'}</span></div>
   ${aceiteHtml}
 </div><script>window.onload=()=>{ window.print() }</script></body></html>`
@@ -424,11 +435,11 @@ function ModalHolerite({ open, onClose, colaborador, onSaved }: {
     }
   }
 
-  // ── Calcular FGTS automaticamente (8% do bruto) ──────────────────────────
+  // ── Calcular FGTS automaticamente: 8% sobre Salário+DSR (prêmios excluídos) ──
   useEffect(() => {
-    const b = parseFloat(bruto) || 0
-    if (b > 0 && !fgts) setFgts((b * 0.08).toFixed(2))
-  }, [bruto])
+    const base = (parseFloat(salarioBase)||0) + (parseFloat(valorDsr)||0)
+    if (base > 0 && !fgts) setFgts((base * 0.08).toFixed(2))
+  }, [salarioBase, valorDsr])
 
   // ── Salvar ────────────────────────────────────────────────────────────────
   async function salvar(publicar: boolean) {
@@ -1310,7 +1321,7 @@ export default function Contracheques() {
           liquido:           liquido  > 0 ? liquido   : null,
           descontos:         sumInss + sumIr + sumVt + totalAdiant > 0 ? sumInss + sumIr + sumVt + totalAdiant : null,
           inss:              sumInss > 0   ? sumInss   : null,
-          fgts:              brutoFinal > 0 ? parseFloat((brutoFinal * 0.08).toFixed(2)) : null,
+          fgts:              (sumValHoras + sumDsr) > 0 ? parseFloat(((sumValHoras + sumDsr) * 0.08).toFixed(2)) : null,  // base = Sal+DSR (sem prêmio)
           irrf:              sumIr > 0     ? sumIr     : null,
           salario_base:      sumValHoras > 0 ? sumValHoras : (colab.salario ?? null),
           horas_normais:     sumHorNorm > 0 ? sumHorNorm : null,
