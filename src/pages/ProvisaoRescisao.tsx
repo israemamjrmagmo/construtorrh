@@ -69,13 +69,14 @@ interface Rescisao {
   colaboradores?: { nome: string; chapa: string }
 }
 
-/** Linha resumida por colaborador + mês — calculada a partir dos lançamentos pagos */
+/** Linha de provisão — calculada por contracheque emitido (publicado/pago) */
 interface LinhaProvisao {
   colaborador_id: string
   nome: string
   chapa: string
-  mes_referencia: string        // YYYY-MM
-  bruto: number                 // snap_valor_total
+  mes_referencia: string        // YYYY-MM (competência do contracheque)
+  tipo_pagamento: string        // mensal | adiantamento | etc.
+  bruto: number                 // base sal+dsr
   fgts: number                  // 8%
   ferias: number                // 11,11%
   decimo_terceiro: number       // 8,33%
@@ -171,21 +172,17 @@ export default function ProvisaoRescisao() {
     setLoading(true)
     try {
       const [lancRes, rescRes, colabRes] = await Promise.all([
-        // Fechamentos CLT — status liberado OU pago — com snap_valor_total
+        // Contracheques CLT publicados/pagos — base para provisões
         supabase
-          .from('ponto_lancamentos')
+          .from('contracheques')
           .select(`
-            colaborador_id,
-            mes_referencia,
-            snap_valor_total,
-            snap_valor_horas,
-            snap_valor_dsr,
-            status,
+            id, colaborador_id, competencia, tipo,
+            salario_base, valor_dsr, status,
             colaboradores!inner(nome, chapa, tipo_contrato)
           `)
-          .in('status', ['liberado', 'pago'])
+          .in('status', ['publicado', 'pago'])
           .eq('colaboradores.tipo_contrato', 'clt')
-          .order('mes_referencia', { ascending: false }),
+          .order('competencia', { ascending: false }),
         // rescisões lançadas
         supabase
           .from('rescisoes')
@@ -203,12 +200,16 @@ export default function ProvisaoRescisao() {
       if (lancRes.error) throw lancRes.error
       if (rescRes.error) throw rescRes.error
 
-      // Montar linhas de provisão — base: horas CLT + DSR apenas (sem produção/prêmio/outros)
+      // Montar linhas de provisão — base: salario_base + valor_dsr por contracheque emitido
+      const TIPO_LABELS_PROV: Record<string,string> = {
+        mensal:'Mensal', adiantamento:'Adiantamento', ferias:'Férias',
+        '13o_1a':'13º 1ª', '13o_2a':'13º 2ª', rescisorio:'Rescisório',
+      }
       const linhas: LinhaProvisao[] = (lancRes.data ?? [])
-        .filter((l: any) => (l.snap_valor_horas ?? 0) > 0 || (l.snap_valor_dsr ?? 0) > 0)
+        .filter((l: any) => (Number(l.salario_base) || 0) > 0 || (Number(l.valor_dsr) || 0) > 0)
         .map((l: any) => {
-          // Base de cálculo = horas normais/extras + DSR (exclui produção, prêmio, etc.)
-          const bruto  = (Number(l.snap_valor_horas) || 0) + (Number(l.snap_valor_dsr) || 0)
+          // Base = salário/horas + DSR — exclui produção e prêmio
+          const bruto  = (Number(l.salario_base) || 0) + (Number(l.valor_dsr) || 0)
           const fgts   = bruto * PERC_FGTS
           const ferias = bruto * PERC_FERIAS
           const dec    = bruto * PERC_13
@@ -218,7 +219,8 @@ export default function ProvisaoRescisao() {
             colaborador_id: l.colaborador_id,
             nome:  l.colaboradores?.nome  ?? '—',
             chapa: l.colaboradores?.chapa ?? '—',
-            mes_referencia: l.mes_referencia ?? '',
+            mes_referencia: l.competencia ?? '',
+            tipo_pagamento: TIPO_LABELS_PROV[l.tipo] ?? (l.tipo ?? '—'),
             bruto,
             fgts,
             ferias,
@@ -263,7 +265,7 @@ export default function ProvisaoRescisao() {
   const linhasDetalhe = useMemo(() => {
     const q = searchDetalhe.toLowerCase()
     return linhasProvisao.filter(l =>
-      !q || l.nome.toLowerCase().includes(q) || l.mes_referencia.includes(q)
+      !q || l.nome.toLowerCase().includes(q) || l.mes_referencia.includes(q) || l.tipo_pagamento.toLowerCase().includes(q)
     )
   }, [linhasProvisao, searchDetalhe])
 
@@ -345,7 +347,7 @@ export default function ProvisaoRescisao() {
     const q = buscaProvisoes.toLowerCase()
     return !q
       ? linhasProvisao
-      : linhasProvisao.filter(l => l.nome.toLowerCase().includes(q) || l.mes_referencia.includes(q) || l.chapa.toLowerCase().includes(q))
+      : linhasProvisao.filter(l => l.nome.toLowerCase().includes(q) || l.mes_referencia.includes(q) || l.chapa.toLowerCase().includes(q) || l.tipo_pagamento.toLowerCase().includes(q))
   }, [linhasProvisao, buscaProvisoes])
 
   const totaisProvFiltrados = useMemo(() => ({
@@ -378,7 +380,7 @@ export default function ProvisaoRescisao() {
       <tr>
         <td class="nome">${l.nome}</td>
         <td class="center">${l.chapa || '—'}</td>
-        <td class="center">${l.mes_referencia}</td>
+        <td class="center">${l.tipo_pagamento}</td>
         <td class="num">${fR(l.bruto)}</td>
         <td class="num">${fR(l.fgts)}</td>
         <td class="num">${fR(l.ferias)}</td>
@@ -407,7 +409,7 @@ tfoot td:first-child{text-align:left}
 <p class="sub">Base: Sal+DSR · FGTS 8% · Férias 11,11% · 13º 8,33% · Aviso Prévio 8,33% · Multa FGTS 3,2% · ${linhasProvisoesFiltradas.length} lançamentos · Gerado em ${new Date().toLocaleDateString('pt-BR')}</p>
 <table>
   <thead><tr>
-    <th>Colaborador</th><th>Chapa</th><th>Competência</th>
+    <th>Colaborador</th><th>Chapa</th><th>Tipo</th>
     <th>Base Sal+DSR</th><th>FGTS 8%</th><th>Férias 11,11%</th>
     <th>13º 8,33%</th><th>Aviso Prév. 8,33%</th><th>Multa 3,2%</th>
     <th>TOTAL</th>
@@ -500,7 +502,7 @@ tfoot td:first-child{text-align:left}
               </span>
             </h1>
             <p style={{ fontSize: 13, color: 'var(--muted-foreground)', margin: '2px 0 0' }}>
-              Base: Sal+DSR · Exclui produção/prêmios · FGTS 8% · Férias 11,11% · 13º 8,33% · Aviso Prévio 8,33% · Multa FGTS 3,2% · Aviso Prévio 8,33% · Multa FGTS 3,2%
+              Calculado por contracheque emitido · Base: Sal+DSR · FGTS 8% · Férias 11,11% · 13º 8,33% · Aviso Prévio 8,33% · Multa FGTS 3,2% · Aviso Prévio 8,33% · Multa FGTS 3,2%
             </p>
           </div>
         </div>
@@ -922,7 +924,7 @@ tfoot td:first-child{text-align:left}
                 <thead>
                   <tr>
                     {[
-                      { label: 'Colaborador' }, { label: 'Chapa' }, { label: 'Competência' },
+                      { label: 'Colaborador' }, { label: 'Chapa' }, { label: 'Tipo' },
                       { label: 'Base Sal+DSR' }, { label: 'FGTS 8%' }, { label: 'Férias 11,11%' },
                       { label: '13º 8,33%' },   { label: 'Aviso Prév. 8,33%' }, { label: 'Multa 3,2%' },
                       { label: 'TOTAL' },
@@ -940,7 +942,7 @@ tfoot td:first-child{text-align:left}
                         <div style={{ fontWeight:700, fontSize:12 }}>{l.nome}</div>
                       </td>
                       <td style={{ padding:'7px 10px', color:'var(--muted-foreground)', fontSize:11 }}>{l.chapa || '—'}</td>
-                      <td style={{ padding:'7px 10px', fontSize:12, fontWeight:600 }}>{fmtMes(l.mes_referencia)}</td>
+                      <td style={{ padding:'7px 10px', fontSize:12 }}><span style={{ background:'#eff6ff', color:'#1a56a0', borderRadius:6, padding:'2px 8px', fontSize:11, fontWeight:700 }}>{l.tipo_pagamento}</span></td>
                       <td style={{ padding:'7px 10px', textAlign:'right', fontWeight:600, color:'#1e3a5f' }}>{formatCurrency(l.bruto)}</td>
                       <td style={{ padding:'7px 10px', textAlign:'right', color:'#15803d' }}>{formatCurrency(l.fgts)}</td>
                       <td style={{ padding:'7px 10px', textAlign:'right', color:'#15803d' }}>{formatCurrency(l.ferias)}</td>
