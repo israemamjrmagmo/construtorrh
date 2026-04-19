@@ -885,6 +885,7 @@ export default function Contracheques() {
   // ── Geração em lote ──────────────────────────────────────────────────────
   const [loteOpen, setLoteOpen]           = useState(false)
   const [loteComp, setLoteComp]           = useState(new Date().toISOString().slice(0, 7))
+  const [loteTipo, setLoteTipo]           = useState<'mensal'|'adiantamento'>('mensal')
   const [loteRunning, setLoteRunning]     = useState(false)
   const [loteLog, setLoteLog]             = useState<{ nome: string; ok: boolean; msg: string }[]>([])
   const [loteDone, setLoteDone]           = useState(false)
@@ -1101,11 +1102,12 @@ export default function Contracheques() {
 
       // 3. Buscar holerites já existentes no mês (para não duplicar)
       const compDate = loteComp + '-01'
+      // Verificar holerites já existentes do MESMO TIPO no mês (1 mensal + 1 adiantamento por mês por colaborador)
       const { data: holeriteExist } = await supabase
         .from('contracheques')
         .select('colaborador_id')
         .eq('competencia', compDate)
-        .eq('tipo', 'mensal')
+        .eq('tipo', loteTipo)
       const jaTemHolerite = new Set((holeriteExist ?? []).map((h: any) => h.colaborador_id))
 
       // 4. Buscar prêmios aprovados do mês
@@ -1139,11 +1141,52 @@ export default function Contracheques() {
 
         // Pular se já tem holerite mensal
         if (jaTemHolerite.has(colab.id)) {
-          log.push({ nome: nomeCurto, ok: false, msg: 'já tem holerite mensal — pulado' })
+          log.push({ nome: nomeCurto, ok: false, msg: `já tem ${loteTipo === 'adiantamento' ? 'adiantamento' : 'holerite mensal'} — pulado` })
           setLoteLog([...log])
           continue
         }
 
+        // Para adiantamento: não exige lançamento, apenas salário cadastrado
+        if (loteTipo === 'adiantamento') {
+          if (!colab.salario || colab.salario <= 0) {
+            log.push({ nome: nomeCurto, ok: false, msg: 'sem salário base cadastrado — pulado' })
+            setLoteLog([...log])
+            continue
+          }
+          const valorAdiant = parseFloat((colab.salario * 0.4).toFixed(2))
+          const payloadAdiant = {
+            colaborador_id:    colab.id,
+            competencia:       compDate,
+            tipo:              'adiantamento' as const,
+            descricao:         `Adiantamento gerado automaticamente — ${loteComp}`,
+            bruto:             valorAdiant,
+            liquido:           valorAdiant,
+            descontos:         null,
+            inss:              null, fgts: null, irrf: null,
+            salario_base:      colab.salario,
+            horas_normais:     null, horas_extras: null,
+            valor_producao:    null, valor_dsr: null, valor_premio: null,
+            desconto_vt:       null, desconto_adiant: null, cesta_basica: null,
+            funcao:            colab.funcoes?.nome ?? null,
+            tipo_contrato_snap:'clt',
+            obra_nome:         null,
+            dias_trabalhados:  null, faltas: null,
+            lancamento_id:     null,
+            gerado_do_sistema: true,
+            publicado:         true,
+            publicado_em:      new Date().toISOString(),
+          }
+          const { error: errA } = await supabase.from('contracheques').insert(payloadAdiant)
+          if (errA) {
+            log.push({ nome: nomeCurto, ok: false, msg: 'Erro ao salvar adiantamento: ' + errA.message })
+          } else {
+            log.push({ nome: nomeCurto, ok: true, msg: `✅ adiantamento R$ ${valorAdiant.toLocaleString('pt-BR', { minimumFractionDigits:2 })} publicado` })
+          }
+          setLoteLog([...log])
+          continue
+        }
+
+        // Mensal: exige lançamento aprovado
         const lancs = lancMap.get(colab.id)
         if (!lancs?.length) {
           log.push({ nome: nomeCurto, ok: false, msg: 'sem lançamento aprovado — pulado' })
@@ -1185,8 +1228,8 @@ export default function Contracheques() {
         const payload = {
           colaborador_id:    colab.id,
           competencia:       compDate,
-          tipo:              'mensal',
-          descricao:         `Holerite gerado automaticamente — ${loteComp}`,
+          tipo:              loteTipo,
+          descricao:         `${loteTipo === 'adiantamento' ? 'Adiantamento' : 'Holerite'} gerado automaticamente — ${loteComp}`,
           bruto:             brutoFinal > 0 ? brutoFinal : null,
           liquido:           liquido  > 0 ? liquido   : null,
           descontos:         sumInss + sumIr + sumVt + totalAdiant > 0 ? sumInss + sumIr + sumVt + totalAdiant : null,
@@ -1528,26 +1571,52 @@ export default function Contracheques() {
             </DialogTitle>
           </DialogHeader>
           <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
-            {/* Competência */}
-            <div>
-              <label style={{ fontSize:11, fontWeight:700, color:'#64748b', display:'block', marginBottom:4 }}>COMPETÊNCIA</label>
-              <input
-                type="month" value={loteComp}
-                onChange={e => setLoteComp(e.target.value)}
-                disabled={loteRunning}
-                style={{ height:38, borderRadius:8, border:'1px solid #e2e8f0', padding:'0 12px', fontSize:14, fontWeight:700, color:'#0d3f56', outline:'none', width:'100%', boxSizing:'border-box' }}
-              />
+            {/* Competência + Tipo em linha */}
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+              <div>
+                <label style={{ fontSize:11, fontWeight:700, color:'#64748b', display:'block', marginBottom:4 }}>COMPETÊNCIA</label>
+                <input
+                  type="month" value={loteComp}
+                  onChange={e => setLoteComp(e.target.value)}
+                  disabled={loteRunning}
+                  style={{ height:38, borderRadius:8, border:'1px solid #e2e8f0', padding:'0 12px', fontSize:14, fontWeight:700, color:'#0d3f56', outline:'none', width:'100%', boxSizing:'border-box' }}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize:11, fontWeight:700, color:'#64748b', display:'block', marginBottom:4 }}>TIPO</label>
+                <select
+                  value={loteTipo}
+                  onChange={e => setLoteTipo(e.target.value as 'mensal'|'adiantamento')}
+                  disabled={loteRunning}
+                  style={{ height:38, borderRadius:8, border:'1px solid #e2e8f0', padding:'0 12px', fontSize:13, fontWeight:700, color:'#0d3f56', outline:'none', width:'100%', boxSizing:'border-box', background:'#fff', cursor:'pointer' }}
+                >
+                  <option value="mensal">💵 Mensal</option>
+                  <option value="adiantamento">💳 Adiantamento</option>
+                </select>
+              </div>
+            </div>
+            {/* Aviso de unicidade */}
+            <div style={{ background:'#fefce8', border:'1px solid #fde68a', borderRadius:8, padding:'8px 12px', fontSize:11, color:'#92400e', display:'flex', alignItems:'flex-start', gap:6 }}>
+              <span style={{ flexShrink:0 }}>⚠️</span>
+              <span>Apenas <strong>1 holerite mensal</strong> e <strong>1 adiantamento</strong> por colaborador por mês. Colaboradores que já possuem o tipo selecionado no mês serão pulados automaticamente.</span>
             </div>
             {/* Regras */}
             <div style={{ background:'#f0f9ff', border:'1px solid #bae6fd', borderRadius:8, padding:'10px 14px', fontSize:12, color:'#0369a1', lineHeight:1.6 }}>
               <strong>O que será gerado por colaborador:</strong>
               <ul style={{ margin:'6px 0 0 16px', padding:0 }}>
-                <li>Busca lançamento(s) aprovado(s) no fechamento de ponto</li>
-                <li>Soma prêmios e desconta adiantamentos automaticamente</li>
-                <li>Calcula FGTS (8% do bruto)</li>
-                <li>Publica imediatamente e sincroniza o ponto no portal</li>
-                <li>Pula colaboradores que já têm holerite mensal no mês</li>
-                <li>Pula colaboradores sem lançamento aprovado</li>
+                {loteTipo === 'mensal' ? (<>
+                  <li>Busca lançamento(s) aprovado(s) no fechamento de ponto</li>
+                  <li>Soma prêmios e desconta adiantamentos automaticamente</li>
+                  <li>Calcula FGTS (8% do bruto)</li>
+                  <li>Publica imediatamente e sincroniza o ponto no portal</li>
+                  <li>Pula colaboradores que já têm <strong>holerite mensal</strong> no mês</li>
+                  <li>Pula colaboradores sem lançamento aprovado</li>
+                </>) : (<>
+                  <li>Gera adiantamento de <strong>40% do salário base</strong> cadastrado</li>
+                  <li>Publica imediatamente no portal do colaborador</li>
+                  <li>Pula colaboradores que já têm <strong>adiantamento</strong> no mês</li>
+                  <li>Pula colaboradores sem salário base cadastrado</li>
+                </>)}
               </ul>
             </div>
             {/* Log em tempo real */}
