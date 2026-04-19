@@ -79,7 +79,9 @@ interface LinhaProvisao {
   fgts: number                  // 8%
   ferias: number                // 11,11%
   decimo_terceiro: number       // 8,33%
-  total: number                 // soma dos três
+  aviso_previo: number          // 8,33% — aviso prévio indenizado
+  multa_fgts: number            // 3,20% — multa 40% sobre FGTS
+  total: number                 // soma de todos os itens
 }
 
 type FormData = {
@@ -98,8 +100,10 @@ type FormData = {
 // ─── Constantes ────────────────────────────────────────────────────────────────
 
 const PERC_FGTS   = 0.08
-const PERC_FERIAS = 0.1111   // 1/9 (acréscimo de férias incluso = 11,11%)
+const PERC_FERIAS = 0.1111   // 1/9 (férias + 1/3 constitucional = 11,11%)
 const PERC_13     = 0.0833   // 1/12
+const PERC_AVISO  = 0.0833   // 1/12 — aviso prévio de 30 dias indenizado
+const PERC_MULTA  = 0.032    // 40% × 8% — multa rescisória sobre FGTS
 
 const TIPO_LABELS: Record<TipoRescisao, string> = {
   sem_justa_causa: 'Sem Justa Causa',
@@ -144,7 +148,7 @@ export default function ProvisaoRescisao() {
   const [search,         setSearch]         = useState('')
 
   // painel de detalhamento
-  type DetalheKey = 'total' | 'fgts' | 'ferias' | 'decimo'
+  type DetalheKey = 'total' | 'fgts' | 'ferias' | 'decimo' | 'aviso' | 'multa' | 'aviso' | 'multa'
   const [painelAberto,   setPainelAberto]   = useState<DetalheKey | null>(null)
   const [searchDetalhe,  setSearchDetalhe]  = useState('')
 
@@ -204,6 +208,8 @@ export default function ProvisaoRescisao() {
           const fgts   = bruto * PERC_FGTS
           const ferias = bruto * PERC_FERIAS
           const dec    = bruto * PERC_13
+          const aviso  = bruto * PERC_AVISO
+          const multa  = bruto * PERC_MULTA
           return {
             colaborador_id: l.colaborador_id,
             nome:  l.colaboradores?.nome  ?? '—',
@@ -213,7 +219,9 @@ export default function ProvisaoRescisao() {
             fgts,
             ferias,
             decimo_terceiro: dec,
-            total: fgts + ferias + dec,
+            aviso_previo: aviso,
+            multa_fgts:   multa,
+            total: fgts + ferias + dec + aviso + multa,
           }
       })
 
@@ -235,6 +243,8 @@ export default function ProvisaoRescisao() {
     fgts:    linhasProvisao.reduce((s, l) => s + l.fgts,            0),
     ferias:  linhasProvisao.reduce((s, l) => s + l.ferias,          0),
     decimo:  linhasProvisao.reduce((s, l) => s + l.decimo_terceiro, 0),
+    aviso:   linhasProvisao.reduce((s, l) => s + l.aviso_previo,    0),
+    multa:   linhasProvisao.reduce((s, l) => s + l.multa_fgts,      0),
     total:   linhasProvisao.reduce((s, l) => s + l.total,           0),
     bruto:   linhasProvisao.reduce((s, l) => s + l.bruto,           0),
     lancamentos: linhasProvisao.length,
@@ -254,10 +264,12 @@ export default function ProvisaoRescisao() {
   }, [linhasProvisao, searchDetalhe])
 
   const PAINEL_CFG: Record<DetalheKey, { label: string; icon: string; color: string; bg: string; field: keyof LinhaProvisao }> = {
-    total:   { label: 'Total Provisionado',  icon: '🏦', color: '#7c3aed', bg: '#ede9fe', field: 'total'            },
-    fgts:    { label: 'Provisão FGTS (8%)',  icon: '🏛️', color: '#1d4ed8', bg: '#eff6ff', field: 'fgts'             },
-    ferias:  { label: 'Provisão Férias',     icon: '🌴', color: '#15803d', bg: '#dcfce7', field: 'ferias'           },
-    decimo:  { label: 'Provisão 13º',        icon: '🎁', color: '#b45309', bg: '#fef3c7', field: 'decimo_terceiro'  },
+    total:   { label: 'Total Provisionado',       icon: '🏦', color: '#7c3aed', bg: '#ede9fe', field: 'total'            },
+    fgts:    { label: 'Provisão FGTS (8%)',       icon: '🏛️', color: '#1d4ed8', bg: '#eff6ff', field: 'fgts'             },
+    ferias:  { label: 'Provisão Férias (11,11%)', icon: '🌴', color: '#15803d', bg: '#dcfce7', field: 'ferias'           },
+    decimo:  { label: 'Provisão 13º (8,33%)',     icon: '🎁', color: '#b45309', bg: '#fef3c7', field: 'decimo_terceiro'  },
+    aviso:   { label: 'Provisão Aviso Prévio',    icon: '📋', color: '#0891b2', bg: '#ecfeff', field: 'aviso_previo'     },
+    multa:   { label: 'Provisão Multa FGTS 40%',  icon: '⚡', color: '#dc2626', bg: '#fff1f2', field: 'multa_fgts'       },
   }
 
   // ── Totais do painel filtrado ────────────────────────────────────────────────
@@ -353,7 +365,7 @@ export default function ProvisaoRescisao() {
               </span>
             </h1>
             <p style={{ fontSize: 13, color: 'var(--muted-foreground)', margin: '2px 0 0' }}>
-              Base: Horas CLT + DSR · Exclui produção e prêmios · FGTS 8% · Férias 11,11% · 13º 8,33%
+              Base: Sal+DSR · Exclui produção/prêmios · FGTS 8% · Férias 11,11% · 13º 8,33% · Aviso Prévio 8,33% · Multa FGTS 3,2% · Aviso Prévio 8,33% · Multa FGTS 3,2%
             </p>
           </div>
         </div>
@@ -402,12 +414,48 @@ export default function ProvisaoRescisao() {
           onClick={() => { setPainelAberto('decimo'); setSearchDetalhe('') }}
         />
         <SummaryCard
+          sigla="AVP"
+          label="Provisão Aviso Prévio (8,33%)"
+          value={loading ? '…' : formatCurrency(totais.aviso)}
+          sub={`${totais.lancamentos} fechamento(s) · clique para detalhar`}
+          color="#0891b2"
+          bg="#0891b2"
+          onClick={() => { setPainelAberto('aviso'); setSearchDetalhe('') }}
+        />
+        <SummaryCard
+          sigla="MLT"
+          label="Provisão Multa FGTS (3,2%)"
+          value={loading ? '…' : formatCurrency(totais.multa)}
+          sub={`${totais.lancamentos} fechamento(s) · clique para detalhar`}
+          color="#dc2626"
+          bg="#dc2626"
+          onClick={() => { setPainelAberto('multa'); setSearchDetalhe('') }}
+        />
+        <SummaryCard
+          sigla="AVP"
+          label="Aviso Prévio (8,33%)"
+          value={loading ? '…' : formatCurrency(totais.aviso)}
+          sub={`${totais.lancamentos} fechamento(s) · clique para detalhar`}
+          color="#0891b2"
+          bg="#0891b2"
+          onClick={() => { setPainelAberto('aviso'); setSearchDetalhe('') }}
+        />
+        <SummaryCard
+          sigla="MLT"
+          label="Multa FGTS (3,2%)"
+          value={loading ? '…' : formatCurrency(totais.multa)}
+          sub={`${totais.lancamentos} fechamento(s) · clique para detalhar`}
+          color="#dc2626"
+          bg="#dc2626"
+          onClick={() => { setPainelAberto('multa'); setSearchDetalhe('') }}
+        />
+        <SummaryCard
           sigla="RSC"
           label="Total Pago em Rescisões"
           value={loading ? '…' : formatCurrency(totalRescisoes)}
           sub={`${rescisoes.length} rescisão(ões) registrada(s)`}
-          color="#dc2626"
-          bg="#dc2626"
+          color="#b91c1c"
+          bg="#b91c1c"
         />
         <SummaryCard
           sigla={saldoDisponivel >= 0 ? 'SLD' : 'NEG'}

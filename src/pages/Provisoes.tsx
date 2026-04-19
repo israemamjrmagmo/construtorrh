@@ -38,6 +38,8 @@ type FormData = {
   fgts_mensal: string
   ferias_provisionadas: string
   decimo_terceiro: string
+  aviso_previo: string
+  multa_fgts: string
   total_provisao: string
   observacoes: string
 }
@@ -50,20 +52,26 @@ const EMPTY_FORM: FormData = {
   fgts_mensal: '',
   ferias_provisionadas: '',
   decimo_terceiro: '',
+  aviso_previo: '',
+  multa_fgts: '',
   total_provisao: '',
   observacoes: '',
 }
 
 // ─── helpers de cálculo ──────────────────────────────────────────────────────
 function calcProvisoes(salario: number) {
-  const fgts = salario * 0.08
-  const ferias = salario / 12
-  const decimo = salario / 12
+  const fgts   = salario * 0.08       // 8%
+  const ferias = salario * 0.1111     // 11,11% (férias + 1/3 constitucional)
+  const decimo = salario * 0.0833     // 8,33% (13º — 1/12)
+  const aviso  = salario * 0.0833     // 8,33% (aviso prévio — 1/12)
+  const multa  = salario * 0.032      // 3,2% (multa FGTS 40% × 8%)
   return {
     fgts_mensal: fgts,
     ferias_provisionadas: ferias,
     decimo_terceiro: decimo,
-    total_provisao: fgts + ferias + decimo,
+    aviso_previo: aviso,
+    multa_fgts: multa,
+    total_provisao: fgts + ferias + decimo + aviso + multa,
   }
 }
 
@@ -119,10 +127,12 @@ export default function Provisoes() {
   })
 
   // totais
-  const totFgts = filtered.reduce((s, r) => s + (r.fgts_mensal ?? 0), 0)
-  const totFerias = filtered.reduce((s, r) => s + (r.ferias_provisionadas ?? 0), 0)
-  const totDecimo = filtered.reduce((s, r) => s + (r.decimo_terceiro ?? 0), 0)
-  const totTotal = filtered.reduce((s, r) => s + (r.total_provisao ?? 0), 0)
+  const totFgts   = filtered.reduce((s, r) => s + (r.fgts_mensal ?? 0), 0)
+  const totFerias  = filtered.reduce((s, r) => s + (r.ferias_provisionadas ?? 0), 0)
+  const totDecimo  = filtered.reduce((s, r) => s + (r.decimo_terceiro ?? 0), 0)
+  const totAviso   = filtered.reduce((s, r) => s + ((r as any).aviso_previo ?? 0), 0)
+  const totMulta   = filtered.reduce((s, r) => s + ((r as any).multa_fgts ?? 0), 0)
+  const totTotal   = filtered.reduce((s, r) => s + (r.total_provisao ?? 0), 0)
 
   // ─── modal helpers ─────────────────────────────────────────────────────────
   function openCreate() {
@@ -141,6 +151,8 @@ export default function Provisoes() {
       fgts_mensal: String(row.fgts_mensal ?? ''),
       ferias_provisionadas: String(row.ferias_provisionadas ?? ''),
       decimo_terceiro: String(row.decimo_terceiro ?? ''),
+      aviso_previo: String((row as any).aviso_previo ?? ''),
+      multa_fgts: String((row as any).multa_fgts ?? ''),
       total_provisao: String(row.total_provisao ?? ''),
       observacoes: row.observacoes ?? '',
     })
@@ -159,15 +171,19 @@ export default function Provisoes() {
           fgts_mensal: calc.fgts_mensal.toFixed(2),
           ferias_provisionadas: calc.ferias_provisionadas.toFixed(2),
           decimo_terceiro: calc.decimo_terceiro.toFixed(2),
+          aviso_previo: calc.aviso_previo.toFixed(2),
+          multa_fgts: calc.multa_fgts.toFixed(2),
           total_provisao: calc.total_provisao.toFixed(2),
         }
       }
       // Recalcula total ao mudar qualquer campo calculado
-      if (['fgts_mensal', 'ferias_provisionadas', 'decimo_terceiro'].includes(key)) {
-        const fgts = parseFloat(key === 'fgts_mensal' ? value : next.fgts_mensal) || 0
-        const ferias = parseFloat(key === 'ferias_provisionadas' ? value : next.ferias_provisionadas) || 0
-        const decimo = parseFloat(key === 'decimo_terceiro' ? value : next.decimo_terceiro) || 0
-        return { ...next, total_provisao: (fgts + ferias + decimo).toFixed(2) }
+      if (['fgts_mensal', 'ferias_provisionadas', 'decimo_terceiro', 'aviso_previo', 'multa_fgts'].includes(key)) {
+        const fgts   = parseFloat(key === 'fgts_mensal'           ? value : next.fgts_mensal)           || 0
+        const ferias = parseFloat(key === 'ferias_provisionadas'  ? value : next.ferias_provisionadas)  || 0
+        const decimo = parseFloat(key === 'decimo_terceiro'       ? value : next.decimo_terceiro)       || 0
+        const aviso  = parseFloat(key === 'aviso_previo'          ? value : next.aviso_previo)          || 0
+        const multa  = parseFloat(key === 'multa_fgts'            ? value : next.multa_fgts)            || 0
+        return { ...next, total_provisao: (fgts + ferias + decimo + aviso + multa).toFixed(2) }
       }
       return next
     })
@@ -187,6 +203,8 @@ export default function Provisoes() {
       fgts_mensal: parseFloat(form.fgts_mensal) || null,
       ferias_provisionadas: parseFloat(form.ferias_provisionadas) || null,
       decimo_terceiro: parseFloat(form.decimo_terceiro) || null,
+      aviso_previo: parseFloat(form.aviso_previo) || null,
+      multa_fgts: parseFloat(form.multa_fgts) || null,
       total_provisao: parseFloat(form.total_provisao) || null,
       observacoes: form.observacoes || null,
     }
@@ -214,7 +232,7 @@ export default function Provisoes() {
     <div className="page-root">
       <PageHeader
         title="Provisões FGTS"
-        subtitle="Controle de provisões mensais de FGTS, férias e 13º salário"
+        subtitle="Controle de provisões mensais — FGTS · Férias · 13º · Aviso Prévio · Multa FGTS"
         action={
           <Button onClick={openCreate} size="sm">
             <Plus className="w-4 h-4 mr-1" /> Nova Provisão
@@ -272,6 +290,8 @@ export default function Provisoes() {
                 <TableHead className="text-right">FGTS 8%</TableHead>
                 <TableHead className="text-right">Férias</TableHead>
                 <TableHead className="text-right">13º</TableHead>
+                <TableHead className="text-right">Aviso Prev.</TableHead>
+                <TableHead className="text-right">Multa 40%</TableHead>
                 <TableHead className="text-right">Total</TableHead>
                 <TableHead className="text-right">Ações</TableHead>
               </TableRow>
@@ -291,6 +311,8 @@ export default function Provisoes() {
                   <TableCell className="text-right text-sm">{formatCurrency(row.fgts_mensal)}</TableCell>
                   <TableCell className="text-right text-sm">{formatCurrency(row.ferias_provisionadas)}</TableCell>
                   <TableCell className="text-right text-sm">{formatCurrency(row.decimo_terceiro)}</TableCell>
+                  <TableCell className="text-right text-sm">{formatCurrency((row as any).aviso_previo)}</TableCell>
+                  <TableCell className="text-right text-sm">{formatCurrency((row as any).multa_fgts)}</TableCell>
                   <TableCell className="text-right text-sm font-semibold">{formatCurrency(row.total_provisao)}</TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-1">
@@ -317,6 +339,8 @@ export default function Provisoes() {
                 <TableCell className="text-right">{formatCurrency(totFgts)}</TableCell>
                 <TableCell className="text-right">{formatCurrency(totFerias)}</TableCell>
                 <TableCell className="text-right">{formatCurrency(totDecimo)}</TableCell>
+                <TableCell className="text-right">{formatCurrency(totAviso)}</TableCell>
+                <TableCell className="text-right">{formatCurrency(totMulta)}</TableCell>
                 <TableCell className="text-right">{formatCurrency(totTotal)}</TableCell>
                 <TableCell />
               </TableRow>
@@ -421,6 +445,32 @@ export default function Provisoes() {
                 step="0.01"
                 value={form.decimo_terceiro}
                 onChange={(e) => setField('decimo_terceiro', e.target.value)}
+                className="mt-1 bg-muted"
+                placeholder="0,00"
+              />
+            </div>
+
+            {/* Aviso Prévio */}
+            <div>
+              <Label>Aviso Prévio (8,33%)</Label>
+              <Input
+                type="number"
+                step="0.01"
+                value={form.aviso_previo}
+                onChange={(e) => setField('aviso_previo', e.target.value)}
+                className="mt-1 bg-muted"
+                placeholder="0,00"
+              />
+            </div>
+
+            {/* Multa FGTS */}
+            <div>
+              <Label>Multa FGTS 40% (3,2%)</Label>
+              <Input
+                type="number"
+                step="0.01"
+                value={form.multa_fgts}
+                onChange={(e) => setField('multa_fgts', e.target.value)}
                 className="mt-1 bg-muted"
                 placeholder="0,00"
               />
