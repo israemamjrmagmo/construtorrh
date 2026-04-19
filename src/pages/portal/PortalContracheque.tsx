@@ -1247,7 +1247,7 @@ function TelaLogin({ onLogin }: { onLogin:(s:Sessao)=>void }) {
 }
 
 // ─── Layout Principal com Bottom Nav ─────────────────────────────────────────
-type Aba = 'contracheque' | 'ponto' | 'documentos' | 'ferias'
+type Aba = 'contracheque' | 'documentos' | 'ferias'
 
 function PortalLayout({ sessao, aba, onAba, onSair, children }: {
   sessao: Sessao; aba: Aba; onAba:(a:Aba)=>void; onSair:()=>void; children: React.ReactNode
@@ -1256,7 +1256,6 @@ function PortalLayout({ sessao, aba, onAba, onSair, children }: {
 
   const abas: {id:Aba;label:string;icon:React.ReactNode}[] = [
     { id:'contracheque', label:'Contracheque', icon:<Receipt size={18}/> },
-    { id:'ponto',        label:'Ponto',        icon:<Clock size={18}/> },
     { id:'documentos',   label:'Meus Docs',    icon:<FolderOpen size={18}/> },
     { id:'ferias',       label:'Férias',       icon:<Umbrella size={18}/> },
   ]
@@ -1474,7 +1473,6 @@ export default function PortalContracheque() {
       {aba==='contracheque' && (
         <AbaContracheque sessao={sessao} holerites={holerites} lancamentos={lancamentos} colab={colab} empresa={empresa} aceites={aceites} onSelecionar={abrirHolerite}/>
       )}
-      {aba==='ponto' && <AbaFolhaPonto sessao={sessao} dataAdmissao={colab?.data_admissao ?? null} lancamentos={lancamentos} colab={colab} empresa={empresa}/>}
       {aba==='documentos' && <AbaMeusDocumentos sessao={sessao}/>}
       {aba==='ferias' && <PortalFeriasColab/>}
 
