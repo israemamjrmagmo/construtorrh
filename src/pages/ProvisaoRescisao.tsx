@@ -172,27 +172,21 @@ export default function ProvisaoRescisao() {
     setLoading(true)
     try {
       const [lancRes, rescRes, colabRes] = await Promise.all([
-        // Contracheques CLT publicados/pagos — base para provisões
+        // Contracheques publicados/pagos — sem filtro CLT no join (faz em JS)
         supabase
           .from('contracheques')
-          .select(`
-            id, colaborador_id, competencia, tipo,
-            salario_base, valor_dsr, status,
-            colaboradores!inner(nome, chapa, tipo_contrato)
-          `)
+          .select('id, colaborador_id, competencia, tipo, salario_base, valor_dsr, status')
           .in('status', ['publicado', 'pago'])
-          .eq('colaboradores.tipo_contrato', 'clt')
           .order('competencia', { ascending: false }),
         // rescisões lançadas
         supabase
           .from('rescisoes')
           .select('*, colaboradores(nome, chapa)')
           .order('data_rescisao', { ascending: false }),
-        // colaboradores CLT ativos para o modal
+        // colaboradores CLT para modal + para enriquecer as linhas de provisão
         supabase
           .from('colaboradores')
-          .select('id, nome, chapa')
-          .eq('status', 'ativo')
+          .select('id, nome, chapa, tipo_contrato')
           .eq('tipo_contrato', 'clt')
           .order('nome'),
       ])
@@ -200,26 +194,37 @@ export default function ProvisaoRescisao() {
       if (lancRes.error) throw lancRes.error
       if (rescRes.error) throw rescRes.error
 
-      // Montar linhas de provisão — base: salario_base + valor_dsr por contracheque emitido
+      // Mapa de colaboradores CLT para join em JS
       const TIPO_LABELS_PROV: Record<string,string> = {
         mensal:'Mensal', adiantamento:'Adiantamento', ferias:'Férias',
         '13o_1a':'13º 1ª', '13o_2a':'13º 2ª', rescisorio:'Rescisório',
       }
+      const colabMap = new Map<string,{nome:string;chapa:string}>(
+        (colabRes.data ?? []).map((c: any) => [c.id, { nome: c.nome, chapa: c.chapa ?? '' }])
+      )
+      const colabCltIds = new Set((colabRes.data ?? []).map((c: any) => c.id))
+
+      // Montar linhas de provisão — somente contracheques de colaboradores CLT
       const linhas: LinhaProvisao[] = (lancRes.data ?? [])
-        .filter((l: any) => (Number(l.salario_base) || 0) > 0 || (Number(l.valor_dsr) || 0) > 0)
+        .filter((l: any) =>
+          colabCltIds.has(l.colaborador_id) &&
+          ((Number(l.salario_base) || 0) > 0 || (Number(l.valor_dsr) || 0) > 0)
+        )
         .map((l: any) => {
-          // Base = salário/horas + DSR — exclui produção e prêmio
+          const colab = colabMap.get(l.colaborador_id)
           const bruto  = (Number(l.salario_base) || 0) + (Number(l.valor_dsr) || 0)
           const fgts   = bruto * PERC_FGTS
           const ferias = bruto * PERC_FERIAS
           const dec    = bruto * PERC_13
           const aviso  = bruto * PERC_AVISO
           const multa  = bruto * PERC_MULTA
+          // competencia vem como '2026-04-01' — normalizar para 'YYYY-MM'
+          const comp = (l.competencia ?? '').slice(0, 7)
           return {
             colaborador_id: l.colaborador_id,
-            nome:  l.colaboradores?.nome  ?? '—',
-            chapa: l.colaboradores?.chapa ?? '—',
-            mes_referencia: l.competencia ?? '',
+            nome:  colab?.nome  ?? '—',
+            chapa: colab?.chapa ?? '—',
+            mes_referencia: comp,
             tipo_pagamento: TIPO_LABELS_PROV[l.tipo] ?? (l.tipo ?? '—'),
             bruto,
             fgts,
@@ -502,7 +507,7 @@ tfoot td:first-child{text-align:left}
               </span>
             </h1>
             <p style={{ fontSize: 13, color: 'var(--muted-foreground)', margin: '2px 0 0' }}>
-              Calculado por contracheque emitido · Base: Sal+DSR · FGTS 8% · Férias 11,11% · 13º 8,33% · Aviso Prévio 8,33% · Multa FGTS 3,2% · Aviso Prévio 8,33% · Multa FGTS 3,2%
+              Calculado por contracheque emitido · Base: Sal+DSR · FGTS 8% · Férias 11,11% · 13º 8,33% · Aviso Prévio 8,33% · Multa FGTS 3,2%
             </p>
           </div>
         </div>
@@ -583,24 +588,6 @@ tfoot td:first-child{text-align:left}
         <SummaryCard
           sigla="MLT"
           label="Provisão Multa FGTS (3,2%)"
-          value={loading ? '…' : formatCurrency(totais.multa)}
-          sub={`${totais.lancamentos} fechamento(s) · clique para detalhar`}
-          color="#dc2626"
-          bg="#dc2626"
-          onClick={() => { setPainelAberto('multa'); setSearchDetalhe('') }}
-        />
-        <SummaryCard
-          sigla="AVP"
-          label="Aviso Prévio (8,33%)"
-          value={loading ? '…' : formatCurrency(totais.aviso)}
-          sub={`${totais.lancamentos} fechamento(s) · clique para detalhar`}
-          color="#0891b2"
-          bg="#0891b2"
-          onClick={() => { setPainelAberto('aviso'); setSearchDetalhe('') }}
-        />
-        <SummaryCard
-          sigla="MLT"
-          label="Multa FGTS (3,2%)"
           value={loading ? '…' : formatCurrency(totais.multa)}
           sub={`${totais.lancamentos} fechamento(s) · clique para detalhar`}
           color="#dc2626"
