@@ -1778,16 +1778,16 @@ export default function Relatorios() {
               </div>
             )}
 
-            {/* ⚠️ Aviso: relatórios baseados em ponto_lancamentos têm granularidade mensal */}
-            {usaFiltroDatas && mesRefIni === mesRefFim &&
-              filtroDataIni.substring(8) !== '01' &&
-              ['custo-funcao','faltas-obra','custo-hora','custo-obra','ficha-financeira','custo-colab'].includes(relatAtivo) && (
-              <div style={{ gridColumn:'1/-1', display:'flex', alignItems:'flex-start', gap:8, background:'#fffbeb', border:'1px solid #fde68a', borderRadius:8, padding:'8px 12px', fontSize:12, color:'#92400e', marginTop:4 }}>
-                <span style={{ fontSize:16, flexShrink:0 }}>⚠️</span>
+            {/* ℹ️ Info: relatórios baseados em folha fechada filtram por mês completo */}
+            {usaFiltroDatas && ['custo-funcao','faltas-obra','custo-hora','custo-obra','ficha-financeira','custo-colab','resumo-folha'].includes(relatAtivo) && (
+              <div style={{ gridColumn:'1/-1', display:'flex', alignItems:'flex-start', gap:8, background:'#eff6ff', border:'1px solid #bfdbfe', borderRadius:8, padding:'8px 12px', fontSize:11, color:'#1d4ed8', marginTop:4 }}>
+                <span style={{ fontSize:14, flexShrink:0 }}>ℹ️</span>
                 <span>
-                  <strong>Atenção:</strong> Este relatório usa lançamentos fechados por mês (<code>mes_referencia</code>).
-                  O filtro de <strong>dia inicial diferente de 01/{mesRefIni.substring(5)}</strong> será ignorado — o sistema sempre considera o mês completo <strong>{mesRefIni}</strong>.
-                  Para comparar quinzenas ou períodos parciais, selecione meses diferentes (ex.: Mar × Abr).
+                  Este relatório considera <strong>meses completos</strong> de folha fechada.
+                  {mesRefIni !== mesRefFim
+                    ? <> Período: <strong>{mesRefIni}</strong> até <strong>{mesRefFim}</strong>.</>
+                    : <> Mês selecionado: <strong>{mesRefIni}</strong>.</>}
+                  {' '}Para comparar períodos use meses diferentes nos campos De/Até.
                 </span>
               </div>
             )}

@@ -1402,66 +1402,102 @@ export default function Documentos() {
                       description={docsColab.length===0 ? `${colabSel.nome} não possui documentos cadastrados.` : 'Nenhum documento encontrado com os filtros aplicados.'}
                       action={isAdmin&&docsColab.length===0?(<Button size="sm" onClick={openModal}><Plus size={13}/> Novo Documento</Button>):undefined} />
                   ) : (
-                    <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-                      {docsFiltrados.map(doc => (
-                        <div key={`${doc.source}-${doc.id}`}
-                          style={{ background:'var(--card)', border:'1px solid var(--border)', borderRadius:10,
-                            padding:'10px 14px', display:'flex', alignItems:'flex-start', gap:10 }}>
-                          {/* Ícone tipo */}
-                          <div style={{ flexShrink:0, marginTop:2 }}><TipoBadge tipo={doc.tipo}/></div>
-                          <div style={{ flex:1, minWidth:0 }}>
-                            {/* Tipo em cima em destaque */}
-                            <div style={{ fontSize:11, fontWeight:700, color:'#1e3a5f', textTransform:'uppercase', letterSpacing:'.4px', marginBottom:2 }}>
-                              {doc.tipo || '—'}
-                            </div>
-                            {/* Nome do documento abaixo */}
-                            {doc.descricao && (
-                              <div style={{ fontSize:13, fontWeight:600, color:'var(--foreground)', marginBottom:3, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{doc.descricao}</div>
-                            )}
-                            {/* Nome do arquivo */}
-                            {doc.documento_nome && (
-                              <div style={{ fontSize:11, color:'#64748b', marginBottom:3, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                                📎 {doc.documento_nome}
-                              </div>
-                            )}
-                            <div style={{ fontSize:11, color:'var(--muted-foreground)', marginBottom:4 }}>{formatDate(doc.data)}</div>
-                            {doc.documento_url ? (
-                              <div style={{ display:'flex', gap:6, alignItems:'center', marginTop:4 }}>
-                                <a href={doc.documento_url} target="_blank" rel="noreferrer"
-                                  style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:11, fontWeight:600,
-                                    color:'#1d4ed8', textDecoration:'none', padding:'3px 10px', borderRadius:5,
-                                    border:'1px solid #bfdbfe', background:'#eff6ff' }}>
-                                  <ExternalLink size={11}/> Ver
-                                </a>
-                                <a href={doc.documento_url} download={doc.documento_nome||'documento'}
-                                  style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:11, fontWeight:600,
-                                    color:'#0369a1', textDecoration:'none', padding:'3px 10px', borderRadius:5,
-                                    border:'1px solid #bae6fd', background:'#f0f9ff' }}>
-                                  <Download size={11}/> Baixar
-                                </a>
-                              </div>
-                            ) : (
-                              <span style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:11, color:'#94a3b8', marginTop:4 }}>
-                                <AlertCircle size={11}/> Sem arquivo
+                    <div style={{ border:'1px solid var(--border)', borderRadius:10, overflow:'hidden', background:'var(--card)' }}>
+                      {/* Cabeçalho da tabela */}
+                      <div style={{ display:'grid', gridTemplateColumns:'200px 1fr 200px 95px', gap:0,
+                        background:'#f1f5f9', borderBottom:'2px solid var(--border)', padding:'7px 14px',
+                        fontSize:11, fontWeight:700, color:'#64748b', textTransform:'uppercase', letterSpacing:'.5px' }}>
+                        <div>Tipo</div>
+                        <div>Nome / Arquivo</div>
+                        <div>Data</div>
+                        <div style={{ textAlign:'center' }}>Ações</div>
+                      </div>
+                      {/* Linhas */}
+                      {docsFiltrados.map((doc, idx) => {
+                        const s = TIPO_COLORS[doc.tipo] ?? { bg:'#f3f4f6', color:'#6b7280' }
+                        return (
+                          <div key={`${doc.source}-${doc.id}`}
+                            style={{ display:'grid', gridTemplateColumns:'200px 1fr 200px 95px', gap:0,
+                              padding:'9px 14px', borderBottom: idx < docsFiltrados.length-1 ? '1px solid var(--border)' : 'none',
+                              background: idx % 2 === 0 ? 'var(--card)' : '#f8fafc',
+                              alignItems:'center' }}>
+
+                            {/* Coluna 1: TIPO */}
+                            <div style={{ paddingRight:10 }}>
+                              <span style={{ display:'inline-block', padding:'3px 9px', borderRadius:6,
+                                fontSize:10, fontWeight:700, background:s.bg, color:s.color,
+                                whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', maxWidth:'100%' }}>
+                                {doc.tipo || 'Outros'}
                               </span>
-                            )}
+                            </div>
+
+                            {/* Coluna 2: NOME / ARQUIVO */}
+                            <div style={{ minWidth:0, paddingRight:10 }}>
+                              {doc.descricao && (
+                                <div style={{ fontSize:13, fontWeight:600, color:'var(--foreground)',
+                                  overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', lineHeight:1.3 }}
+                                  title={doc.descricao}>
+                                  {doc.descricao}
+                                </div>
+                              )}
+                              {doc.documento_nome && (
+                                <div style={{ fontSize:11, color:'#64748b', overflow:'hidden', textOverflow:'ellipsis',
+                                  whiteSpace:'nowrap', marginTop:2 }} title={doc.documento_nome}>
+                                  📎 {doc.documento_nome}
+                                </div>
+                              )}
+                              {!doc.descricao && !doc.documento_nome && (
+                                <span style={{ fontSize:11, color:'#94a3b8' }}>—</span>
+                              )}
+                            </div>
+
+                            {/* Coluna 3: DATA */}
+                            <div style={{ fontSize:12, color:'#475569', whiteSpace:'nowrap' }}>
+                              {formatDate(doc.data) || '—'}
+                            </div>
+
+                            {/* Coluna 4: AÇÕES */}
+                            <div style={{ display:'flex', gap:5, alignItems:'center', justifyContent:'center' }}>
+                              {doc.documento_url ? (
+                                <>
+                                  <a href={doc.documento_url} target="_blank" rel="noreferrer"
+                                    title="Visualizar"
+                                    style={{ display:'inline-flex', alignItems:'center', justifyContent:'center',
+                                      width:28, height:28, borderRadius:6, border:'1px solid #bfdbfe',
+                                      background:'#eff6ff', color:'#1d4ed8', textDecoration:'none', flexShrink:0 }}>
+                                    <ExternalLink size={12}/>
+                                  </a>
+                                  <a href={doc.documento_url} download={doc.documento_nome||'documento'}
+                                    title="Baixar"
+                                    style={{ display:'inline-flex', alignItems:'center', justifyContent:'center',
+                                      width:28, height:28, borderRadius:6, border:'1px solid #bae6fd',
+                                      background:'#f0f9ff', color:'#0369a1', textDecoration:'none', flexShrink:0 }}>
+                                    <Download size={12}/>
+                                  </a>
+                                </>
+                              ) : (
+                                <span title="Sem arquivo" style={{ display:'inline-flex', alignItems:'center', justifyContent:'center',
+                                  width:28, height:28, color:'#cbd5e1' }}>
+                                  <AlertCircle size={12}/>
+                                </span>
+                              )}
+                              {isAdmin && (
+                                <button
+                                  onClick={() => { setDeleteId(doc.id); setDeleteSource(doc.source) }}
+                                  title="Excluir documento"
+                                  style={{ display:'inline-flex', alignItems:'center', justifyContent:'center',
+                                    width:28, height:28, borderRadius:6, border:'1px solid #fecaca',
+                                    background:'#fff', color:'#dc2626', cursor:'pointer', flexShrink:0, opacity:.7, transition:'opacity .15s' }}
+                                  onMouseEnter={e=>(e.currentTarget.style.opacity='1')}
+                                  onMouseLeave={e=>(e.currentTarget.style.opacity='.7')}
+                                >
+                                  <Trash2 size={12}/>
+                                </button>
+                              )}
+                            </div>
                           </div>
-                          {/* Botão excluir: somente admin/gestor */}
-                          {isAdmin && (
-                            <button
-                              onClick={() => { setDeleteId(doc.id); setDeleteSource(doc.source) }}
-                              title="Excluir documento"
-                              style={{ flexShrink:0, padding:'4px 6px', borderRadius:6, border:'1px solid #fecaca',
-                                background:'#fff', color:'#dc2626', cursor:'pointer', display:'flex', alignItems:'center',
-                                justifyContent:'center', opacity:.7, transition:'opacity .15s' }}
-                              onMouseEnter={e=>(e.currentTarget.style.opacity='1')}
-                              onMouseLeave={e=>(e.currentTarget.style.opacity='.7')}
-                            >
-                              <Trash2 size={13}/>
-                            </button>
-                          )}
-                        </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   )}
                 </div>
