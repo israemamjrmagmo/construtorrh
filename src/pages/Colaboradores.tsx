@@ -2311,6 +2311,17 @@ ${crachaCardHTML(c, empNome, logoUrl)}
       arquivo_url: novoDoc.arquivo_url || null,
       visivel_colaborador: novoDoc.visivel_colaborador,
     })
+    if (!error) {
+      // Também inserir na tabela documentos para aparecer no módulo de Documentos
+      await supabase.from('documentos').insert({
+        colaborador_id: colaboradorId,
+        tipo: novoDoc.tipo,
+        data_emissao: new Date().toISOString().split('T')[0],
+        descricao: novoDoc.titulo.trim(),
+        arquivo_url: novoDoc.arquivo_url || null,
+        arquivo_nome: novoDoc.titulo.trim() || null,
+      })
+    }
     setSavingDoc(false)
     if (error) { toast.error('Erro ao salvar documento: ' + error.message); return }
     toast.success('Documento adicionado!')

@@ -1130,6 +1130,11 @@ export default function Documentos() {
   const [deleteId, setDeleteId]         = useState<string | null>(null)
   const [deleteSource, setDeleteSource] = useState<DocEntry['source'] | null>(null)
 
+  // filtros por tipo/data (aba documentos)
+  const [filtroTipoDoc, setFiltroTipoDoc]       = useState('todos')
+  const [filtroDataIniDoc, setFiltroDataIniDoc] = useState('')
+  const [filtroDataFimDoc, setFiltroDataFimDoc] = useState('')
+
   // ── fetch ──────────────────────────────────────────────────────────────────
   const fetchAll = useCallback(async () => {
     setLoading(true)
@@ -1191,6 +1196,14 @@ export default function Documentos() {
   const docsColab = useMemo(() =>
     colabSel ? docs.filter(d => d.colaborador_id === colabSel.id) : [],
     [docs, colabSel])
+
+  const docsFiltrados = useMemo(() =>
+    docsColab.filter(d =>
+      (filtroTipoDoc === 'todos' || d.tipo === filtroTipoDoc) &&
+      (!filtroDataIniDoc || d.data >= filtroDataIniDoc) &&
+      (!filtroDataFimDoc || d.data <= filtroDataFimDoc)
+    ),
+    [docsColab, filtroTipoDoc, filtroDataIniDoc, filtroDataFimDoc])
 
   const countMap = useMemo(() => {
     const m: Record<string, number> = {}
@@ -1288,7 +1301,7 @@ export default function Documentos() {
               const sel = colabSel?.id===c.id
               return (
                 <div key={c.id} onClick={()=>setColabSel(sel?null:c)}
-                  style={{ padding:'10px 12px', cursor:'pointer', borderBottom:'1px solid var(--border)',
+                  style={{ padding:'12px 14px', cursor:'pointer', borderBottom:'1px solid var(--border)',
                     display:'flex', alignItems:'center', justifyContent:'space-between',
                     background:sel?'hsl(var(--primary)/.08)':'transparent',
                     borderLeft:sel?'3px solid hsl(var(--primary))':'3px solid transparent' }}>
@@ -1296,12 +1309,12 @@ export default function Documentos() {
                     <div style={{ fontWeight:sel?700:500, fontSize:13,
                       color:sel?'hsl(var(--primary))':'var(--foreground)',
                       whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{c.nome}</div>
-                    <div style={{ fontSize:11, color:'var(--muted-foreground)', marginTop:1 }}>{c.chapa}</div>
+                    <div style={{ fontSize:11, color:'var(--muted-foreground)', marginTop:2 }}>{c.chapa}</div>
                   </div>
                   <div style={{ display:'flex', alignItems:'center', gap:4, flexShrink:0 }}>
                     {qtd>0 && (
-                      <span style={{ background:sel?'hsl(var(--primary))':'#e2e8f0',
-                        color:sel?'#fff':'#475569', borderRadius:20, padding:'1px 7px', fontSize:11, fontWeight:700 }}>{qtd}</span>
+                      <span style={{ background:sel?'#1d4ed8':'#e2e8f0',
+                        color:sel?'#fff':'#475569', borderRadius:20, padding:'2px 8px', fontSize:11, fontWeight:700 }}>{qtd}</span>
                     )}
                     <ChevronRight size={14} color={sel?'hsl(var(--primary))':'#94a3b8'} />
                   </div>
@@ -1356,21 +1369,44 @@ export default function Documentos() {
               )}
             </div>
 
+            {/* Barra de filtros por tipo/data — aparece quando colaborador selecionado */}
+            {colabSel && (
+              <div style={{ padding:'8px 16px', borderBottom:'1px solid var(--border)', background:'#f8fafc', display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
+                <select value={filtroTipoDoc} onChange={e=>setFiltroTipoDoc(e.target.value)}
+                  style={{ height:32, borderRadius:6, border:'1px solid #e2e8f0', fontSize:12, padding:'0 8px', background:'#fff', color:'#374151' }}>
+                  <option value="todos">Todos os tipos</option>
+                  {[...new Set(docsColab.map(d=>d.tipo))].sort().map(t=><option key={t} value={t}>{t}</option>)}
+                </select>
+                <input type="date" value={filtroDataIniDoc} onChange={e=>setFiltroDataIniDoc(e.target.value)}
+                  style={{ height:32, borderRadius:6, border:'1px solid #e2e8f0', fontSize:12, padding:'0 8px' }} />
+                <span style={{fontSize:12,color:'#94a3b8'}}>até</span>
+                <input type="date" value={filtroDataFimDoc} onChange={e=>setFiltroDataFimDoc(e.target.value)}
+                  style={{ height:32, borderRadius:6, border:'1px solid #e2e8f0', fontSize:12, padding:'0 8px' }} />
+                {(filtroTipoDoc!=='todos'||filtroDataIniDoc||filtroDataFimDoc) && (
+                  <button onClick={()=>{setFiltroTipoDoc('todos');setFiltroDataIniDoc('');setFiltroDataFimDoc('')}}
+                    style={{ height:32, padding:'0 10px', borderRadius:6, border:'1px solid #e2e8f0', background:'#fff', fontSize:12, color:'#64748b', cursor:'pointer' }}>
+                    ✕ Limpar
+                  </button>
+                )}
+                <span style={{marginLeft:'auto',fontSize:11,color:'#94a3b8'}}>{docsFiltrados.length} documento(s)</span>
+              </div>
+            )}
+
             <div style={{ flex:1, overflowY:'auto' }}>
               <div style={{ padding:16 }}>
                   {!colabSel ? (
                     <EmptyState icon={<FileText size={32}/>} title="Selecione um colaborador"
                       description="Escolha um colaborador no painel à esquerda para ver seus documentos." />
-                  ) : loading ? <LoadingSkeleton rows={4}/> : docsColab.length===0 ? (
+                  ) : loading ? <LoadingSkeleton rows={4}/> : docsFiltrados.length===0 ? (
                     <EmptyState icon={<FileText size={32}/>} title="Nenhum documento"
-                      description={`${colabSel.nome} não possui documentos cadastrados.`}
-                      action={isAdmin?(<Button size="sm" onClick={openModal}><Plus size={13}/> Novo Documento</Button>):undefined} />
+                      description={docsColab.length===0 ? `${colabSel.nome} não possui documentos cadastrados.` : 'Nenhum documento encontrado com os filtros aplicados.'}
+                      action={isAdmin&&docsColab.length===0?(<Button size="sm" onClick={openModal}><Plus size={13}/> Novo Documento</Button>):undefined} />
                   ) : (
-                    <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-                      {docsColab.map(doc => (
+                    <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                      {docsFiltrados.map(doc => (
                         <div key={`${doc.source}-${doc.id}`}
                           style={{ background:'var(--card)', border:'1px solid var(--border)', borderRadius:10,
-                            padding:'12px 16px', display:'flex', alignItems:'flex-start', gap:12 }}>
+                            padding:'10px 14px', display:'flex', alignItems:'flex-start', gap:10 }}>
                           {/* Ícone tipo */}
                           <div style={{ flexShrink:0, marginTop:2 }}><TipoBadge tipo={doc.tipo}/></div>
                           <div style={{ flex:1, minWidth:0 }}>
@@ -1380,31 +1416,33 @@ export default function Documentos() {
                             </div>
                             {/* Nome do documento abaixo */}
                             {doc.descricao && (
-                              <div style={{ fontSize:13, fontWeight:600, color:'var(--foreground)', marginBottom:4, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{doc.descricao}</div>
+                              <div style={{ fontSize:13, fontWeight:600, color:'var(--foreground)', marginBottom:3, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{doc.descricao}</div>
                             )}
                             {/* Nome do arquivo */}
                             {doc.documento_nome && (
-                              <div style={{ fontSize:11, color:'#64748b', marginBottom:4, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                              <div style={{ fontSize:11, color:'#64748b', marginBottom:3, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
                                 📎 {doc.documento_nome}
                               </div>
                             )}
-                            <div style={{ fontSize:11, color:'var(--muted-foreground)', marginBottom:6 }}>{formatDate(doc.data)}</div>
+                            <div style={{ fontSize:11, color:'var(--muted-foreground)', marginBottom:4 }}>{formatDate(doc.data)}</div>
                             {doc.documento_url ? (
-                              <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                              <div style={{ display:'flex', gap:6, alignItems:'center', marginTop:4 }}>
                                 <a href={doc.documento_url} target="_blank" rel="noreferrer"
-                                  style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:12,
-                                    color:'hsl(var(--primary))', textDecoration:'none' }}>
-                                  <ExternalLink size={12}/> Ver
+                                  style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:11, fontWeight:600,
+                                    color:'#1d4ed8', textDecoration:'none', padding:'3px 10px', borderRadius:5,
+                                    border:'1px solid #bfdbfe', background:'#eff6ff' }}>
+                                  <ExternalLink size={11}/> Ver
                                 </a>
                                 <a href={doc.documento_url} download={doc.documento_nome||'documento'}
-                                  style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:12,
-                                    color:'#0369a1', textDecoration:'none' }}>
-                                  <Download size={12}/> Baixar
+                                  style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:11, fontWeight:600,
+                                    color:'#0369a1', textDecoration:'none', padding:'3px 10px', borderRadius:5,
+                                    border:'1px solid #bae6fd', background:'#f0f9ff' }}>
+                                  <Download size={11}/> Baixar
                                 </a>
                               </div>
                             ) : (
-                              <span style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:11, color:'#94a3b8' }}>
-                                <AlertCircle size={11}/> Sem arquivo anexado
+                              <span style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:11, color:'#94a3b8', marginTop:4 }}>
+                                <AlertCircle size={11}/> Sem arquivo
                               </span>
                             )}
                           </div>
