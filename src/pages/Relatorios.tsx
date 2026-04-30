@@ -1724,44 +1724,58 @@ export default function Relatorios() {
               </FieldWrap>
             )}
 
-            {/* Filtro: Período por data (De / Até) — todos exceto epis/contratos/headcount/playbook */}
+            {/* Filtro: Período por data (De / Até) */}
             {usaFiltroDatas && (
-              <>
-                <FieldWrap label="De">
-                  <Input
-                    type="date"
-                    value={filtroDataIni}
-                    onChange={e => setFiltroDataIni(e.target.value)}
-                    className="h-8 text-xs w-36"
-                  />
-                </FieldWrap>
-                <FieldWrap label="Até">
-                  <Input
-                    type="date"
-                    value={filtroDataFim}
-                    onChange={e => setFiltroDataFim(e.target.value)}
-                    className="h-8 text-xs w-36"
-                  />
-                </FieldWrap>
-                {/* Atalhos rápidos de período */}
-                <FieldWrap label="Atalho">
-                  <div className="flex gap-1 flex-wrap">
-                    {[
-                      { lbl: 'Hoje', fn: () => { setFiltroDataIni(hoje); setFiltroDataFim(hoje) } },
-                      { lbl: 'Semana', fn: () => { const d = new Date(); const ini = new Date(d); ini.setDate(d.getDate() - d.getDay() + 1); const fim = new Date(ini); fim.setDate(ini.getDate() + 6); setFiltroDataIni(ini.toISOString().split('T')[0]); setFiltroDataFim(fim.toISOString().split('T')[0]) } },
-                      { lbl: 'Quinzena', fn: () => { const d = new Date(); const dia = d.getDate(); const y = d.getFullYear(); const m = d.getMonth(); if (dia <= 15) { setFiltroDataIni(`${y}-${String(m+1).padStart(2,'0')}-01`); setFiltroDataFim(`${y}-${String(m+1).padStart(2,'0')}-15`) } else { const fim = new Date(y, m+1, 0); setFiltroDataIni(`${y}-${String(m+1).padStart(2,'0')}-16`); setFiltroDataFim(fim.toISOString().split('T')[0]) } } },
-                      { lbl: 'Mês', fn: () => { const d = new Date(); const y = d.getFullYear(); const m = d.getMonth(); const fim = new Date(y, m+1, 0); setFiltroDataIni(`${y}-${String(m+1).padStart(2,'0')}-01`); setFiltroDataFim(fim.toISOString().split('T')[0]) } },
+              <div style={{ display:'flex', flexDirection:'column', gap:6, minWidth:0 }}>
+                <Label className="text-xs text-gray-500 font-medium flex items-center gap-1.5">
+                  📅 Período
+                </Label>
+                <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:4 }}>
+                    <span style={{ fontSize:11, color:'#64748b', whiteSpace:'nowrap' }}>De</span>
+                    <Input
+                      type="date"
+                      value={filtroDataIni}
+                      onChange={e => setFiltroDataIni(e.target.value)}
+                      className="h-8 text-xs"
+                      style={{ width:138 }}
+                    />
+                  </div>
+                  <div style={{ display:'flex', alignItems:'center', gap:4 }}>
+                    <span style={{ fontSize:11, color:'#64748b', whiteSpace:'nowrap' }}>Até</span>
+                    <Input
+                      type="date"
+                      value={filtroDataFim}
+                      onChange={e => setFiltroDataFim(e.target.value)}
+                      className="h-8 text-xs"
+                      style={{ width:138 }}
+                    />
+                  </div>
+                  {/* Atalhos rápidos */}
+                  <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
+                    {([
+                      { lbl: '📅 Mês', fn: () => { const d = new Date(); const y = d.getFullYear(); const m = d.getMonth(); const fim = new Date(y, m+1, 0); setFiltroDataIni(`${y}-${String(m+1).padStart(2,'0')}-01`); setFiltroDataFim(fim.toISOString().split('T')[0]) } },
+                      { lbl: 'Mês ant.', fn: () => { const d = new Date(); const y = d.getFullYear(); const m = d.getMonth()-1; const ini = new Date(y, m<0?11:m, 1); const fim = new Date(y, m<0?11:m+1, 0); setFiltroDataIni(ini.toISOString().split('T')[0]); setFiltroDataFim(fim.toISOString().split('T')[0]) } },
                       { lbl: 'Trimestre', fn: () => { const d = new Date(); const m = d.getMonth(); const q = Math.floor(m/3); const y = d.getFullYear(); const mIni = q*3; const mFim = q*3+2; const fim = new Date(y, mFim+1, 0); setFiltroDataIni(`${y}-${String(mIni+1).padStart(2,'0')}-01`); setFiltroDataFim(fim.toISOString().split('T')[0]) } },
+                      { lbl: 'Semestre', fn: () => { const d = new Date(); const y = d.getFullYear(); const m = d.getMonth(); const s = m < 6 ? 0 : 6; const fim = new Date(y, s+6, 0); setFiltroDataIni(`${y}-${String(s+1).padStart(2,'0')}-01`); setFiltroDataFim(fim.toISOString().split('T')[0]) } },
                       { lbl: 'Ano', fn: () => { const y = new Date().getFullYear(); setFiltroDataIni(`${y}-01-01`); setFiltroDataFim(`${y}-12-31`) } },
-                    ].map(({ lbl, fn }) => (
+                    ] as {lbl:string;fn:()=>void}[]).map(({ lbl, fn }) => (
                       <button key={lbl} onClick={fn}
-                        className="px-2 py-0.5 text-[10px] font-semibold rounded border border-slate-200 bg-slate-50 hover:bg-[#1e3a5f] hover:text-white hover:border-[#1e3a5f] transition-colors">
+                        style={{ height:32, padding:'0 10px', fontSize:11, fontWeight:600, borderRadius:6,
+                          border:'1px solid #cbd5e1', background:'#f8fafc', color:'#475569', cursor:'pointer',
+                          whiteSpace:'nowrap', transition:'all .15s' }}
+                        onMouseEnter={e=>{e.currentTarget.style.background='#1e3a5f';e.currentTarget.style.color='#fff';e.currentTarget.style.borderColor='#1e3a5f'}}
+                        onMouseLeave={e=>{e.currentTarget.style.background='#f8fafc';e.currentTarget.style.color='#475569';e.currentTarget.style.borderColor='#cbd5e1'}}>
                         {lbl}
                       </button>
                     ))}
                   </div>
-                </FieldWrap>
-              </>
+                </div>
+                {/* Info do período selecionado */}
+                <div style={{ fontSize:10, color:'#94a3b8' }}>
+                  {filtroDataIni && filtroDataFim && `${new Date(filtroDataIni+'T12:00').toLocaleDateString('pt-BR')} → ${new Date(filtroDataFim+'T12:00').toLocaleDateString('pt-BR')}`}
+                </div>
+              </div>
             )}
 
             {/* ⚠️ Aviso: relatórios baseados em ponto_lancamentos têm granularidade mensal */}

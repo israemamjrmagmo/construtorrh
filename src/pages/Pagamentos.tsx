@@ -922,58 +922,58 @@ export default function Pagamentos() {
         const qtdPagoGeral      = qtdFolhaPagaTotal + qtdAvPagoTotal
 
         return (
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12, marginBottom:20 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:16, marginBottom:24 }}>
           {/* EM ABERTO */}
-          <div style={{ background:'#fff7ed', border:'2px solid #fed7aa', borderRadius:12, padding:'14px 18px' }}>
-            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
-              <span style={{ fontSize:12, fontWeight:800, color:'#b45309', textTransform:'uppercase', letterSpacing:'0.05em' }}>⏳ Em Aberto</span>
-              <span style={{ background:'#b45309', color:'#fff', borderRadius:20, padding:'2px 10px', fontSize:11, fontWeight:700 }}>{qtdAberto} itens</span>
+          <div style={{ background:'#fff7ed', border:'2px solid #fed7aa', borderRadius:14, padding:'20px 20px 18px' }}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
+              <span style={{ fontSize:11, fontWeight:800, color:'#b45309', textTransform:'uppercase', letterSpacing:'0.08em' }}>⏳ Em Aberto</span>
+              <span style={{ background:'#b45309', color:'#fff', borderRadius:20, padding:'3px 11px', fontSize:11, fontWeight:700 }}>{qtdAberto} itens</span>
             </div>
-            <div style={{ fontSize:22, fontWeight:800, color:'#b45309', marginBottom:8 }}>{formatCurrency(totalAberto)}</div>
-            <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
-              <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, color:'#92400e' }}>
+            <div style={{ fontSize:26, fontWeight:800, color:'#b45309', marginBottom:14, lineHeight:1.1 }}>{formatCurrency(totalAberto)}</div>
+            <div style={{ display:'flex', flexDirection:'column', gap:7 }}>
+              <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, color:'#92400e' }}>
                 <span>💳 Folha liberada</span><strong>{qtdLib} · {formatCurrency(vlLib)}</strong>
               </div>
-              <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, color:'#92400e' }}>
+              <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, color:'#92400e' }}>
                 <span>📋 Avulsos pend.</span><strong>{qtdAvPend} · {formatCurrency(vlAvPend)}</strong>
               </div>
-              <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, color:'#92400e' }}>
+              <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, color:'#92400e' }}>
                 <span>💰 Adiantamentos</span><strong>{qtdAdPend} · {formatCurrency(vlAdPend)}</strong>
               </div>
-              <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, color:'#92400e' }}>
+              <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, color:'#92400e' }}>
                 <span>🏆 Prêmios</span><strong>{qtdPrPend} · {formatCurrency(vlPrPend)}</strong>
               </div>
             </div>
           </div>
           {/* REALIZADOS */}
-          <div style={{ background:'#f0fdf4', border:'2px solid #bbf7d0', borderRadius:12, padding:'14px 18px' }}>
-            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
-              <span style={{ fontSize:12, fontWeight:800, color:'#15803d', textTransform:'uppercase', letterSpacing:'0.05em' }}>✅ Realizados</span>
-              <span style={{ background:'#15803d', color:'#fff', borderRadius:20, padding:'2px 10px', fontSize:11, fontWeight:700 }}>{qtdPagoGeral} pagos</span>
+          <div style={{ background:'#f0fdf4', border:'2px solid #bbf7d0', borderRadius:14, padding:'20px 20px 18px' }}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
+              <span style={{ fontSize:11, fontWeight:800, color:'#15803d', textTransform:'uppercase', letterSpacing:'0.08em' }}>✅ Realizados</span>
+              <span style={{ background:'#15803d', color:'#fff', borderRadius:20, padding:'3px 11px', fontSize:11, fontWeight:700 }}>{qtdPagoGeral} pagos</span>
             </div>
-            <div style={{ fontSize:22, fontWeight:800, color:'#15803d', marginBottom:2 }}>{formatCurrency(totalPagoGeral)}</div>
-            <div style={{ fontSize:11, color:'#166534', marginBottom:8 }}>Total histórico (todos os períodos)</div>
-            <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
-              <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, color:'#166534' }}>
+            <div style={{ fontSize:26, fontWeight:800, color:'#15803d', marginBottom:6, lineHeight:1.1 }}>{formatCurrency(totalPagoGeral)}</div>
+            <div style={{ fontSize:11, color:'#166534', marginBottom:12 }}>Total histórico (todos os períodos)</div>
+            <div style={{ display:'flex', flexDirection:'column', gap:7 }}>
+              <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, color:'#166534' }}>
                 <span>📑 Folha de ponto</span><strong>{qtdFolhaPagaTotal} · {formatCurrency(vlFolhaPagaTotal)}</strong>
               </div>
-              <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, color:'#166534' }}>
+              <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, color:'#166534' }}>
                 <span>📋 Avulsos pagos</span><strong>{qtdAvPagoTotal} · {formatCurrency(vlAvPagoTotal)}</strong>
               </div>
             </div>
           </div>
           {/* TOTAL GERAL */}
-          <div style={{ background:'#f5f3ff', border:'2px solid #ddd6fe', borderRadius:12, padding:'14px 18px' }}>
-            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
-              <span style={{ fontSize:12, fontWeight:800, color:'#7c3aed', textTransform:'uppercase', letterSpacing:'0.05em' }}>📊 Total Geral</span>
-              <span style={{ background:'#7c3aed', color:'#fff', borderRadius:20, padding:'2px 10px', fontSize:11, fontWeight:700 }}>{qtdAberto+qtdPagoGeral} lançamentos</span>
+          <div style={{ background:'#f5f3ff', border:'2px solid #ddd6fe', borderRadius:14, padding:'20px 20px 18px' }}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
+              <span style={{ fontSize:11, fontWeight:800, color:'#7c3aed', textTransform:'uppercase', letterSpacing:'0.08em' }}>📊 Total Geral</span>
+              <span style={{ background:'#7c3aed', color:'#fff', borderRadius:20, padding:'3px 11px', fontSize:11, fontWeight:700 }}>{qtdAberto+qtdPagoGeral} lançamentos</span>
             </div>
-            <div style={{ fontSize:22, fontWeight:800, color:'#7c3aed', marginBottom:8 }}>{formatCurrency(totalAberto + totalPagoGeral)}</div>
-            <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
-              <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, color:'#5b21b6' }}>
+            <div style={{ fontSize:26, fontWeight:800, color:'#7c3aed', marginBottom:14, lineHeight:1.1 }}>{formatCurrency(totalAberto + totalPagoGeral)}</div>
+            <div style={{ display:'flex', flexDirection:'column', gap:7 }}>
+              <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, color:'#5b21b6' }}>
                 <span>⏳ Em Aberto</span><strong>{formatCurrency(totalAberto)}</strong>
               </div>
-              <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, color:'#5b21b6' }}>
+              <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, color:'#5b21b6' }}>
                 <span>✅ Realizado (total)</span><strong>{formatCurrency(totalPagoGeral)}</strong>
               </div>
             </div>
@@ -1012,56 +1012,79 @@ export default function Pagamentos() {
         )}
       </div>
 
-      {/* Filtros — padrão do sistema com componentes Select/Input */}
-      <div className="flex flex-wrap items-end gap-3 py-4 mb-4" style={{ borderBottom:'1px solid var(--border)' }}>
+      {/* Filtros — barra clara com labels descritivos acima de cada campo */}
+      <div style={{ display:'flex', flexWrap:'wrap', alignItems:'flex-end', gap:10, padding:'14px 0 14px', marginBottom:16, borderBottom:'1px solid var(--border)' }}>
 
-        <div className="relative">
-          <label className="text-xs font-semibold text-muted-foreground block mb-1">Colaborador</label>
-          <div className="relative">
-            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+        {/* Colaborador */}
+        <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+          <label style={{ fontSize:10, fontWeight:700, color:'var(--muted-foreground)', textTransform:'uppercase', letterSpacing:'0.06em' }}>Colaborador</label>
+          <div style={{ position:'relative' }}>
+            <Search size={12} style={{ position:'absolute', left:8, top:'50%', transform:'translateY(-50%)', color:'var(--muted-foreground)', pointerEvents:'none' }} />
             <input placeholder="Nome ou chapa…" value={filtroNomeLanc} onChange={e=>setFiltroNomeLanc(e.target.value)}
-              className="h-9 pl-8 pr-3 text-sm border border-input rounded-md bg-background text-foreground w-48" />
+              style={{ height:32, paddingLeft:26, paddingRight:10, fontSize:13, border:'1px solid var(--border)', borderRadius:6, background:'var(--background)', color:'var(--foreground)', width:180, outline:'none' }} />
           </div>
         </div>
-        <div>
-          <label className="text-xs font-semibold text-muted-foreground block mb-1">Obra</label>
+
+        {/* Obra */}
+        <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+          <label style={{ fontSize:10, fontWeight:700, color:'var(--muted-foreground)', textTransform:'uppercase', letterSpacing:'0.06em' }}>Obra</label>
           <select value={filtroObraLanc} onChange={e=>setFiltroObraLanc(e.target.value)}
-            className="h-9 px-3 text-sm border border-input rounded-md bg-background text-foreground w-44">
+            style={{ height:32, padding:'0 10px', fontSize:13, border:'1px solid var(--border)', borderRadius:6, background:'var(--background)', color:'var(--foreground)', width:168 }}>
             <option value="todos">Todas as obras</option>
             {obras.map(o => <option key={o.id} value={o.id}>{o.nome}</option>)}
           </select>
         </div>
-        <div>
-          <label className="text-xs font-semibold text-muted-foreground block mb-1">Função</label>
+
+        {/* Função */}
+        <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+          <label style={{ fontSize:10, fontWeight:700, color:'var(--muted-foreground)', textTransform:'uppercase', letterSpacing:'0.06em' }}>Função</label>
           <select value={filtroFuncaoLanc} onChange={e=>setFiltroFuncaoLanc(e.target.value)}
-            className="h-9 px-3 text-sm border border-input rounded-md bg-background text-foreground w-44">
+            style={{ height:32, padding:'0 10px', fontSize:13, border:'1px solid var(--border)', borderRadius:6, background:'var(--background)', color:'var(--foreground)', width:168 }}>
             <option value="todos">Todas as funções</option>
             {funcoes.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}
           </select>
         </div>
-        <div>
-          <label className="text-xs font-semibold text-muted-foreground block mb-1">{aba==='agendados'?'Período de':'Data pgto de'}</label>
+
+        {/* Data de / Período de */}
+        <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+          <label style={{ fontSize:10, fontWeight:700, color:'var(--muted-foreground)', textTransform:'uppercase', letterSpacing:'0.06em' }}>{aba==='agendados'?'Período de':'Data pgto de'}</label>
           <input type="date" value={filtroDataIni} onChange={e=>setFiltroDataIni(e.target.value)}
-            className="h-9 px-3 text-sm border border-input rounded-md bg-background text-foreground" />
+            style={{ height:32, padding:'0 10px', fontSize:13, border:'1px solid var(--border)', borderRadius:6, background:'var(--background)', color:'var(--foreground)' }} />
         </div>
-        <div>
-          <label className="text-xs font-semibold text-muted-foreground block mb-1">até</label>
+
+        {/* Até */}
+        <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+          <label style={{ fontSize:10, fontWeight:700, color:'var(--muted-foreground)', textTransform:'uppercase', letterSpacing:'0.06em' }}>Até</label>
           <input type="date" value={filtroDataFim} onChange={e=>setFiltroDataFim(e.target.value)}
-            className="h-9 px-3 text-sm border border-input rounded-md bg-background text-foreground" />
+            style={{ height:32, padding:'0 10px', fontSize:13, border:'1px solid var(--border)', borderRadius:6, background:'var(--background)', color:'var(--foreground)' }} />
         </div>
+
+        {/* Competência / Mês (só na aba realizados) */}
         {aba === 'realizados' && (
-          <div>
-            <label className="text-xs font-semibold text-muted-foreground block mb-1">Competência / Mês</label>
-            <input type="month" value={filtroMesLanc} onChange={e=>setFiltroMesLanc(e.target.value)}
-              className="h-9 px-3 text-sm border border-input rounded-md bg-background text-foreground"
-              title="Deixe em branco para ver todos os meses" />
-            {filtroMesLanc && <button onClick={()=>setFiltroMesLanc('')} style={{marginLeft:4,fontSize:11,color:'#64748b',background:'none',border:'none',cursor:'pointer'}}>✕ Todos</button>}
+          <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+            <label style={{ fontSize:10, fontWeight:700, color:'var(--muted-foreground)', textTransform:'uppercase', letterSpacing:'0.06em' }}>Competência / Mês</label>
+            <div style={{ display:'flex', alignItems:'center', gap:4 }}>
+              <input type="month" value={filtroMesLanc} onChange={e=>setFiltroMesLanc(e.target.value)}
+                style={{ height:32, padding:'0 10px', fontSize:13, border:'1px solid var(--border)', borderRadius:6, background:'var(--background)', color:'var(--foreground)' }}
+                title="Deixe em branco para ver todos os meses" />
+              {filtroMesLanc && (
+                <button onClick={()=>setFiltroMesLanc('')}
+                  style={{ height:32, padding:'0 8px', fontSize:11, color:'#64748b', background:'none', border:'1px solid var(--border)', borderRadius:6, cursor:'pointer' }}>
+                  ✕
+                </button>
+              )}
+            </div>
           </div>
         )}
+
+        {/* Limpar filtros */}
         {(filtroNomeLanc||filtroDataIni||filtroDataFim||filtroObraLanc!=='todos'||filtroFuncaoLanc!=='todos'||filtroMesLanc) && (
-          <Button variant="outline" size="sm" onClick={()=>{setFiltroNomeLanc('');setFiltroDataIni('');setFiltroDataFim('');setFiltroObraLanc('todos');setFiltroFuncaoLanc('todos');setFiltroMesLanc('')}}>
-            ✕ Limpar tudo
-          </Button>
+          <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+            <label style={{ fontSize:10, fontWeight:700, color:'transparent', letterSpacing:'0.06em' }}>‎</label>
+            <Button variant="outline" size="sm" style={{ height:32 }} onClick={()=>{setFiltroNomeLanc('');setFiltroDataIni('');setFiltroDataFim('');setFiltroObraLanc('todos');setFiltroFuncaoLanc('todos');setFiltroMesLanc('')}}>
+              ✕ Limpar tudo
+            </Button>
+          </div>
         )}
       </div>
 
@@ -1080,20 +1103,24 @@ export default function Pagamentos() {
 
           return (
           <>
-            {/* Sub-abas Folha / VT / Outros */}
+            {/* Sub-abas Folha / VT / Outros — com badges coloridos e espaçamento */}
             <div style={{ display:'flex', gap:0, borderBottom:'2px solid var(--border)', marginBottom:16 }}>
               {([
-                { key:'folha',  label:'📄 Folha de Ponto', count: lancsAgendados.length },
-                { key:'vt',     label:'🚌 Vale Transporte', count: pendVT.length },
-                { key:'outros', label:'📋 Outros', count: pendOutros.length },
-              ] as {key:'folha'|'vt'|'outros';label:string;count:number}[]).map(st => (
+                { key:'folha',  label:'📄 Folha de Ponto',  count: lancsAgendados.length, activeColor:'#1d4ed8', activeBadgeBg:'#1d4ed8' },
+                { key:'vt',     label:'🚌 Vale Transporte',  count: pendVT.length,          activeColor:'#0369a1', activeBadgeBg:'#0369a1' },
+                { key:'outros', label:'📋 Outros',           count: pendOutros.length,      activeColor:'#7c3aed', activeBadgeBg:'#7c3aed' },
+              ] as {key:'folha'|'vt'|'outros';label:string;count:number;activeColor:string;activeBadgeBg:string}[]).map(st => (
                 <button key={st.key} onClick={() => setAbaAgend(st.key)}
-                  style={{ padding:'9px 20px', fontWeight: abaAgend===st.key?700:500, fontSize:13,
-                    borderBottom: abaAgend===st.key?'3px solid #1d4ed8':'3px solid transparent',
-                    color: abaAgend===st.key?'#1d4ed8':'var(--muted-foreground)', background:'none', border:'none',
-                    borderBottomStyle:'solid', cursor:'pointer', display:'flex', alignItems:'center', gap:6 }}>
+                  style={{ padding:'9px 24px', fontWeight: abaAgend===st.key?700:500, fontSize:13,
+                    borderBottom: abaAgend===st.key?`3px solid ${st.activeColor}`:'3px solid transparent',
+                    color: abaAgend===st.key?st.activeColor:'var(--muted-foreground)', background:'none', border:'none',
+                    borderBottomStyle:'solid', cursor:'pointer', display:'flex', alignItems:'center', gap:7 }}>
                   {st.label}
-                  {st.count > 0 && <span style={{ background: abaAgend===st.key?'#1d4ed8':'#94a3b8', color:'#fff', borderRadius:20, padding:'1px 8px', fontSize:10, fontWeight:700 }}>{st.count}</span>}
+                  <span style={{
+                    background: abaAgend===st.key ? st.activeBadgeBg : '#94a3b8',
+                    color:'#fff', borderRadius:20, padding:'2px 9px', fontSize:11, fontWeight:700,
+                    minWidth:20, textAlign:'center',
+                  }}>{st.count}</span>
                 </button>
               ))}
               <div style={{ marginLeft:'auto', display:'flex', alignItems:'center', gap:8, paddingBottom:4 }}>
@@ -1184,8 +1211,8 @@ export default function Pagamentos() {
                       <TableHead className="text-right">Ações</TableHead>
                     </TableRow></TableHeader>
                     <TableBody>
-                      {lancsAgendados.map((l: any) => (
-                        <TableRow key={l.id}>
+                      {lancsAgendados.map((l: any, idx: number) => (
+                        <TableRow key={l.id} style={{ background: idx % 2 === 1 ? '#f8fafc' : undefined }}>
                           <TableCell>
                             <div className="font-semibold text-sm">{l.colaboradores?.nome ?? '—'}</div>
                             <div className="text-xs text-muted-foreground">{l.colaboradores?.chapa} · {l.colaboradores?.tipo_contrato?.toUpperCase()}</div>
@@ -1238,14 +1265,14 @@ export default function Pagamentos() {
                       <TableHead className="text-right">Ações</TableHead>
                     </TableRow></TableHeader>
                     <TableBody>
-                      {pendVT.map((r) => (
-                        <TableRow key={r.id}>
+                      {pendVT.map((r, idx) => (
+                        <TableRow key={r.id} style={{ background: idx % 2 === 1 ? '#f8fafc' : undefined }}>
                           <TableCell>
                             <div className="font-semibold text-sm">{r.colaboradores?.nome ?? '—'}</div>
                             <div className="text-xs text-muted-foreground">{r.colaboradores?.chapa}</div>
                           </TableCell>
                           <TableCell className="text-center text-sm">{r.competencia?.slice(5)}/{r.competencia?.slice(0,4)}</TableCell>
-                          <TableCell className="text-xs text-muted-foreground max-w-[220px] truncate">{r.observacoes ?? '—'}</TableCell>
+                          <TableCell style={{ minWidth:140, maxWidth:220, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:12, color:'var(--muted-foreground)' }} title={r.observacoes ?? ''}>{r.observacoes ?? '—'}</TableCell>
                           <TableCell className="text-right font-bold text-sm" style={{ color:'#15803d' }}>{formatCurrency(r.valor_liquido ?? r.valor_bruto ?? 0)}</TableCell>
                           <TableCell className="text-right">
                             <div style={{ display:'flex', gap:6, justifyContent:'flex-end' }}>
@@ -1279,15 +1306,15 @@ export default function Pagamentos() {
                       <TableHead className="text-right">Ações</TableHead>
                     </TableRow></TableHeader>
                     <TableBody>
-                      {pendOutros.map((r) => (
-                        <TableRow key={r.id}>
+                      {pendOutros.map((r, idx) => (
+                        <TableRow key={r.id} style={{ background: idx % 2 === 1 ? '#f8fafc' : undefined }}>
                           <TableCell>
                             <div className="font-semibold text-sm">{r.colaboradores?.nome ?? '—'}</div>
                             <div className="text-xs text-muted-foreground">{r.colaboradores?.chapa}</div>
                           </TableCell>
                           <TableCell><span style={{ background:'#ede9fe', color:'#7c3aed', borderRadius:99, padding:'2px 10px', fontSize:11, fontWeight:700 }}>{r.tipo ?? '—'}</span></TableCell>
                           <TableCell className="text-center text-sm">{r.competencia?.slice(5)}/{r.competencia?.slice(0,4)}</TableCell>
-                          <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">{r.observacoes ?? '—'}</TableCell>
+                          <TableCell style={{ minWidth:140, maxWidth:200, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:12, color:'var(--muted-foreground)' }} title={r.observacoes ?? ''}>{r.observacoes ?? '—'}</TableCell>
                           <TableCell className="text-right font-bold text-sm" style={{ color:'#15803d' }}>{formatCurrency(r.valor_liquido ?? r.valor_bruto ?? 0)}</TableCell>
                           <TableCell className="text-right">
                             <div style={{ display:'flex', gap:6, justifyContent:'flex-end' }}>
@@ -1358,7 +1385,7 @@ export default function Pagamentos() {
               ))}
               <div style={{ flex:1 }} />
               <span style={{ alignSelf:'center', paddingRight:8, fontSize:13, fontWeight:800, color:'#15803d' }}>
-                Total geral: {formatCurrency(totalGeral)}
+
               </span>
             </div>
 
@@ -1380,7 +1407,7 @@ export default function Pagamentos() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {folhaPaga.map((l: any) => {
+                        {folhaPaga.map((l: any, idx: number) => {
                           const exp = expandidos.has(l.id)
                           const temSnap = l.snap_valor_total != null
                           const pills = temSnap ? [
@@ -1395,7 +1422,7 @@ export default function Pagamentos() {
                           ].filter(p => (p.val ?? 0) > 0) : []
                           return (
                             <React.Fragment key={l.id}>
-                              <TableRow>
+                              <TableRow style={{ background: idx % 2 === 1 ? '#f8fafc' : undefined }}>
                                 <TableCell>
                                   <div style={{display:'flex', alignItems:'center', gap:6}}>
                                     <button
@@ -1419,7 +1446,7 @@ export default function Pagamentos() {
                                     {l.data_pagamento ? formatDate(l.data_pagamento) : '—'}
                                   </span>
                                 </TableCell>
-                                <TableCell className="text-xs text-muted-foreground max-w-[160px] truncate">{l.obs_pagamento ?? '—'}</TableCell>
+                                <TableCell style={{ minWidth:140, maxWidth:180, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:12, color:'var(--muted-foreground)' }} title={l.obs_pagamento ?? ''}>{l.obs_pagamento ?? '—'}</TableCell>
                                 <TableCell className="text-right font-bold text-sm" style={{ color:'#15803d' }}>
                                   {l.snap_liquido ? formatCurrency(l.snap_liquido) : '—'}
                                 </TableCell>
@@ -1485,8 +1512,8 @@ export default function Pagamentos() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {vtPagos.map(r => (
-                          <TableRow key={r.id}>
+                        {vtPagos.map((r, idx) => (
+                          <TableRow key={r.id} style={{ background: idx % 2 === 1 ? '#f8fafc' : undefined }}>
                             <TableCell>
                               <div className="font-semibold text-sm">{r.colaboradores?.nome ?? '—'}</div>
                               <div className="text-xs text-muted-foreground">{r.colaboradores?.chapa}</div>
@@ -1502,7 +1529,7 @@ export default function Pagamentos() {
                                 {r.data_pagamento ? formatDate(r.data_pagamento) : '—'}
                               </span>
                             </TableCell>
-                            <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">{r.observacoes ?? '—'}</TableCell>
+                            <TableCell style={{ minWidth:140, maxWidth:220, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:12, color:'var(--muted-foreground)' }} title={r.observacoes ?? ''}>{r.observacoes ?? '—'}</TableCell>
                             <TableCell className="text-right font-bold text-sm" style={{ color:'#15803d' }}>
                               {formatCurrency(r.valor_liquido ?? r.valor_bruto ?? 0)}
                             </TableCell>
@@ -1543,8 +1570,8 @@ export default function Pagamentos() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {outrosPagos.map(r => (
-                          <TableRow key={r.id}>
+                        {outrosPagos.map((r, idx) => (
+                          <TableRow key={r.id} style={{ background: idx % 2 === 1 ? '#f8fafc' : undefined }}>
                             <TableCell>
                               <div className="font-semibold text-sm">{r.colaboradores?.nome ?? '—'}</div>
                               <div className="text-xs text-muted-foreground">{r.colaboradores?.chapa}</div>
@@ -1565,7 +1592,7 @@ export default function Pagamentos() {
                                 {r.data_pagamento ? formatDate(r.data_pagamento) : '—'}
                               </span>
                             </TableCell>
-                            <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">{r.observacoes ?? '—'}</TableCell>
+                            <TableCell style={{ minWidth:140, maxWidth:220, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:12, color:'var(--muted-foreground)' }} title={r.observacoes ?? ''}>{r.observacoes ?? '—'}</TableCell>
                             <TableCell className="text-right font-bold text-sm" style={{ color:'#15803d' }}>
                               {formatCurrency(r.valor_liquido ?? r.valor_bruto ?? 0)}
                             </TableCell>
