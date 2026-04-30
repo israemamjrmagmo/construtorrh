@@ -1071,7 +1071,9 @@ export default function Pagamentos() {
           const pendentes = rows.filter(r =>
             r.status === 'pendente' &&
             (filtroMesLanc ? r.competencia === filtroMesLanc : true) &&
-            (filtroNomeLanc ? (r.colaboradores?.nome?.toLowerCase().includes(filtroNomeLanc.toLowerCase()) || (r.colaboradores?.chapa??'').toLowerCase().includes(filtroNomeLanc.toLowerCase())) : true)
+            (filtroNomeLanc ? (r.colaboradores?.nome?.toLowerCase().includes(filtroNomeLanc.toLowerCase()) || (r.colaboradores?.chapa??'').toLowerCase().includes(filtroNomeLanc.toLowerCase())) : true) &&
+            (filtroObraLanc !== 'todos' ? (r as any).obra_id === filtroObraLanc : true) &&
+            (filtroFuncaoLanc !== 'todos' ? (r as any).colaboradores?.funcao_id === filtroFuncaoLanc : true)
           )
           const pendVT     = pendentes.filter(r => r.tipo === 'vale_transporte')
           const pendOutros = pendentes.filter(r => r.tipo !== 'vale_transporte')

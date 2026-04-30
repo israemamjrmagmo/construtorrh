@@ -628,6 +628,94 @@ export default function Epis() {
     totaisPorCategoria[cat] = (totaisPorCategoria[cat] ?? 0) + (item.quantidade ?? 1)
   })
 
+  // ── gerarRecebimento: doc individual de recebimento de EPI por colaborador ──
+  const gerarRecebimento = () => {
+    if (itensEpi.length === 0) { toast.error('Gere a solicitação primeiro'); return }
+    const hoje = new Date().toLocaleDateString('pt-BR')
+
+    // Agrupar itens por colaborador
+    const colabMap: Record<string, { nome: string; chapa: string; itens: typeof itensEpi }> = {}
+    itensEpi.forEach(item => {
+      const colId  = item.colaborador_id ?? 'sem'
+      const colObj = colaboradores.find(c => c.id === colId)
+      if (!colabMap[colId]) colabMap[colId] = { nome: colObj?.nome ?? '—', chapa: colObj?.chapa ?? '—', itens: [] }
+      colabMap[colId].itens.push(item)
+    })
+
+    // Se modo colaborador: apenas 1 colaborador
+    const colabsParaGerar = modoSolicitacao === 'colaborador'
+      ? Object.values(colabMap).filter(c => colaboradores.find(x => x.id === colaboradorSelecionado && x.nome === c.nome))
+      : Object.values(colabMap)
+
+    const htmlPages = colabsParaGerar.map(c => {
+      const linhas = c.itens.map((item, idx) => `
+        <tr>
+          <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb">${idx + 1}</td>
+          <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;font-weight:600">${item.epi_catalogo?.nome ?? '—'}</td>
+          <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;text-align:center">${item.epi_catalogo?.categoria ?? '—'}</td>
+          <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;text-align:center">${item.quantidade ?? 1}</td>
+          <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;text-align:center">${(item as any).data_entrega ? new Date((item as any).data_entrega).toLocaleDateString('pt-BR') : '___/___/______'}</td>
+          <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;width:120px">&nbsp;</td>
+        </tr>`).join('')
+      return `
+        <div style="page-break-after:always;font-family:Arial,sans-serif;font-size:12px;color:#111;padding:32px 40px;max-width:190mm">
+          <div style="background:#1e3a5f;color:#fff;padding:16px 20px;border-radius:8px 8px 0 0;display:flex;justify-content:space-between;align-items:center">
+            <div>
+              <div style="font-size:18px;font-weight:800">Recibo de Entrega de EPI</div>
+              <div style="font-size:11px;opacity:.75;margin-top:2px">Equipamento de Proteção Individual — Comprovante de Recebimento</div>
+            </div>
+            <div style="font-size:11px;opacity:.75">Emitido em: ${hoje}</div>
+          </div>
+          <div style="border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;padding:16px 20px;margin-bottom:16px">
+            <table style="width:100%;border-collapse:collapse">
+              <tr>
+                <td style="padding:4px 0;font-weight:700;color:#374151;width:120px">Colaborador:</td>
+                <td style="padding:4px 0;font-size:14px;font-weight:800">${c.nome}</td>
+                <td style="padding:4px 0;font-weight:700;color:#374151;width:80px">Chapa:</td>
+                <td style="padding:4px 0">${c.chapa}</td>
+              </tr>
+            </table>
+          </div>
+          <table style="width:100%;border-collapse:collapse;margin-bottom:20px">
+            <thead>
+              <tr style="background:#f1f5f9;color:#374151;font-size:11px">
+                <th style="padding:8px;text-align:center;border-bottom:2px solid #cbd5e1">#</th>
+                <th style="padding:8px;text-align:left;border-bottom:2px solid #cbd5e1">Equipamento</th>
+                <th style="padding:8px;text-align:center;border-bottom:2px solid #cbd5e1">Categoria</th>
+                <th style="padding:8px;text-align:center;border-bottom:2px solid #cbd5e1">Qtd</th>
+                <th style="padding:8px;text-align:center;border-bottom:2px solid #cbd5e1">Data Entrega</th>
+                <th style="padding:8px;text-align:center;border-bottom:2px solid #cbd5e1">Rubrica</th>
+              </tr>
+            </thead>
+            <tbody>${linhas}</tbody>
+          </table>
+          <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:10px 14px;font-size:11px;color:#92400e;margin-bottom:24px">
+            <strong>Declaração:</strong> Declaro que recebi os equipamentos de proteção individual (EPIs) listados acima,
+            estando ciente da obrigatoriedade do uso durante a execução das atividades laborais, conforme NR-6.
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:16px">
+            <div style="text-align:center">
+              <div style="border-top:1px solid #374151;padding-top:8px;font-size:11px">${c.nome} — Colaborador</div>
+            </div>
+            <div style="text-align:center">
+              <div style="border-top:1px solid #374151;padding-top:8px;font-size:11px">Responsável / Almoxarifado</div>
+            </div>
+          </div>
+        </div>`
+    }).join('')
+
+    const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
+      <style>@media print{body{margin:0}@page{size:A4;margin:0}}</style>
+    </head><body>${htmlPages}</body></html>`
+
+    const win = window.open('', '_blank', 'width=900,height=700')
+    if (!win) { toast.error('Permita pop-ups para gerar o recibo'); return }
+    win.document.write(html)
+    win.document.close()
+    setTimeout(() => { win.focus(); win.print() }, 600)
+    toast.success(`✅ Recibo(s) de recebimento gerado(s) para ${colabsParaGerar.length} colaborador(es)!`)
+  }
+
   // ─── estilos das abas ──────────────────────────────────────────────────────
   // ── Excluir TODOS os EPIs da função selecionada ─────────────────────────────
   const handleExcluirTodos = async () => {
@@ -858,13 +946,21 @@ export default function Epis() {
               <Link2 size={16} /> Vincular EPI
             </Button>
           ) : aba === 'solicitacoes' && gerou && itensEpi.length > 0 ? (
-            <Button
-              variant="outline"
-              onClick={gerarPDF}
-              style={{ display: 'flex', alignItems: 'center', gap: 6 }}
-            >
-              <Download size={16} /> Gerar PDF
-            </Button>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Button
+                variant="outline"
+                onClick={gerarPDF}
+                style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+              >
+                <Download size={16} /> Solicitação (Almox.)
+              </Button>
+              <Button
+                onClick={gerarRecebimento}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'linear-gradient(135deg,#15803d,#166534)', color: '#fff' }}
+              >
+                <FileText size={16} /> Recibo de Entrega
+              </Button>
+            </div>
           ) : null
         }
       />

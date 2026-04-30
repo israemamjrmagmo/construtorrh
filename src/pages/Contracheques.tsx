@@ -491,6 +491,19 @@ function ModalHolerite({ open, onClose, colaborador, onSaved }: {
         publicado_em:      publicar ? new Date().toISOString() : null,
       }
 
+      // ── Verificar duplicata (colaborador + competência + tipo) ──────────
+      const { data: dupCheck } = await supabase
+        .from('contracheques')
+        .select('id')
+        .eq('colaborador_id', colaborador.id)
+        .eq('competencia', competencia + '-01')
+        .eq('tipo', tipo)
+        .limit(1)
+      if (dupCheck && dupCheck.length > 0) {
+        toast.error(`⚠️ Já existe um ${tipo === 'adiantamento' ? 'adiantamento' : 'holerite'} para ${colaborador.nome} na competência ${competencia}. Para editar, abra o lançamento existente.`)
+        setSaving(false)
+        return
+      }
       const { error } = await supabase.from('contracheques').insert(payload)
       if (error) throw error
 

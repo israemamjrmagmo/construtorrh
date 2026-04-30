@@ -381,52 +381,79 @@ export default function Relatorios() {
 
       // ── 2. Custo Total por Obra ────────────────────────────────────────────
       else if (relatAtivo === 'custo-obra') {
-        // snap_bruto não existe — usar snap_valor_total; adiantamentos status='pago' no banco
-        const q = supabase.from('ponto_lancamentos')
-          .select(`obra_id, snap_valor_total, snap_liquido, obras(nome)`)
+        // Busca lançamentos com função para detalhar por categoria
+        const plQ = supabase.from('ponto_lancamentos')
+          .select(`obra_id, snap_valor_total, snap_liquido, colaborador_id, obras(nome), colaboradores(funcao_id, funcoes(nome, categoria))`)
           .gte('mes_referencia', mesRefIni)
           .lte('mes_referencia', mesRefFim)
-        const { data: pl } = await q
-        const { data: ad } = await supabase.from('adiantamentos')
+        if (filtroObra !== 'todos') plQ.eq('obra_id', filtroObra)
+        const { data: pl } = await plQ
+
+        const adQ = supabase.from('adiantamentos')
           .select(`colaborador_id, valor, colaboradores(obra_id)`)
           .gte('competencia', mesRefIni).lte('competencia', mesRefFim).in('status', ['aprovado', 'pago'])
-        const { data: vt } = await supabase.from('vale_transporte')
+        const { data: ad } = await adQ
+        const vtQ = supabase.from('vale_transporte')
           .select(`colaborador_id, valor_empresa, colaboradores(obra_id)`)
           .gte('competencia', mesRefIni).lte('competencia', mesRefFim)
-        const { data: pr } = await supabase.from('premios')
+        const { data: vt } = await vtQ
+        const prQ = supabase.from('premios')
           .select(`colaborador_id, valor, colaboradores(obra_id)`)
           .gte('competencia', mesRefIni).lte('competencia', mesRefFim).in('status', ['aprovado', 'pago'])
+        const { data: pr } = await prQ
 
-        const map: Record<string, Record<string, unknown>> = {}
-        const get = (oId: string, nome: string) => {
-          if (!map[oId]) map[oId] = { obra: nome, folha_bruto: 0, folha_liquido: 0, adiantamentos: 0, vt: 0, premios: 0, total: 0 }
+        // Estrutura: obra → { totais + por_funcao: { funcaoNome → { categoria, folha, colaboradores } } }
+        const map: Record<string, {
+          obra: string; folha_bruto: number; folha_liquido: number;
+          adiantamentos: number; vt: number; premios: number; total: number;
+          por_funcao: Record<string, { funcao: string; categoria: string; folha: number; colaboradores: Set<string> }>;
+        }> = {}
+
+        const getObra = (oId: string, nome: string) => {
+          if (!map[oId]) map[oId] = { obra: nome, folha_bruto: 0, folha_liquido: 0, adiantamentos: 0, vt: 0, premios: 0, total: 0, por_funcao: {} }
           return map[oId]
         }
+
         for (const p of pl ?? []) {
-          const o = (p as Record<string, unknown>).obras as Record<string, unknown> | null
-          const id = String((p as Record<string, unknown>).obra_id ?? 'sem')
-          const row = get(id, o ? String(o.nome) : '(Sem Obra)')
-          row.folha_bruto = (row.folha_bruto as number) + ((p as Record<string, unknown>).snap_valor_total as number ?? 0)
-          row.folha_liquido = (row.folha_liquido as number) + ((p as Record<string, unknown>).snap_liquido as number ?? 0)
+          const o = (p as any).obras as any
+          const obraId = String((p as any).obra_id ?? 'sem')
+          const row = getObra(obraId, o ? String(o.nome) : '(Sem Obra)')
+          const val = Number((p as any).snap_valor_total ?? 0)
+          const liq = Number((p as any).snap_liquido ?? 0)
+          row.folha_bruto += val
+          row.folha_liquido += liq
+          // Detalhe por função
+          const col = (p as any).colaboradores as any
+          const func = col?.funcoes as any
+          const funcNome = func?.nome ?? '(Sem Função)'
+          const funcCat = func?.categoria ?? '—'
+          if (!row.por_funcao[funcNome]) row.por_funcao[funcNome] = { funcao: funcNome, categoria: funcCat, folha: 0, colaboradores: new Set() }
+          row.por_funcao[funcNome].folha += val
+          row.por_funcao[funcNome].colaboradores.add(String((p as any).colaborador_id))
         }
         for (const a of ad ?? []) {
-          const c = (a as Record<string, unknown>).colaboradores as Record<string, unknown> | null
-          const id = String((c as Record<string, unknown>)?.obra_id ?? 'sem')
-          if (map[id]) map[id].adiantamentos = (map[id].adiantamentos as number) + ((a as Record<string, unknown>).valor as number ?? 0)
+          const c = (a as any).colaboradores as any
+          const id = String(c?.obra_id ?? 'sem')
+          if (map[id]) map[id].adiantamentos += Number((a as any).valor ?? 0)
         }
         for (const v of vt ?? []) {
-          const c = (v as Record<string, unknown>).colaboradores as Record<string, unknown> | null
-          const id = String((c as Record<string, unknown>)?.obra_id ?? 'sem')
-          if (map[id]) map[id].vt = (map[id].vt as number) + ((v as Record<string, unknown>).valor_empresa as number ?? 0)
+          const c = (v as any).colaboradores as any
+          const id = String(c?.obra_id ?? 'sem')
+          if (map[id]) map[id].vt += Number((v as any).valor_empresa ?? 0)
         }
         for (const p of pr ?? []) {
-          const c = (p as Record<string, unknown>).colaboradores as Record<string, unknown> | null
-          const id = String((c as Record<string, unknown>)?.obra_id ?? 'sem')
-          if (map[id]) map[id].premios = (map[id].premios as number) + ((p as Record<string, unknown>).valor as number ?? 0)
+          const c = (p as any).colaboradores as any
+          const id = String(c?.obra_id ?? 'sem')
+          if (map[id]) map[id].premios += Number((p as any).valor ?? 0)
         }
+
         resultado = Object.values(map).map(r => ({
           ...r,
-          total: (r.folha_bruto as number) + (r.adiantamentos as number) + (r.vt as number) + (r.premios as number)
+          total: r.folha_bruto + r.adiantamentos + r.vt + r.premios,
+          // Serializar por_funcao para renderização
+          funcoes_detalhes: Object.values(r.por_funcao)
+            .map(f => ({ funcao: f.funcao, categoria: f.categoria, folha: f.folha, colaboradores: f.colaboradores.size }))
+            .sort((a, b) => b.folha - a.folha),
         })).sort((a, b) => (b.total as number) - (a.total as number))
       }
 
@@ -459,31 +486,58 @@ export default function Relatorios() {
 
       // ── 4. Faltas por Obra ───────────────────────────────────────────────
       else if (relatAtivo === 'faltas-obra') {
-        // colaboradores = IDs únicos por obra
-        const q = supabase.from('ponto_lancamentos')
-          .select(`colaborador_id, obra_id, snap_faltas, snap_horas_normais, snap_horas_extras, obras(nome)`)
+        const faltasQ = supabase.from('ponto_lancamentos')
+          .select(`colaborador_id, obra_id, snap_faltas, snap_horas_normais, snap_horas_extras, obras(nome), colaboradores(nome, chapa, funcao_id, funcoes(nome, categoria))`)
           .gte('mes_referencia', mesRefIni)
           .lte('mes_referencia', mesRefFim)
-        if (filtroObra !== 'todos') q.eq('obra_id', filtroObra)
-        const { data } = await q
-        const map: Record<string, Record<string, unknown>> = {}
-        const mapColabs: Record<string, Set<string>> = {}
+        if (filtroObra !== 'todos') faltasQ.eq('obra_id', filtroObra)
+        const { data } = await faltasQ
+
+        // Mapa obra → totais + detalhe por função
+        const map: Record<string, {
+          obra: string; faltas: number; horas: number; horas_extras: number;
+          colabSet: Set<string>;
+          por_funcao: Record<string, { funcao: string; categoria: string; faltas: number; horas: number; colabSet: Set<string> }>;
+        }> = {}
+
         for (const d of data ?? []) {
-          const o = (d as Record<string, unknown>).obras as Record<string, unknown> | null
-          const id = String((d as Record<string, unknown>).obra_id ?? 'sem')
-          if (!map[id]) { map[id] = { obra: o ? String(o.nome) : '—', faltas: 0, horas: 0, horas_extras: 0, colaboradores: 0 }; mapColabs[id] = new Set() }
-          map[id].faltas = (map[id].faltas as number) + Number((d as Record<string, unknown>).snap_faltas ?? 0)
-          map[id].horas = (map[id].horas as number) + Number((d as Record<string, unknown>).snap_horas_normais ?? 0)
-          map[id].horas_extras = (map[id].horas_extras as number) + Number((d as Record<string, unknown>).snap_horas_extras ?? 0)
-          mapColabs[id].add(String((d as Record<string, unknown>).colaborador_id))
+          const o = (d as any).obras as any
+          const obraId = String((d as any).obra_id ?? 'sem')
+          if (!map[obraId]) map[obraId] = { obra: o ? String(o.nome) : '—', faltas: 0, horas: 0, horas_extras: 0, colabSet: new Set(), por_funcao: {} }
+          const row = map[obraId]
+          const faltas = Number((d as any).snap_faltas ?? 0)
+          const horas  = Number((d as any).snap_horas_normais ?? 0)
+          const hExtra = Number((d as any).snap_horas_extras ?? 0)
+          row.faltas += faltas; row.horas += horas; row.horas_extras += hExtra
+          row.colabSet.add(String((d as any).colaborador_id))
+          // Detalhe por função
+          const col = (d as any).colaboradores as any
+          const func = col?.funcoes as any
+          const funcNome = func?.nome ?? '(Sem Função)'
+          const funcCat = func?.categoria ?? '—'
+          if (!row.por_funcao[funcNome]) row.por_funcao[funcNome] = { funcao: funcNome, categoria: funcCat, faltas: 0, horas: 0, colabSet: new Set() }
+          row.por_funcao[funcNome].faltas += faltas
+          row.por_funcao[funcNome].horas += horas
+          row.por_funcao[funcNome].colabSet.add(String((d as any).colaborador_id))
         }
-        resultado = Object.entries(map).map(([id, r]) => {
-          const horasTotal = (r.horas as number) + (r.horas_extras as number)
+
+        resultado = Object.values(map).map(r => {
+          const horasTotal = r.horas + r.horas_extras
           return {
-            ...r,
-            colaboradores: mapColabs[id]?.size ?? 0,
+            obra: r.obra,
+            colaboradores: r.colabSet.size,
+            faltas: r.faltas,
+            horas: r.horas,
+            horas_extras: r.horas_extras,
             horas_total: horasTotal,
-            pct_ausencia: horasTotal ? (((r.faltas as number) * 8 / (horasTotal + (r.faltas as number) * 8)) * 100).toFixed(1) : '0.0'
+            pct_ausencia: horasTotal > 0 ? ((r.faltas * 8 / (horasTotal + r.faltas * 8)) * 100).toFixed(1) : '0.0',
+            funcoes_detalhes: Object.values(r.por_funcao)
+              .map(f => ({
+                funcao: f.funcao, categoria: f.categoria,
+                faltas: f.faltas, horas: f.horas, colaboradores: f.colabSet.size,
+                pct: (f.horas > 0) ? ((f.faltas * 8 / (f.horas + f.faltas * 8)) * 100).toFixed(1) : '0.0',
+              }))
+              .sort((a, b) => b.faltas - a.faltas),
           }
         }).sort((a, b) => (b.faltas as number) - (a.faltas as number))
       }
@@ -1272,15 +1326,22 @@ export default function Relatorios() {
       )
     } else if (relatAtivo === 'custo-obra') {
       const totalGeral = dados.reduce((s, r) => s + (r.total as number), 0)
+      const detalheObras = dados.map((r: any) => {
+        const funcoes: any[] = r.funcoes_detalhes ?? []
+        const catMap: Record<string, any[]> = {}
+        funcoes.forEach((f: any) => { const c = f.categoria ?? '—'; if (!catMap[c]) catMap[c] = []; catMap[c].push(f) })
+        const linhasFunc = Object.entries(catMap).map(([cat, itens]) =>
+          `<tr><td colspan="5" style="background:#f1f5f9;font-size:10px;font-weight:700;color:#475569;padding:4px 10px;text-transform:uppercase;letter-spacing:.5px">${cat}</td></tr>` +
+          (itens as any[]).map(f => `<tr><td style="padding:4px 10px 4px 22px;color:#475569">↳ ${f.funcao}</td><td style="text-align:center">${f.colaboradores}</td><td style="text-align:right">${fmtCur(f.folha)}</td><td></td><td></td></tr>`).join('')
+        ).join('')
+        return `<tr style="background:#1e3a5f;color:#fff"><td colspan="2" style="padding:8px 10px;font-weight:700">${String(r.obra)}</td><td style="text-align:right;padding:8px 10px">${fmtCur(r.folha_bruto as number)}</td><td style="text-align:right;padding:8px 10px">${fmtCur(r.adiantamentos as number)} / ${fmtCur(r.vt as number)}</td><td style="text-align:right;padding:8px 10px;font-weight:800">${fmtCur(r.total as number)}</td></tr>` + linhasFunc
+      }).join('')
       htmlBody = kpiHTML([
         { val: fmtCur(totalGeral), lbl: 'Custo Total' },
         { val: fmtCur(dados.reduce((s, r) => s + (r.folha_bruto as number), 0)), lbl: 'Folha Bruta' },
         { val: fmtCur(dados.reduce((s, r) => s + (r.adiantamentos as number), 0)), lbl: 'Adiantamentos' },
         { val: fmtCur(dados.reduce((s, r) => s + (r.vt as number), 0)), lbl: 'Vale Transporte' },
-      ]) + tabelaHTML(
-        ['Obra', 'Folha Bruta', 'Adiantamentos', 'V. Transporte', 'Prêmios', 'Total'],
-        dados.map(r => [String(r.obra), fmtCur(r.folha_bruto as number), fmtCur(r.adiantamentos as number), fmtCur(r.vt as number), fmtCur(r.premios as number), `<strong>${fmtCur(r.total as number)}</strong>`])
-      )
+      ]) + `<table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:#334155;color:#fff"><th style="padding:7px 10px;text-align:left">Obra / Função</th><th style="padding:7px 10px;text-align:center">Colabs</th><th style="padding:7px 10px;text-align:right">Folha Bruta</th><th style="padding:7px 10px;text-align:right">Adiant / VT</th><th style="padding:7px 10px;text-align:right">Total</th></tr></thead><tbody>${detalheObras}</tbody><tfoot><tr style="background:#e8f0fe;font-weight:800;color:#1e3a5f"><td colspan="4" style="padding:7px 10px">TOTAL GERAL</td><td style="text-align:right;padding:7px 10px">${fmtCur(totalGeral)}</td></tr></tfoot></table>`
     } else if (relatAtivo === 'ficha-financeira') {
       const colabNome = colaboradores.find(c => c.id === filtroColaborador)?.nome ?? '—'
       htmlBody = `<h2>Colaborador: ${colabNome}</h2>` + tabelaHTML(
@@ -1810,41 +1871,78 @@ export default function Relatorios() {
                 </div>
               )}
 
-              {/* ── Tabela: Custo por Obra ── */}
+              {/* ── Tabela: Custo por Obra (detalhado por função) ── */}
               {relatAtivo === 'custo-obra' && (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead><tr className="bg-[#1e3a5f] text-white text-xs">
-                      <th className="px-4 py-3 text-left">Obra</th>
-                      <th className="px-4 py-3 text-right">Folha Bruta</th>
-                      <th className="px-4 py-3 text-right">Adiantamentos</th>
-                      <th className="px-4 py-3 text-right">V. Transporte</th>
-                      <th className="px-4 py-3 text-right">Prêmios</th>
-                      <th className="px-4 py-3 text-right font-bold">Total</th>
-                    </tr></thead>
-                    <tbody>
-                      {dados.map((r, i) => (
-                        <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
-                          <td className="px-4 py-2.5 font-medium">{String(r.obra)}</td>
-                          <td className="px-4 py-2.5 text-right text-slate-600">{fmtCur(r.folha_bruto as number)}</td>
-                          <td className="px-4 py-2.5 text-right text-slate-600">{fmtCur(r.adiantamentos as number)}</td>
-                          <td className="px-4 py-2.5 text-right text-slate-600">{fmtCur(r.vt as number)}</td>
-                          <td className="px-4 py-2.5 text-right text-slate-600">{fmtCur(r.premios as number)}</td>
-                          <td className="px-4 py-2.5 text-right font-bold text-[#1e3a5f]">{fmtCur(r.total as number)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                    <tfoot>
-                      <tr className="bg-[#e8f0fe] font-bold text-[#1e3a5f]">
-                        <td className="px-4 py-2.5">TOTAL</td>
-                        <td className="px-4 py-2.5 text-right">{fmtCur(dados.reduce((s, r) => s + (r.folha_bruto as number), 0))}</td>
-                        <td className="px-4 py-2.5 text-right">{fmtCur(dados.reduce((s, r) => s + (r.adiantamentos as number), 0))}</td>
-                        <td className="px-4 py-2.5 text-right">{fmtCur(dados.reduce((s, r) => s + (r.vt as number), 0))}</td>
-                        <td className="px-4 py-2.5 text-right">{fmtCur(dados.reduce((s, r) => s + (r.premios as number), 0))}</td>
-                        <td className="px-4 py-2.5 text-right">{fmtCur(dados.reduce((s, r) => s + (r.total as number), 0))}</td>
-                      </tr>
-                    </tfoot>
-                  </table>
+                <div className="space-y-6">
+                  {dados.map((r, i) => {
+                    const funcoes = (r.funcoes_detalhes as any[]) ?? []
+                    // Agrupar funções por categoria
+                    const catMap: Record<string, { total: number; itens: any[] }> = {}
+                    funcoes.forEach(f => {
+                      const cat = String(f.categoria ?? '—')
+                      if (!catMap[cat]) catMap[cat] = { total: 0, itens: [] }
+                      catMap[cat].itens.push(f)
+                      catMap[cat].total += f.folha
+                    })
+                    return (
+                      <div key={i} className="border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                        {/* Cabeçalho da obra */}
+                        <div className="bg-[#1e3a5f] text-white px-5 py-3 flex items-center justify-between">
+                          <span className="font-bold text-base">{String(r.obra)}</span>
+                          <span className="text-lg font-extrabold">{fmtCur(r.total as number)}</span>
+                        </div>
+                        {/* KPIs da obra */}
+                        <div className="grid grid-cols-5 divide-x divide-slate-100 bg-slate-50 text-xs">
+                          {[
+                            { lbl: 'Folha Bruta', val: r.folha_bruto as number, cor: '#1e3a5f' },
+                            { lbl: 'Folha Líquida', val: r.folha_liquido as number, cor: '#15803d' },
+                            { lbl: 'Adiantamentos', val: r.adiantamentos as number, cor: '#7c3aed' },
+                            { lbl: 'Vale Transp.', val: r.vt as number, cor: '#0369a1' },
+                            { lbl: 'Prêmios', val: r.premios as number, cor: '#b45309' },
+                          ].map(({ lbl, val, cor }) => (
+                            <div key={lbl} className="px-3 py-2 text-center">
+                              <div style={{ color: cor, fontWeight: 700, fontSize: 13 }}>{fmtCur(val)}</div>
+                              <div className="text-slate-500 mt-0.5">{lbl}</div>
+                            </div>
+                          ))}
+                        </div>
+                        {/* Detalhamento por categoria / função */}
+                        {Object.entries(catMap).map(([cat, { itens, total: catTotal }]) => (
+                          <div key={cat}>
+                            <div className="bg-slate-100 px-4 py-1.5 flex justify-between items-center border-t border-slate-200">
+                              <span className="text-xs font-bold text-slate-600 uppercase tracking-wide">{cat}</span>
+                              <span className="text-xs font-bold text-slate-700">{fmtCur(catTotal)}</span>
+                            </div>
+                            <table className="w-full text-xs">
+                              <thead><tr className="bg-slate-50 text-slate-500 text-[11px]">
+                                <th className="px-4 py-1.5 text-left font-semibold">Função</th>
+                                <th className="px-4 py-1.5 text-center font-semibold">Colaboradores</th>
+                                <th className="px-4 py-1.5 text-right font-semibold">Custo Folha</th>
+                                <th className="px-4 py-1.5 text-right font-semibold">% do Total</th>
+                              </tr></thead>
+                              <tbody>
+                                {itens.map((f: any, fi: number) => (
+                                  <tr key={fi} className={fi % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
+                                    <td className="px-4 py-2 font-medium text-slate-700">{f.funcao}</td>
+                                    <td className="px-4 py-2 text-center text-slate-500">{f.colaboradores}</td>
+                                    <td className="px-4 py-2 text-right font-semibold text-[#1e3a5f]">{fmtCur(f.folha)}</td>
+                                    <td className="px-4 py-2 text-right">
+                                      <span className="text-slate-500">{(r.folha_bruto as number) > 0 ? ((f.folha / (r.folha_bruto as number)) * 100).toFixed(1) : '0.0'}%</span>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  })}
+                  {/* Rodapé totalizador */}
+                  <div className="bg-[#e8f0fe] rounded-xl px-5 py-3 flex justify-between items-center font-bold text-[#1e3a5f]">
+                    <span>TOTAL GERAL — {dados.length} obra(s)</span>
+                    <span className="text-lg">{fmtCur(dados.reduce((s, r) => s + (r.total as number), 0))}</span>
+                  </div>
                 </div>
               )}
 
@@ -1882,37 +1980,88 @@ export default function Relatorios() {
                 </div>
               )}
 
-              {/* ── Tabela: Faltas por Obra ── */}
+              {/* ── Tabela: Faltas por Obra (detalhado por função) ── */}
               {relatAtivo === 'faltas-obra' && (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead><tr className="bg-[#1e3a5f] text-white text-xs">
-                      <th className="px-4 py-3 text-left">Obra</th>
-                      <th className="px-4 py-3 text-center">Colaboradores</th>
-                      <th className="px-4 py-3 text-center">Total Faltas</th>
-                      <th className="px-4 py-3 text-center">Hs Normais</th>
-                      <th className="px-4 py-3 text-center">Hs Extras</th>
-                      <th className="px-4 py-3 text-center font-bold">Hs Totais</th>
-                      <th className="px-4 py-3 text-center">% Ausência</th>
-                    </tr></thead>
-                    <tbody>
-                      {dados.map((r, i) => (
-                        <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
-                          <td className="px-4 py-2.5 font-medium">{String(r.obra)}</td>
-                          <td className="px-4 py-2.5 text-center">{String(r.colaboradores)}</td>
-                          <td className="px-4 py-2.5 text-center font-semibold text-red-600">{String(r.faltas)}</td>
-                          <td className="px-4 py-2.5 text-center text-slate-500">{fmtNum(r.horas as number)}h</td>
-                          <td className="px-4 py-2.5 text-center text-green-600">{fmtNum(r.horas_extras as number)}h</td>
-                          <td className="px-4 py-2.5 text-center font-bold text-[#1e3a5f]">{fmtNum(r.horas_total as number)}h</td>
-                          <td className="px-4 py-2.5 text-center">
-                            <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${Number(r.pct_ausencia) > 10 ? 'bg-red-100 text-red-700' : Number(r.pct_ausencia) > 5 ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}>
-                              {String(r.pct_ausencia)}%
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div className="space-y-6">
+                  {dados.map((r, i) => {
+                    const funcoes = (r.funcoes_detalhes as any[]) ?? []
+                    const catMap: Record<string, { itens: any[]; faltas: number }> = {}
+                    funcoes.forEach(f => {
+                      const cat = String(f.categoria ?? '—')
+                      if (!catMap[cat]) catMap[cat] = { itens: [], faltas: 0 }
+                      catMap[cat].itens.push(f)
+                      catMap[cat].faltas += f.faltas
+                    })
+                    const pct = Number(r.pct_ausencia)
+                    const corPct = pct > 10 ? '#dc2626' : pct > 5 ? '#d97706' : '#16a34a'
+                    const bgPct  = pct > 10 ? '#fef2f2' : pct > 5 ? '#fffbeb' : '#f0fdf4'
+                    return (
+                      <div key={i} className="border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                        {/* Cabeçalho da obra */}
+                        <div className="bg-[#1e3a5f] text-white px-5 py-3 flex items-center justify-between">
+                          <span className="font-bold text-base">{String(r.obra)}</span>
+                          <div className="flex items-center gap-4 text-sm">
+                            <span><span className="opacity-70">Colabs:</span> <strong>{String(r.colaboradores)}</strong></span>
+                            <span className="text-red-300 font-bold">{String(r.faltas)} falta(s)</span>
+                            <span style={{ background: bgPct, color: corPct, borderRadius: 20, padding: '2px 10px', fontWeight: 800, fontSize: 12 }}>{String(r.pct_ausencia)}% ausência</span>
+                          </div>
+                        </div>
+                        {/* KPIs */}
+                        <div className="grid grid-cols-3 divide-x divide-slate-100 bg-slate-50 text-xs">
+                          {[
+                            { lbl: 'Hs Trabalhadas', val: `${fmtNum(r.horas as number)}h`, cor: '#1e3a5f' },
+                            { lbl: 'Hs Extras', val: `${fmtNum(r.horas_extras as number)}h`, cor: '#15803d' },
+                            { lbl: 'Total Faltas', val: String(r.faltas), cor: '#dc2626' },
+                          ].map(({ lbl, val, cor }) => (
+                            <div key={lbl} className="px-3 py-2 text-center">
+                              <div style={{ color: cor, fontWeight: 700, fontSize: 14 }}>{val}</div>
+                              <div className="text-slate-500 mt-0.5">{lbl}</div>
+                            </div>
+                          ))}
+                        </div>
+                        {/* Detalhamento por categoria / função */}
+                        {Object.entries(catMap).map(([cat, { itens, faltas: catFaltas }]) => (
+                          <div key={cat}>
+                            <div className="bg-slate-100 px-4 py-1.5 flex justify-between items-center border-t border-slate-200">
+                              <span className="text-xs font-bold text-slate-600 uppercase tracking-wide">{cat}</span>
+                              <span className="text-xs font-bold text-red-600">{catFaltas} falta(s)</span>
+                            </div>
+                            <table className="w-full text-xs">
+                              <thead><tr className="bg-slate-50 text-slate-500 text-[11px]">
+                                <th className="px-4 py-1.5 text-left font-semibold">Função</th>
+                                <th className="px-4 py-1.5 text-center font-semibold">Colaboradores</th>
+                                <th className="px-4 py-1.5 text-center font-semibold">Faltas</th>
+                                <th className="px-4 py-1.5 text-center font-semibold">Hs Trab.</th>
+                                <th className="px-4 py-1.5 text-center font-semibold">% Ausência</th>
+                              </tr></thead>
+                              <tbody>
+                                {itens.map((f: any, fi: number) => {
+                                  const fp = Number(f.pct)
+                                  return (
+                                    <tr key={fi} className={fi % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
+                                      <td className="px-4 py-2 font-medium text-slate-700">{f.funcao}</td>
+                                      <td className="px-4 py-2 text-center text-slate-500">{f.colaboradores}</td>
+                                      <td className="px-4 py-2 text-center font-bold text-red-600">{f.faltas}</td>
+                                      <td className="px-4 py-2 text-center text-slate-500">{fmtNum(f.horas)}h</td>
+                                      <td className="px-4 py-2 text-center">
+                                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${fp > 10 ? 'bg-red-100 text-red-700' : fp > 5 ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}>
+                                          {f.pct}%
+                                        </span>
+                                      </td>
+                                    </tr>
+                                  )
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  })}
+                  <div className="bg-[#fef2f2] rounded-xl px-5 py-3 flex justify-between items-center font-bold text-red-700">
+                    <span>TOTAL GERAL — {dados.length} obra(s)</span>
+                    <span>{dados.reduce((s, r) => s + (r.faltas as number), 0)} falta(s)</span>
+                  </div>
                 </div>
               )}
 

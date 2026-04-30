@@ -1371,18 +1371,30 @@ export default function Documentos() {
                         <div key={`${doc.source}-${doc.id}`}
                           style={{ background:'var(--card)', border:'1px solid var(--border)', borderRadius:10,
                             padding:'12px 16px', display:'flex', alignItems:'flex-start', gap:12 }}>
+                          {/* Ícone tipo */}
                           <div style={{ flexShrink:0, marginTop:2 }}><TipoBadge tipo={doc.tipo}/></div>
                           <div style={{ flex:1, minWidth:0 }}>
-                            <div style={{ fontSize:12, color:'var(--muted-foreground)', marginBottom:2 }}>{formatDate(doc.data)}</div>
+                            {/* Tipo em cima em destaque */}
+                            <div style={{ fontSize:11, fontWeight:700, color:'#1e3a5f', textTransform:'uppercase', letterSpacing:'.4px', marginBottom:2 }}>
+                              {doc.tipo || '—'}
+                            </div>
+                            {/* Nome do documento abaixo */}
                             {doc.descricao && (
-                              <div style={{ fontSize:13, color:'var(--foreground)', marginBottom:4 }}>{doc.descricao}</div>
+                              <div style={{ fontSize:13, fontWeight:600, color:'var(--foreground)', marginBottom:4, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{doc.descricao}</div>
                             )}
+                            {/* Nome do arquivo */}
+                            {doc.documento_nome && (
+                              <div style={{ fontSize:11, color:'#64748b', marginBottom:4, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                                📎 {doc.documento_nome}
+                              </div>
+                            )}
+                            <div style={{ fontSize:11, color:'var(--muted-foreground)', marginBottom:6 }}>{formatDate(doc.data)}</div>
                             {doc.documento_url ? (
                               <div style={{ display:'flex', gap:8, alignItems:'center' }}>
                                 <a href={doc.documento_url} target="_blank" rel="noreferrer"
                                   style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:12,
                                     color:'hsl(var(--primary))', textDecoration:'none' }}>
-                                  <ExternalLink size={12}/> {doc.documento_nome||'Ver documento'}
+                                  <ExternalLink size={12}/> Ver
                                 </a>
                                 <a href={doc.documento_url} download={doc.documento_nome||'documento'}
                                   style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:12,
@@ -1396,7 +1408,20 @@ export default function Documentos() {
                               </span>
                             )}
                           </div>
-
+                          {/* Botão excluir: somente admin/gestor */}
+                          {isAdmin && (
+                            <button
+                              onClick={() => { setDeleteId(doc.id); setDeleteSource(doc.source) }}
+                              title="Excluir documento"
+                              style={{ flexShrink:0, padding:'4px 6px', borderRadius:6, border:'1px solid #fecaca',
+                                background:'#fff', color:'#dc2626', cursor:'pointer', display:'flex', alignItems:'center',
+                                justifyContent:'center', opacity:.7, transition:'opacity .15s' }}
+                              onMouseEnter={e=>(e.currentTarget.style.opacity='1')}
+                              onMouseLeave={e=>(e.currentTarget.style.opacity='.7')}
+                            >
+                              <Trash2 size={13}/>
+                            </button>
+                          )}
                         </div>
                       ))}
                     </div>
