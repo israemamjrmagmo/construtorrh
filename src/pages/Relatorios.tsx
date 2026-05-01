@@ -1604,6 +1604,9 @@ export default function Relatorios() {
   const isObraRequired  = ['historico-ponto-obra'].includes(relatAtivo)
   // Todos os relatórios com filtro temporal usam o seletor de datas (exceto epis-vencidos e contratos-vencendo)
   const usaFiltroDatas = !['headcount-obra', 'headcount-funcao', 'epis-vencidos', 'contratos-vencendo', 'playbook-atividades'].includes(relatAtivo)
+  // Relatórios baseados em folha fechada (mes_referencia) — usam seletor de mês, não De/Até
+  const RELAT_USA_MES = ['custo-obra','faltas-obra','custo-hora','custo-funcao','resumo-folha','ficha-financeira','custo-colab','producao-obra','producao-funcao','ranking-producao','producao-playbook','meta-realizado','evolucao-horas','coeficiente-producao','painel-acidentes','holerites-colaboradores','historico-ponto','historico-ponto-obra','producao-individual','ocorrencias-colab']
+  const usaSeletorMes = usaFiltroDatas && RELAT_USA_MES.includes(relatAtivo)
 
   return (
     <div className="flex h-full min-h-screen bg-[#f1f5f9]">
@@ -1724,41 +1727,50 @@ export default function Relatorios() {
               </FieldWrap>
             )}
 
-            {/* Filtro: Período por data (De / Até) */}
-            {usaFiltroDatas && (
+            {/* ── Filtro: Seletor de Mês (relatórios de folha fechada) ── */}
+            {usaSeletorMes && (
               <div style={{ display:'flex', flexDirection:'column', gap:6, minWidth:0 }}>
                 <Label className="text-xs text-gray-500 font-medium flex items-center gap-1.5">
-                  📅 Período
+                  📅 Período (mês a mês)
                 </Label>
-                <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
+                <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+                  {/* De: mês/ano */}
                   <div style={{ display:'flex', alignItems:'center', gap:4 }}>
                     <span style={{ fontSize:11, color:'#64748b', whiteSpace:'nowrap' }}>De</span>
                     <Input
-                      type="date"
-                      value={filtroDataIni}
-                      onChange={e => setFiltroDataIni(e.target.value)}
+                      type="month"
+                      value={filtroDataIni.substring(0,7)}
+                      onChange={e => {
+                        const [y,m] = e.target.value.split('-')
+                        setFiltroDataIni(`${y}-${m}-01`)
+                      }}
                       className="h-8 text-xs"
-                      style={{ width:138 }}
+                      style={{ width:140 }}
                     />
                   </div>
+                  {/* Até: mês/ano */}
                   <div style={{ display:'flex', alignItems:'center', gap:4 }}>
                     <span style={{ fontSize:11, color:'#64748b', whiteSpace:'nowrap' }}>Até</span>
                     <Input
-                      type="date"
-                      value={filtroDataFim}
-                      onChange={e => setFiltroDataFim(e.target.value)}
+                      type="month"
+                      value={filtroDataFim.substring(0,7)}
+                      onChange={e => {
+                        const [y,m] = e.target.value.split('-')
+                        const ultimoDia = new Date(Number(y), Number(m), 0).getDate()
+                        setFiltroDataFim(`${y}-${m}-${String(ultimoDia).padStart(2,'0')}`)
+                      }}
                       className="h-8 text-xs"
-                      style={{ width:138 }}
+                      style={{ width:140 }}
                     />
                   </div>
                   {/* Atalhos rápidos */}
                   <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
                     {([
-                      { lbl: '📅 Mês', fn: () => { const d = new Date(); const y = d.getFullYear(); const m = d.getMonth(); const fim = new Date(y, m+1, 0); setFiltroDataIni(`${y}-${String(m+1).padStart(2,'0')}-01`); setFiltroDataFim(fim.toISOString().split('T')[0]) } },
-                      { lbl: 'Mês ant.', fn: () => { const d = new Date(); const y = d.getFullYear(); const m = d.getMonth()-1; const ini = new Date(y, m<0?11:m, 1); const fim = new Date(y, m<0?11:m+1, 0); setFiltroDataIni(ini.toISOString().split('T')[0]); setFiltroDataFim(fim.toISOString().split('T')[0]) } },
-                      { lbl: 'Trimestre', fn: () => { const d = new Date(); const m = d.getMonth(); const q = Math.floor(m/3); const y = d.getFullYear(); const mIni = q*3; const mFim = q*3+2; const fim = new Date(y, mFim+1, 0); setFiltroDataIni(`${y}-${String(mIni+1).padStart(2,'0')}-01`); setFiltroDataFim(fim.toISOString().split('T')[0]) } },
-                      { lbl: 'Semestre', fn: () => { const d = new Date(); const y = d.getFullYear(); const m = d.getMonth(); const s = m < 6 ? 0 : 6; const fim = new Date(y, s+6, 0); setFiltroDataIni(`${y}-${String(s+1).padStart(2,'0')}-01`); setFiltroDataFim(fim.toISOString().split('T')[0]) } },
-                      { lbl: 'Ano', fn: () => { const y = new Date().getFullYear(); setFiltroDataIni(`${y}-01-01`); setFiltroDataFim(`${y}-12-31`) } },
+                      { lbl: 'Mês atual', fn: () => { const d=new Date(); const y=d.getFullYear(); const m=String(d.getMonth()+1).padStart(2,'0'); const ult=new Date(y,d.getMonth()+1,0).getDate(); setFiltroDataIni(`${y}-${m}-01`); setFiltroDataFim(`${y}-${m}-${ult}`) } },
+                      { lbl: 'Mês ant.', fn: () => { const d=new Date(); const y=d.getMonth()===0?d.getFullYear()-1:d.getFullYear(); const m=d.getMonth()===0?12:d.getMonth(); const ms=String(m).padStart(2,'0'); const ult=new Date(y,m,0).getDate(); setFiltroDataIni(`${y}-${ms}-01`); setFiltroDataFim(`${y}-${ms}-${ult}`) } },
+                      { lbl: 'Trimestre', fn: () => { const d=new Date(); const q=Math.floor(d.getMonth()/3); const y=d.getFullYear(); const mIni=q*3; const mFim=q*3+2; const ult=new Date(y,mFim+1,0).getDate(); setFiltroDataIni(`${y}-${String(mIni+1).padStart(2,'0')}-01`); setFiltroDataFim(`${y}-${String(mFim+1).padStart(2,'0')}-${ult}`) } },
+                      { lbl: 'Semestre', fn: () => { const d=new Date(); const y=d.getFullYear(); const s=d.getMonth()<6?0:6; const ult=new Date(y,s+6,0).getDate(); setFiltroDataIni(`${y}-${String(s+1).padStart(2,'0')}-01`); setFiltroDataFim(`${y}-${String(s+6).padStart(2,'0')}-${ult}`) } },
+                      { lbl: 'Ano', fn: () => { const y=new Date().getFullYear(); setFiltroDataIni(`${y}-01-01`); setFiltroDataFim(`${y}-12-31`) } },
                     ] as {lbl:string;fn:()=>void}[]).map(({ lbl, fn }) => (
                       <button key={lbl} onClick={fn}
                         style={{ height:32, padding:'0 10px', fontSize:11, fontWeight:600, borderRadius:6,
@@ -1771,24 +1783,34 @@ export default function Relatorios() {
                     ))}
                   </div>
                 </div>
-                {/* Info do período selecionado */}
+                {/* Resumo do período */}
                 <div style={{ fontSize:10, color:'#94a3b8' }}>
-                  {filtroDataIni && filtroDataFim && `${new Date(filtroDataIni+'T12:00').toLocaleDateString('pt-BR')} → ${new Date(filtroDataFim+'T12:00').toLocaleDateString('pt-BR')}`}
+                  {mesRefIni === mesRefFim
+                    ? `Mês: ${new Date(filtroDataIni+'T12:00').toLocaleDateString('pt-BR',{month:'long',year:'numeric'})}`
+                    : `${new Date(filtroDataIni+'T12:00').toLocaleDateString('pt-BR',{month:'short',year:'numeric'})} → ${new Date(filtroDataFim+'T12:00').toLocaleDateString('pt-BR',{month:'short',year:'numeric'})}`}
                 </div>
               </div>
             )}
 
-            {/* ℹ️ Info: relatórios baseados em folha fechada filtram por mês completo */}
-            {usaFiltroDatas && ['custo-funcao','faltas-obra','custo-hora','custo-obra','ficha-financeira','custo-colab','resumo-folha'].includes(relatAtivo) && (
-              <div style={{ gridColumn:'1/-1', display:'flex', alignItems:'flex-start', gap:8, background:'#eff6ff', border:'1px solid #bfdbfe', borderRadius:8, padding:'8px 12px', fontSize:11, color:'#1d4ed8', marginTop:4 }}>
-                <span style={{ fontSize:14, flexShrink:0 }}>ℹ️</span>
-                <span>
-                  Este relatório considera <strong>meses completos</strong> de folha fechada.
-                  {mesRefIni !== mesRefFim
-                    ? <> Período: <strong>{mesRefIni}</strong> até <strong>{mesRefFim}</strong>.</>
-                    : <> Mês selecionado: <strong>{mesRefIni}</strong>.</>}
-                  {' '}Para comparar períodos use meses diferentes nos campos De/Até.
-                </span>
+            {/* ── Filtro: Período por data exata (De/Até — relatórios com data diária) ── */}
+            {usaFiltroDatas && !usaSeletorMes && (
+              <div style={{ display:'flex', flexDirection:'column', gap:6, minWidth:0 }}>
+                <Label className="text-xs text-gray-500 font-medium flex items-center gap-1.5">
+                  📅 Período
+                </Label>
+                <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:4 }}>
+                    <span style={{ fontSize:11, color:'#64748b', whiteSpace:'nowrap' }}>De</span>
+                    <Input type="date" value={filtroDataIni} onChange={e => setFiltroDataIni(e.target.value)} className="h-8 text-xs" style={{ width:138 }}/>
+                  </div>
+                  <div style={{ display:'flex', alignItems:'center', gap:4 }}>
+                    <span style={{ fontSize:11, color:'#64748b', whiteSpace:'nowrap' }}>Até</span>
+                    <Input type="date" value={filtroDataFim} onChange={e => setFiltroDataFim(e.target.value)} className="h-8 text-xs" style={{ width:138 }}/>
+                  </div>
+                </div>
+                <div style={{ fontSize:10, color:'#94a3b8' }}>
+                  {filtroDataIni && filtroDataFim && `${new Date(filtroDataIni+'T12:00').toLocaleDateString('pt-BR')} → ${new Date(filtroDataFim+'T12:00').toLocaleDateString('pt-BR')}`}
+                </div>
               </div>
             )}
 
