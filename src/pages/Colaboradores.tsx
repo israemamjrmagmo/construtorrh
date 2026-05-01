@@ -2680,12 +2680,11 @@ ${crachaCardHTML(c, empNome, logoUrl)}
                   <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                     {/* Abas (sem Status) */}
                     <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--border)', padding: '0 14px', flexShrink: 0, background: 'var(--background)', flexWrap: 'wrap' }}>
-                      {(['pessoal', 'funcao', 'bancario', 'vt', 'epis', 'docs'] as const).map(s => {
-                        const labels: Record<string, string> = { pessoal: 'Dados Pessoais', funcao: 'Função & Contrato', bancario: 'Dados Bancários', vt: 'Vale Transporte', epis: '🦺 EPIs', docs: '📄 Documentos' }
+                      {(['pessoal', 'funcao', 'bancario', 'vt', 'epis'] as const).map(s => {
+                        const labels: Record<string, string> = { pessoal: 'Dados Pessoais', funcao: 'Função & Contrato', bancario: 'Dados Bancários', vt: 'Vale Transporte', epis: '🦺 EPIs' }
                         const hasEpis = s === 'epis' && epiList.length > 0
-                        const hasDocs = s === 'docs' && colabDocs.length > 0
                         return (
-                          <button key={s} onClick={() => { setSection(s); if (s === 'docs' && editId) fetchColabDocs(editId) }} style={{
+                          <button key={s} onClick={() => { setSection(s) }} style={{
                             padding: '8px 12px', fontSize: 12, fontWeight: 500, border: 'none', background: 'none',
                             cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4,
                             borderBottom: section === s ? '2px solid var(--primary)' : '2px solid transparent',
@@ -2698,11 +2697,7 @@ ${crachaCardHTML(c, empNome, logoUrl)}
                                 {epiList.length}
                               </span>
                             )}
-                            {hasDocs && (
-                              <span style={{ background: section === s ? 'var(--primary)' : '#1d4ed8', color: '#fff', fontSize: 10, fontWeight: 700, borderRadius: 10, padding: '1px 5px' }}>
-                                {colabDocs.length}
-                              </span>
-                            )}
+
                           </button>
                         )
                       })}
@@ -3209,19 +3204,16 @@ ${crachaCardHTML(c, empNome, logoUrl)}
             {/* Função */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <Label style={{ fontSize: 12, fontWeight: 600 }}>Função *</Label>
-              <Select value={preFuncaoId} onValueChange={setPreFuncaoId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione a função…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {funcoes.filter(f => f.ativo).map(f => (
-                    <SelectItem key={f.id} value={f.id}>
-                      <span style={{ fontWeight: 600 }}>{f.sigla}</span>
-                      <span style={{ color: 'var(--muted-foreground)', marginLeft: 8 }}>{f.nome}</span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchableSelect
+                placeholder="Pesquisar função…"
+                value={preFuncaoId}
+                onChange={setPreFuncaoId}
+                options={funcoes.filter(f => f.ativo).map(f => ({
+                  value: f.id,
+                  label: f.nome,
+                  sublabel: f.sigla ? `Sigla: ${f.sigla}` : undefined,
+                }))}
+              />
             </div>
 
             {/* Data de Admissão */}
@@ -3328,14 +3320,13 @@ ${crachaCardHTML(c, empNome, logoUrl)}
 
           {/* abas do modal — sem Status */}
           <div style={{ display: 'flex', gap: 0, borderBottom: '2px solid #e2e8f0', margin: '0 24px', flexShrink: 0, background: '#fff' }}>
-            {(['pessoal', 'funcao', 'bancario', 'vt', 'epis', 'docs'] as const).map(s => {
-              const labels: Record<string, string> = { pessoal: 'Dados Pessoais', funcao: 'Função & Contrato', bancario: 'Dados Bancários', vt: 'Vale Transporte', epis: '🦺 EPIs', docs: '📄 Documentos' }
+            {(['pessoal', 'funcao', 'bancario', 'vt', 'epis'] as const).map(s => {
+              const labels: Record<string, string> = { pessoal: 'Dados Pessoais', funcao: 'Função & Contrato', bancario: 'Dados Bancários', vt: 'Vale Transporte', epis: '🦺 EPIs' }
               const isEpisTab = s === 'epis'
               const hasEpis   = isEpisTab && epiList.length > 0
-              const hasDocs   = s === 'docs' && colabDocs.length > 0
-              const icons: Record<string, string> = { pessoal: '👤', funcao: '💼', bancario: '🏦', vt: '🚌', epis: '🦺', docs: '📄' }
+              const icons: Record<string, string> = { pessoal: '👤', funcao: '💼', bancario: '🏦', vt: '🚌', epis: '🦺' }
               return (
-                <button key={s} onClick={() => { setSection(s); if (s === 'docs' && editId) fetchColabDocs(editId) }} style={{
+                <button key={s} onClick={() => { setSection(s) }} style={{
                   padding: '10px 16px', fontSize: 13, fontWeight: section === s ? 700 : 500, border: 'none',
                   background: section === s ? '#fff' : 'transparent',
                   cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
@@ -3354,15 +3345,7 @@ ${crachaCardHTML(c, empNome, logoUrl)}
                       {epiList.length}
                     </span>
                   )}
-                  {hasDocs && (
-                    <span style={{
-                      background: section === s ? '#0d3f56' : '#1d4ed8',
-                      color: '#fff', fontSize: 10, fontWeight: 700,
-                      borderRadius: 10, padding: '1px 6px', lineHeight: '16px',
-                    }}>
-                      {colabDocs.length}
-                    </span>
-                  )}
+
                 </button>
               )
             })}
