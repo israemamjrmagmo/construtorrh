@@ -95,6 +95,124 @@ const fmtDate = (d: string) =>
   new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// ── Componente de Migração inline ────────────────────────────────────────────
+import { supabaseV1 } from '@/lib/supabase-v1'
+
+function MigracaoEmpresa({ empresaId, empresaNome }: { empresaId: string; empresaNome: string }) {
+  const [log, setLog]     = React.useState<string[]>([])
+  const [running, setRunning] = React.useState(false)
+  const [done, setDone]   = React.useState(false)
+
+  const addLog = (msg: string) => setLog(prev => [...prev, msg])
+
+  const iniciar = async () => {
+    if (!empresaId) return toast.error('Selecione uma empresa primeiro')
+    setRunning(true); setDone(false); setLog([])
+    addLog(`🚀 Iniciando migração para ${empresaNome} (${empresaId})`)
+
+    try {
+      // 1. Funcoes
+      addLog('📋 Migrando funções...')
+      const { data: fns } = await supabaseV1.from('funcoes').select('*')
+      if (fns?.length) {
+        const batch = fns.map((f: any) => ({ empresa_id: empresaId, id_legado: f.id, nome: f.nome, sigla: f.sigla, descricao: f.descricao, cbo: f.cbo, valor_hora_clt: f.valor_hora_clt, valor_hora_autonomo: f.valor_hora_autonomo, ativo: f.ativo ?? true }))
+        const { error } = await supabaseV2.from('funcoes_v2').upsert(batch, { onConflict: 'empresa_id,id_legado', ignoreDuplicates: false })
+        addLog(error ? `❌ Funções: ${error.message}` : `✅ ${fns.length} funções migradas`)
+      }
+
+      // 2. Obras
+      addLog('🏗️ Migrando obras...')
+      const { data: obs } = await supabaseV1.from('obras').select('*')
+      if (obs?.length) {
+        const batch = obs.map((o: any) => ({ empresa_id: empresaId, id_legado: o.id, nome: o.nome, codigo: o.codigo, endereco: o.endereco, cidade: o.cidade, estado: o.estado, cliente: o.cliente, responsavel: o.responsavel, data_inicio: o.data_inicio, data_previsao_fim: o.data_previsao_fim, status: o.status ?? 'em_andamento', considera_sabado_util: o.considera_sabado_util ?? false, desconta_vt: o.desconta_vt ?? true, ativo: true }))
+        const { error } = await supabaseV2.from('obras_v2').upsert(batch, { onConflict: 'empresa_id,id_legado', ignoreDuplicates: false })
+        addLog(error ? `❌ Obras: ${error.message}` : `✅ ${obs.length} obras migradas`)
+      }
+
+      // 3. Colaboradores (pessoas + vinculos)
+      addLog('👷 Migrando colaboradores...')
+      const { data: cols } = await supabaseV1.from('colaboradores').select('*')
+      if (cols?.length) {
+        // Buscar mapa funcoes e obras do V2
+        const { data: fnsV2 } = await supabaseV2.from('funcoes_v2').select('id, id_legado').eq('empresa_id', empresaId)
+        const { data: obsV2 } = await supabaseV2.from('obras_v2').select('id, id_legado').eq('empresa_id', empresaId)
+        const fMap: Record<string,string> = {}; (fnsV2??[]).forEach((f:any) => { if(f.id_legado) fMap[f.id_legado] = f.id })
+        const oMap: Record<string,string> = {}; (obsV2??[]).forEach((o:any) => { if(o.id_legado) oMap[o.id_legado] = o.id })
+
+        let ok = 0, err = 0
+        for (const c of cols) {
+          const { data: p, error: pe } = await supabaseV2.from('pessoas').upsert({ nome: c.nome, cpf: c.cpf, pis_nit: c.pis_nit, data_nascimento: c.data_nascimento, genero: c.genero, estado_civil: c.estado_civil, telefone: c.telefone, email: c.email, endereco: c.endereco, cidade: c.cidade, estado: c.estado, cep: c.cep }, { onConflict: 'cpf', ignoreDuplicates: false }).select('id').single()
+          if (pe || !p) { err++; continue }
+          const { error: ve } = await supabaseV2.from('vinculos_empregaticos').upsert({ empresa_id: empresaId, pessoa_id: p.id, id_legado: c.id, funcao_id: fMap[c.funcao_id] ?? null, obra_id: oMap[c.obra_id] ?? null, status: c.status ?? 'ativo', tipo_contrato: c.tipo_contrato, chapa: c.chapa, salario: c.salario, data_admissao: c.data_admissao, data_demissao: c.data_demissao, vale_transporte: c.vale_transporte ?? false, banco: c.banco, agencia: c.agencia, conta: c.conta, tipo_conta: c.tipo_conta, pix_chave: c.pix_chave, pix_tipo: c.pix_tipo }, { onConflict: 'empresa_id,id_legado', ignoreDuplicates: false })
+          if (ve) err++; else ok++
+        }
+        addLog(`✅ ${ok} colaboradores migrados${err ? `, ❌ ${err} erros` : ''}`)
+      }
+
+      // 4. Ponto Lançamentos
+      addLog('📊 Migrando lançamentos de ponto...')
+      const { data: lancs } = await supabaseV1.from('ponto_lancamentos').select('*')
+      if (lancs?.length) {
+        const { data: vincsV2 } = await supabaseV2.from('vinculos_empregaticos').select('id, id_legado').eq('empresa_id', empresaId)
+        const { data: obsV2b } = await supabaseV2.from('obras_v2').select('id, id_legado').eq('empresa_id', empresaId)
+        const vMap: Record<string,string> = {}; (vincsV2??[]).forEach((v:any) => { if(v.id_legado) vMap[v.id_legado] = v.id })
+        const oMap2: Record<string,string> = {}; (obsV2b??[]).forEach((o:any) => { if(o.id_legado) oMap2[o.id_legado] = o.id })
+        const BATCH = 50; let ok = 0
+        for (let i = 0; i < lancs.length; i += BATCH) {
+          const batch = lancs.slice(i, i+BATCH)
+            .filter((l:any) => vMap[l.colaborador_id])
+            .map((l:any) => ({ empresa_id: empresaId, id_legado: l.id, colaborador_id: vMap[l.colaborador_id], obra_id: oMap2[l.obra_id] ?? null, mes_referencia: l.mes_referencia, data_inicio: l.data_inicio, data_fim: l.data_fim, status: l.status, tipo_pagamento: l.tipo_pagamento, snap_liquido: l.snap_liquido, snap_valor_total: l.snap_valor_total, snap_horas_normais: l.snap_horas_normais, snap_horas_extras: l.snap_horas_extras, snap_valor_horas: l.snap_valor_horas, snap_valor_dsr: l.snap_valor_dsr, snap_valor_producao: l.snap_valor_producao, snap_valor_premio: l.snap_valor_premio, snap_inss: l.snap_inss, snap_ir: l.snap_ir, snap_desconto_vt: l.snap_desconto_vt, snap_desconto_adiant: l.snap_desconto_adiant, snap_liquido: l.snap_liquido }))
+          if (batch.length) { const { error } = await supabaseV2.from('ponto_lancamentos_v2').upsert(batch, { onConflict: 'empresa_id,id_legado', ignoreDuplicates: false }); if(!error) ok += batch.length }
+        }
+        addLog(`✅ ${ok} lançamentos migrados`)
+      }
+
+      // 5. Ponto Registros
+      addLog('⏱️ Migrando registros de ponto...')
+      const { data: regs } = await supabaseV1.from('ponto_registros').select('*')
+      if (regs?.length) {
+        const { data: vincsV2b } = await supabaseV2.from('vinculos_empregaticos').select('id, id_legado').eq('empresa_id', empresaId)
+        const { data: lancsV2 } = await supabaseV2.from('ponto_lancamentos_v2').select('id, id_legado').eq('empresa_id', empresaId)
+        const vMap2: Record<string,string> = {}; (vincsV2b??[]).forEach((v:any) => { if(v.id_legado) vMap2[v.id_legado] = v.id })
+        const lMap: Record<string,string> = {}; (lancsV2??[]).forEach((l:any) => { if(l.id_legado) lMap[l.id_legado] = l.id })
+        const BATCH = 100; let ok = 0
+        for (let i = 0; i < regs.length; i += BATCH) {
+          const batch = regs.slice(i, i+BATCH)
+            .filter((r:any) => vMap2[r.colaborador_id] && lMap[r.lancamento_id])
+            .map((r:any) => ({ empresa_id: empresaId, id_legado: r.id, colaborador_id: vMap2[r.colaborador_id], lancamento_id: lMap[r.lancamento_id], data: r.data, presente: r.presente, falta: r.falta, hora_entrada: r.hora_entrada, hora_saida: r.hora_saida, horas_trabalhadas: r.horas_trabalhadas, horas_extras: r.horas_extras, status: r.status ?? 'pendente' }))
+          if (batch.length) { const { error } = await supabaseV2.from('ponto_registros_v2').upsert(batch, { onConflict: 'empresa_id,id_legado', ignoreDuplicates: false }); if(!error) ok += batch.length }
+        }
+        addLog(`✅ ${ok} registros de ponto migrados`)
+      }
+
+      addLog('🎉 Migração concluída!')
+      setDone(true)
+    } catch (e: any) {
+      addLog(`❌ Erro fatal: ${e.message}`)
+    }
+    setRunning(false)
+  }
+
+  return (
+    <div style={{ padding: 16 }}>
+      <div style={{ marginBottom: 12, padding: '10px 14px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8 }}>
+        <p style={{ fontSize: 13, fontWeight: 600, color: '#1e40af', marginBottom: 4 }}>🔄 Migração V1 → V2</p>
+        <p style={{ fontSize: 12, color: '#3b82f6' }}>Empresa: <strong>{empresaNome}</strong></p>
+        <p style={{ fontSize: 11, color: '#6b7280', marginTop: 4 }}>Importa funções, obras, colaboradores, lançamentos e registros de ponto do banco V1 para esta empresa no V2.</p>
+      </div>
+      <Button onClick={iniciar} disabled={running || !empresaId} className="w-full mb-4" size="sm">
+        {running ? <><Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />Migrando...</> : done ? '✅ Concluído — Migrar Novamente' : '🚀 Iniciar Migração'}
+      </Button>
+      {log.length > 0 && (
+        <div style={{ background: '#0f172a', borderRadius: 8, padding: 12, maxHeight: 300, overflowY: 'auto' }}>
+          {log.map((l, i) => <div key={i} style={{ fontSize: 11, fontFamily: 'monospace', color: l.startsWith('❌') ? '#f87171' : l.startsWith('✅') ? '#4ade80' : l.startsWith('🎉') ? '#fbbf24' : '#94a3b8', marginBottom: 2 }}>{l}</div>)}
+        </div>
+      )}
+    </div>
+  )
+}
+
+
 export default function SaasPainel() {
   // ── Navegação ──────────────────────────────────────────────────────────────
   const navigate = useNavigate()
@@ -473,6 +591,7 @@ export default function SaasPainel() {
                     <TabsTrigger value="usuarios"><Users className="w-3.5 h-3.5 mr-1" /> Usuários</TabsTrigger>
                     <TabsTrigger value="info"><Settings className="w-3.5 h-3.5 mr-1" /> Informações</TabsTrigger>
                     <TabsTrigger value="stats"><BarChart3 className="w-3.5 h-3.5 mr-1" /> Estatísticas</TabsTrigger>
+                    <TabsTrigger value="migracao"><Database className="w-3.5 h-3.5 mr-1" /> Migração V2</TabsTrigger>
                   </TabsList>
 
                   {/* ── ABA USUÁRIOS ─────────────────────────────────────────── */}
@@ -630,6 +749,11 @@ export default function SaasPainel() {
                       <p className="font-semibold mb-1">📊 Dados do banco V2</p>
                       <p className="text-xs">Os dados completos de fechamentos, relatórios e histórico financeiro estarão disponíveis após a migração de dados via <strong>Migração V2</strong>.</p>
                     </div>
+                  </TabsContent>
+
+                  {/* ── ABA MIGRAÇÃO V2 ─────────────────────────────────────── */}
+                  <TabsContent value="migracao" className="mt-4">
+                    <MigracaoEmpresa empresaId={empresaSel?.id ?? ''} empresaNome={empresaSel?.nome ?? ''} />
                   </TabsContent>
                 </Tabs>
               </div>
