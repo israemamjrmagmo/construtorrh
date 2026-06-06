@@ -50,13 +50,19 @@ export default function Login() {
         .eq('ativo', true)
         .single()
 
-      if (eu && eu.senha_hash) {
+      if (eu) {
+        // Usuário encontrado em empresa_usuarios — NÃO cai no Supabase Auth
+        if (!eu.senha_hash) {
+          toast.error('Conta ainda não configurada. Contate o administrador.')
+          setSubmitting(false)
+          return
+        }
         if (eu.senha_hash !== hash) {
           toast.error('Senha incorreta')
           setSubmitting(false)
           return
         }
-        // Login empresa_usuario OK
+        // Login OK
         setEmpresaSession({
           id: eu.id, nome: eu.nome, email: eu.email,
           role: eu.role, empresa_id: eu.empresa_id,
@@ -71,7 +77,7 @@ export default function Login() {
         return
       }
     } catch {
-      // usuário não encontrado em empresa_usuarios → continua para Supabase Auth
+      // usuário não encontrado em empresa_usuarios → tenta Supabase Auth
     }
 
     // ── 2. Fallback: Supabase Auth (admin master da empresa) ──────────────────
