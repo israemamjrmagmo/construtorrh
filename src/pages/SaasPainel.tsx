@@ -160,8 +160,8 @@ function MigracaoEmpresa({ empresaId, empresaNome }: { empresaId: string; empres
           cbo: f.cbo ?? null, valor_hora_clt: f.valor_hora_clt ?? null,
           valor_hora_autonomo: f.valor_hora_autonomo ?? null, ativo: f.ativo ?? true,
         }))
-        const { error } = await supabaseV2.from('funcoes_v2').insert(batch)
-        addLog(error ? `  ❌ Funções insert: ${error.message}` : `  ✅ ${fns.length} funções inseridas`)
+        const { error } = await supabaseV2.from('funcoes_v2').upsert(batch, { onConflict: 'empresa_id,id_legado', ignoreDuplicates: true })
+        addLog(error ? `  ❌ Funções upsert: ${error.message}` : `  ✅ ${fns.length} funções OK`)
       } else {
         addLog('  ⏭️ Nenhuma função no V1 — pulando')
       }
@@ -180,8 +180,8 @@ function MigracaoEmpresa({ empresaId, empresaNome }: { empresaId: string; empres
           considera_sabado_util: o.considera_sabado_util ?? false,
           desconta_vt: o.desconta_vt ?? true, ativo: true,
         }))
-        const { error } = await supabaseV2.from('obras_v2').insert(batch)
-        addLog(error ? `  ❌ Obras insert: ${error.message}` : `  ✅ ${obs.length} obras inseridas`)
+        const { error } = await supabaseV2.from('obras_v2').upsert(batch, { onConflict: 'empresa_id,id_legado', ignoreDuplicates: true })
+        addLog(error ? `  ❌ Obras upsert: ${error.message}` : `  ✅ ${obs.length} obras OK`)
       } else {
         addLog('  ⏭️ Nenhuma obra no V1 — pulando')
       }
@@ -243,7 +243,7 @@ function MigracaoEmpresa({ empresaId, empresaNome }: { empresaId: string; empres
             data_demissao: c.data_demissao ?? null,
             observacoes: c.observacoes ?? null,
           }
-          const { error: ve } = await supabaseV2.from('vinculos_empregaticos').insert(vinculoPayload)
+          const { error: ve } = await supabaseV2.from('vinculos_empregaticos').upsert(vinculoPayload, { onConflict: 'empresa_id,id_legado', ignoreDuplicates: true })
           if (ve) { err++; errMsg = ve.message } else ok++
         }
         addLog(`  ✅ ${ok} colaboradores migrados${err ? ` | ❌ ${err} erros (último: ${errMsg})` : ''}`)
