@@ -317,11 +317,14 @@ function MigracaoEmpresa({ empresaId, empresaNome }: { empresaId: string; empres
       if (regs.length) {
         const { data: vincsV2b } = await supabaseV2.from('vinculos_empregaticos').select('id, id_legado').eq('empresa_id', empresaId)
         const { data: obsV2c }   = await supabaseV2.from('obras_v2').select('id, id_legado').eq('empresa_id', empresaId)
+        const { data: lancsV2b } = await supabaseV2.from('ponto_lancamentos_v2').select('id, id_legado').eq('empresa_id', empresaId)
         const vMap2: Record<string,string> = {}
         ;(vincsV2b ?? []).forEach((v: any) => { if (v.id_legado) vMap2[String(v.id_legado)] = v.id })
         const oMap3: Record<string,string> = {}
         ;(obsV2c ?? []).forEach((o: any) => { if (o.id_legado) oMap3[String(o.id_legado)] = o.id })
-        addLog(`  🗺️ Mapa vinculos: ${Object.keys(vMap2).length} | Mapa obras: ${Object.keys(oMap3).length}`)
+        const lMap2: Record<string,string> = {}
+        ;(lancsV2b ?? []).forEach((l: any) => { if (l.id_legado) lMap2[String(l.id_legado)] = l.id })
+        addLog(`  🗺️ Vinculos: ${Object.keys(vMap2).length} | Obras: ${Object.keys(oMap3).length} | Lançamentos: ${Object.keys(lMap2).length}`)
         const BATCH = 100; let ok = 0, skipped = 0
         for (let i = 0; i < regs.length; i += BATCH) {
           const batch = regs.slice(i, i + BATCH)
@@ -334,7 +337,8 @@ function MigracaoEmpresa({ empresaId, empresaNome }: { empresaId: string; empres
               id_legado: String(r.id),
               vinculo_id: vMap2[String(r.colaborador_id)],
               colaborador_id: vMap2[String(r.colaborador_id)],
-              obra_id: oMap3[String(r.obra_id)] ?? null,   // ← mapeado para UUID do V2
+              obra_id: oMap3[String(r.obra_id)] ?? null,
+              lancamento_id: lMap2[String(r.lancamento_id)] ?? null,
               data: r.data ?? null,
               hora_entrada: r.hora_entrada ?? null,
               saida_almoco: r.saida_almoco ?? null,
@@ -344,6 +348,8 @@ function MigracaoEmpresa({ empresaId, empresaNome }: { empresaId: string; empres
               horas_extras: r.horas_extras ?? null,
               falta: r.falta ?? null,
               justificativa: r.justificativa ?? null,
+              observacoes: r.observacoes ?? null,
+              feriado_remunerado: r.feriado_remunerado ?? false,
             }))
           if (batch.length) {
             const { error } = await supabaseV2.from('ponto_registros_v2').insert(batch)
