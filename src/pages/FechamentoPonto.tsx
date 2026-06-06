@@ -1401,10 +1401,10 @@ export default function FechamentoPonto() {
                               </div>
                             </TableCell>
                             <TableCell style={{ fontFamily: 'monospace', fontSize: 11, whiteSpace: 'nowrap' }}>
-                              <div>{lanc.data_inicio.slice(8)}/{lanc.data_inicio.slice(5,7)} → {lanc.data_fim.slice(8)}/{lanc.data_fim.slice(5,7)}</div>
+                              <div>{(lanc.data_inicio ?? '').slice(8)}/{(lanc.data_inicio ?? '').slice(5,7)} → {(lanc.data_fim ?? '').slice(8)}/{(lanc.data_fim ?? '').slice(5,7)}</div>
                               <div style={{ marginTop:3, display:'flex', gap:4, flexWrap:'wrap' }}>
                                 <span style={{ fontSize:9, fontWeight:700, background:'#eff6ff', color:'#1d4ed8', border:'1px solid #bfdbfe', borderRadius:5, padding:'1px 6px', textTransform:'uppercase', letterSpacing:'.03em', fontFamily:'sans-serif' }}>
-                                  📅 {MESES_ABR[parseInt(lanc.mes_referencia.slice(5,7))-1]}/{lanc.mes_referencia.slice(2,4)}
+                                  📅 {MESES_ABR[parseInt((lanc.mes_referencia ?? '').slice(5,7))-1]}/{(lanc.mes_referencia ?? '').slice(2,4)}
                                 </span>
                                 {lanc.tipo_pagamento && (
                                   <span style={{ fontSize:9, fontWeight:700, background:'#f3e8ff', color:'#7c3aed', border:'1px solid #ddd6fe', borderRadius:5, padding:'1px 6px', fontFamily:'sans-serif' }}>
@@ -1811,10 +1811,10 @@ export default function FechamentoPonto() {
                 </div>
                 <div style={{ display:'flex', gap:6, marginTop:5, flexWrap:'wrap' }}>
                   <span style={{ fontSize:10, fontWeight:700, background:'#eff6ff', color:'#1d4ed8', padding:'2px 8px', borderRadius:6, border:'1px solid #bfdbfe' }}>
-                    📅 Competência: {MESES[parseInt(modalLiberar.mes_referencia.slice(5,7))-1]}/{modalLiberar.mes_referencia.slice(0,4)}
+                    📅 Competência: {MESES[parseInt((modalLiberar.mes_referencia ?? '').slice(5,7))-1]}/{(modalLiberar.mes_referencia ?? '').slice(0,4)}
                   </span>
                   <span style={{ fontSize:10, fontWeight:600, color:'#6b7280', padding:'2px 8px', background:'#f3f4f6', borderRadius:6 }}>
-                    {modalLiberar.data_inicio.slice(8)}/{modalLiberar.data_inicio.slice(5,7)} → {modalLiberar.data_fim.slice(8)}/{modalLiberar.data_fim.slice(5,7)}
+                    {(modalLiberar.data_inicio ?? '').slice(8)}/{(modalLiberar.data_inicio ?? '').slice(5,7)} → {(modalLiberar.data_fim ?? '').slice(8)}/{(modalLiberar.data_fim ?? '').slice(5,7)}
                   </span>
                 </div>
               </div>
@@ -2053,10 +2053,10 @@ export default function FechamentoPonto() {
                           </td>
                           <td style={{ padding:'10px 10px' }}>
                             <div style={{ fontWeight:700, color:'#1e293b' }}>{lanc.colaborador_nome}</div>
-                            <div style={{ fontSize:10, color:'#94a3b8', marginTop:1 }}>{lanc.colaborador_chapa&&<span style={{ fontWeight:600, color:'#1d4ed8', marginRight:4 }}>#{lanc.colaborador_chapa}</span>}{lanc.funcao_nome} · {lanc.tipo_contrato.toUpperCase()}</div>
+                            <div style={{ fontSize:10, color:'#94a3b8', marginTop:1 }}>{lanc.colaborador_chapa&&<span style={{ fontWeight:600, color:'#1d4ed8', marginRight:4 }}>#{lanc.colaborador_chapa}</span>}{lanc.funcao_nome} · {(lanc.tipo_contrato ?? '').toUpperCase()}</div>
                           </td>
                           <td style={{ padding:'10px 10px', color:'#374151', fontSize:12 }}>{lanc.obra_nome}</td>
-                          <td style={{ padding:'10px 10px', textAlign:'right', color:'#374151', fontSize:11, whiteSpace:'nowrap' }}>{lanc.data_inicio.slice(8)}/{lanc.data_inicio.slice(5,7)}→{lanc.data_fim.slice(8)}/{lanc.data_fim.slice(5,7)}</td>
+                          <td style={{ padding:'10px 10px', textAlign:'right', color:'#374151', fontSize:11, whiteSpace:'nowrap' }}>{(lanc.data_inicio ?? '').slice(8)}/{(lanc.data_inicio ?? '').slice(5,7)}→{(lanc.data_fim ?? '').slice(8)}/{(lanc.data_fim ?? '').slice(5,7)}</td>
                           <td style={{ padding:'10px 10px', textAlign:'right', fontWeight:700, color:'#374151' }}>{Math.ceil((new Date(lanc.data_fim).getTime()-new Date(lanc.data_inicio).getTime())/86400000)+1}</td>
                           <td style={{ padding:'10px 10px', textAlign:'right', color:'#1d4ed8', fontWeight:600, fontSize:12 }}>{fmtHHMM(lanc.horas_normais)}</td>
                           <td style={{ padding:'10px 10px', textAlign:'right', color:'#7c3aed', fontWeight:600, fontSize:12 }}>{lanc.horas_extras>0?fmtHHMM(lanc.horas_extras):'—'}</td>
@@ -2124,7 +2124,7 @@ export default function FechamentoPonto() {
                   <div style={{ background:'#eff6ff', border:'1px solid #bfdbfe', borderRadius:8, padding:'8px 12px' }}>
                     <div style={{ fontSize:10, color:'#6b7280', marginBottom:2 }}>Colaborador</div>
                     <div style={{ fontWeight:700, fontSize:13 }}>{lanc.colaborador_nome}</div>
-                    <div style={{ fontSize:11, color:'#6b7280' }}>{lanc.colaborador_chapa} · {lanc.tipo_contrato.toUpperCase()}</div>
+                    <div style={{ fontSize:11, color:'#6b7280' }}>{lanc.colaborador_chapa} · {(lanc.tipo_contrato ?? '').toUpperCase()}</div>
                   </div>
                   <div style={{ background:'#eff6ff', border:'1px solid #bfdbfe', borderRadius:8, padding:'8px 12px' }}>
                     <div style={{ fontSize:10, color:'#6b7280', marginBottom:2 }}>Período</div>
@@ -2136,7 +2136,7 @@ export default function FechamentoPonto() {
                   <div style={{ background:'#eff6ff', border:'1px solid #bfdbfe', borderRadius:8, padding:'8px 12px' }}>
                     <div style={{ fontSize:10, color:'#6b7280', marginBottom:2 }}>Função</div>
                     <div style={{ fontWeight:700, fontSize:13 }}>{lanc.funcao_nome}</div>
-                    <div style={{ fontSize:11, color:'#6b7280' }}>{MESES[lanc.mes_referencia.slice(5,7) as any - 1]} / {lanc.mes_referencia.slice(0,4)}</div>
+                    <div style={{ fontSize:11, color:'#6b7280' }}>{MESES[(lanc.mes_referencia ?? '').slice(5,7) as any - 1]} / {(lanc.mes_referencia ?? '').slice(0,4)}</div>
                   </div>
                 </div>
               )}
