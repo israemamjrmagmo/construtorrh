@@ -444,9 +444,9 @@ export default function FechamentoPonto() {
 
       // Segurança: período já deve ter sido gerado corretamente (respeitando admissão e inativação)
       // Se por legado o data_inicio for anterior à admissão, usar admissão como referência de cálculo
-      const dataInicioEfetivo = (colab?.data_admissao && l.data_inicio < colab.data_admissao)
+      const dataInicioEfetivo = (colab?.data_admissao && l.data_inicio && l.data_inicio < colab.data_admissao)
         ? colab.data_admissao
-        : l.data_inicio
+        : (l.data_inicio ?? '')
 
       // ══ TRAVA DE SNAPSHOT ══════════════════════════════════════════════════
       // Lançamentos já aprovados/liberados/pagos usam EXCLUSIVAMENTE os valores
