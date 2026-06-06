@@ -224,25 +224,36 @@ export default function SaasPainel() {
     }
 
     setSavingUsr(true)
-    // Senha padrão = primeiros 5 dígitos do CNPJ da empresa
+    const emailFinal = formUsr.email.trim().toLowerCase()
     const cnpjDigits = (empresaSel.cnpj ?? '').replace(/\D/g, '')
     const senhaDefault = cnpjDigits.substring(0, 6) || '123456'
-    const senhaHash = await sha256(senhaDefault)
 
+    // 1. Criar no Supabase Auth (permite login direto pelo /#/login)
+    const { data: authData, error: authError } = await supabaseV2.auth.signUp({
+      email:    emailFinal,
+      password: senhaDefault,
+    })
+    if (authError && !authError.message.includes('already registered')) {
+      toast.error('Erro ao criar acesso: ' + authError.message)
+      setSavingUsr(false)
+      return
+    }
+    const authUserId = authData?.user?.id ?? crypto.randomUUID()
+
+    // 2. Inserir metadados em empresa_usuarios
     const payload = {
-      empresa_id:     empresaSel.id,
-      nome:           formUsr.nome.trim(),
-      email:          formUsr.email.trim().toLowerCase(),
-      role:           formUsr.role,
-      ativo:          true,
-      user_id:        crypto.randomUUID(),
-      senha_hash:     senhaHash,
+      empresa_id:      empresaSel.id,
+      nome:            formUsr.nome.trim(),
+      email:           emailFinal,
+      role:            formUsr.role,
+      ativo:           true,
+      user_id:         authUserId,
       primeiro_acesso: true,
     }
     const { error } = await supabaseV2.from('empresa_usuarios').insert(payload)
     setSavingUsr(false)
-    if (error) { toast.error('Erro: ' + error.message); return }
-    toast.success(`✅ Usuário adicionado! Senha padrão: ${senhaDefault}`)
+    if (error) { toast.error('Erro ao salvar metadados: ' + error.message); return }
+    toast.success(`✅ Usuário criado! Senha padrão: ${senhaDefault}`)
     setModalUsr(false)
     setFormUsr(EMPTY_USR)
     fetchUsuarios(empresaSel.id)

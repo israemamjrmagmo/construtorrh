@@ -9,11 +9,6 @@ import { supabaseV2 } from '@/lib/supabase-v2'
 import { ShieldCheck, Eye, EyeOff, Loader2, KeyRound, CheckCircle2 } from 'lucide-react'
 import { getEmpresaUsuarioSession, setEmpresaUsuarioSession, empresaUsuarioLogout } from './EmpresaLogin'
 
-async function sha256(msg: string) {
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(msg))
-  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('')
-}
-
 function Req({ ok, text }: { ok: boolean; text: string }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: ok ? '#16a34a' : '#94a3b8' }}>
@@ -51,18 +46,18 @@ export default function EmpresaTrocarSenha() {
 
     setLoading(true); setErro('')
 
-    const hash = await sha256(nova)
+    // Atualizar senha no Supabase Auth
+    const { error: authError } = await supabaseV2.auth.updateUser({ password: nova })
+    if (authError) { setErro('Erro ao salvar: ' + authError.message); setLoading(false); return }
 
-    const { error } = await supabaseV2
-      .from('empresa_usuarios')
-      .update({ senha_hash: hash, primeiro_acesso: false })
+    // Marcar primeiro_acesso = false em empresa_usuarios
+    await supabaseV2.from('empresa_usuarios')
+      .update({ primeiro_acesso: false })
       .eq('id', session.id)
 
     setLoading(false)
 
-    if (error) { setErro('Erro ao salvar: ' + error.message); return }
-
-    // Atualiza sessão
+    // Atualiza sessão local
     setEmpresaUsuarioSession({ ...session, primeiro_acesso: false })
     nav('/')
   }
