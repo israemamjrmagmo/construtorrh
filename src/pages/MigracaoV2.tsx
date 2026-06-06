@@ -53,9 +53,10 @@ export default function MigracaoV2() {
   const [steps,        setSteps]        = useState<MigStep[]>(STEPS_INIT)
   const [running,      setRunning]      = useState(false)
   const [done,         setDone]         = useState(false)
-  const [empresaId,    setEmpresaId]    = useState<string | null>(null)
-  const [nomeEmpresa,  setNomeEmpresa]  = useState('Magmo Solucoes Construtivas')
-  const [cnpjEmpresa,  setCnpjEmpresa]  = useState('52711905000173')
+  const [empresaId,       setEmpresaId]       = useState<string | null>(null)
+  const [empresaIdManual, setEmpresaIdManual] = useState('d1282f82-a558-4a1c-b8b6-11a6d88e108b')
+  const [nomeEmpresa,     setNomeEmpresa]     = useState('Magmo Solucoes Construtivas')
+  const [cnpjEmpresa,     setCnpjEmpresa]     = useState('52711905000173')
   const [logs,         setLogs]         = useState<string[]>([])
 
   const log = (msg: string) => {
@@ -65,12 +66,21 @@ export default function MigracaoV2() {
   const upd = (id: string, patch: Partial<MigStep>) =>
     setSteps(s => s.map(x => x.id === id ? { ...x, ...patch } : x))
 
-  // ── STEP 1: Criar / reutilizar empresa ───────────────────────────────────
+  // ── STEP 1: Reutilizar empresa pelo ID manual ────────────────────────────
   const migrarEmpresa = useCallback(async (): Promise<string | null> => {
     upd('empresa', { status: 'running' })
     log('Verificando empresa no banco V2…')
 
-    // 1) Buscar pelo CNPJ (empresa já foi criada pelo SQL de setup)
+    // 1) ID manual informado diretamente no formulário (contorna RLS)
+    const idManual = empresaIdManual.trim()
+    if (idManual && /^[0-9a-f-]{36}$/i.test(idManual)) {
+      log(`✅ Usando empresa_id informado: ${idManual}`)
+      upd('empresa', { status: 'done', migrated: 1, total: 1 })
+      setEmpresaId(idManual)
+      return idManual
+    }
+
+    // 2) Buscar pelo CNPJ (requer policy SELECT em empresas)
     if (cnpjEmpresa) {
       const cnpjLimpo = cnpjEmpresa.replace(/\D/g, '')
       const { data: porCnpj } = await supabaseV2
@@ -86,7 +96,7 @@ export default function MigracaoV2() {
       }
     }
 
-    // 2) Buscar pelo nome
+    // 3) Buscar pelo nome
     const { data: porNome } = await supabaseV2
       .from('empresas')
       .select('id, nome')
@@ -99,24 +109,10 @@ export default function MigracaoV2() {
       return porNome.id
     }
 
-    // 3) Criar nova (caso não exista)
-    log('Empresa não encontrada — criando…')
-    const cnpjLimpo = cnpjEmpresa ? cnpjEmpresa.replace(/\D/g, '') : null
-    const { data, error } = await supabaseV2
-      .from('empresas')
-      .insert({ nome: nomeEmpresa, cnpj: cnpjLimpo, plano: 'pro', ativo: true })
-      .select('id')
-      .single()
-    if (error) {
-      upd('empresa', { status: 'error', error: error.message })
-      log(`❌ Erro ao criar empresa: ${error.message}`)
-      return null
-    }
-    log(`✅ Empresa criada: ${data.id}`)
-    upd('empresa', { status: 'done', migrated: 1, total: 1 })
-    setEmpresaId(data.id)
-    return data.id
-  }, [nomeEmpresa, cnpjEmpresa])
+    upd('empresa', { status: 'error', error: 'Empresa não encontrada. Informe o empresa_id no formulário.' })
+    log('❌ Empresa não encontrada. Preencha o campo ID da Empresa com o UUID retornado pelo SQL de setup.')
+    return null
+  }, [empresaIdManual, nomeEmpresa, cnpjEmpresa])
 
   // ── STEP 2: Migrar Obras ──────────────────────────────────────────────────
   const migrarObras = useCallback(async (empId: string): Promise<Map<string, string>> => {
@@ -948,24 +944,40 @@ export default function MigracaoV2() {
             <Input
               value={nomeEmpresa}
               onChange={e => setNomeEmpresa(e.target.value)}
-              placeholder="Ex: Magmo Construções"
+              placeholder="Ex: Magmo Solucoes Construtivas"
               disabled={running}
               className="mt-1"
             />
           </div>
           <div>
-            <Label>CNPJ (opcional)</Label>
+            <Label>CNPJ</Label>
             <Input
               value={cnpjEmpresa}
               onChange={e => setCnpjEmpresa(e.target.value)}
-              placeholder="XX.XXX.XXX/XXXX-XX"
+              placeholder="52711905000173"
               disabled={running}
               className="mt-1"
             />
           </div>
+          <div className="md:col-span-2">
+            <Label className="flex items-center gap-1">
+              ID da Empresa no V2
+              <span className="text-xs font-normal text-amber-600 ml-1">(obrigatório — cole o UUID retornado pelo SQL de setup)</span>
+            </Label>
+            <Input
+              value={empresaIdManual}
+              onChange={e => setEmpresaIdManual(e.target.value)}
+              placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+              disabled={running}
+              className="mt-1 font-mono text-xs"
+            />
+            <p className="text-xs text-gray-400 mt-1">
+              Obtido em: Supabase V2 → SQL Editor → resultado do migration_v2_completo.sql
+            </p>
+          </div>
           {empresaId && (
-            <div className="md:col-span-2">
-              <p className="text-xs text-gray-500 font-mono">ID V2: {empresaId}</p>
+            <div className="md:col-span-2 bg-green-50 rounded p-2">
+              <p className="text-xs text-green-700 font-mono">✅ Usando empresa_id: {empresaId}</p>
             </div>
           )}
         </CardContent>
