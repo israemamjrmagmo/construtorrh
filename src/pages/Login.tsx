@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { toast } from 'sonner'
-import { HardHat, Mail, Lock, LogIn, Shield } from 'lucide-react'
+import { HardHat, Mail, Lock, LogIn } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { supabaseV2 } from '@/lib/supabase-v2'
 import { Button } from '@/components/ui/button'
@@ -180,17 +180,6 @@ export default function Login() {
               {submitting ? 'Verificando…' : 'Entrar'}
             </Button>
           </form>
-
-          {/* Link SaaS Admin — discreto mas explícito */}
-          <div className="mt-8 pt-6 border-t border-border">
-            <a
-              href="#/saas-login"
-              className="flex items-center justify-center gap-2 text-xs text-muted-foreground hover:text-primary transition-colors group"
-            >
-              <Shield className="w-3.5 h-3.5 group-hover:text-primary" />
-              Administrador SaaS — acesso restrito
-            </a>
-          </div>
 
           <p className="text-xs text-muted-foreground text-center mt-4">
             © {new Date().getFullYear()} ConstrutorRH · Todos os direitos reservados
