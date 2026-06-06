@@ -267,23 +267,29 @@ function MigracaoEmpresa({ empresaId, empresaNome }: { empresaId: string; empres
           const batch = lancs.slice(i, i + BATCH)
             .filter((l: any) => { if (!vMap[String(l.colaborador_id)]) { skipped++; return false } return true })
             .map((l: any) => ({
-              empresa_id: empresaId, id_legado: String(l.id),
+              empresa_id: empresaId,
+              id_legado: String(l.id),
+              // vinculo_id e colaborador_id apontam para vinculos_empregaticos.id
+              vinculo_id: vMap[String(l.colaborador_id)],
               colaborador_id: vMap[String(l.colaborador_id)],
               obra_id: oMap2[String(l.obra_id)] ?? null,
               mes_referencia: l.mes_referencia ?? null,
-              data_inicio: l.data_inicio ?? null, data_fim: l.data_fim ?? null,
-              status: l.status ?? 'aberto', tipo_pagamento: l.tipo_pagamento ?? null,
+              status: l.status ?? 'aberto',
+              // horas (V1 pode ter snap_ prefixado ou não)
+              horas_normais: l.horas_normais ?? l.snap_horas_normais ?? null,
+              horas_extras: l.horas_extras ?? l.snap_horas_extras ?? null,
+              valor_horas: l.valor_horas ?? l.snap_valor_horas ?? null,
+              faltas: l.faltas ?? null,
+              dias_trabalhados: l.dias_trabalhados ?? null,
+              // snaps financeiros
               snap_valor_total: l.snap_valor_total ?? null,
-              snap_horas_normais: l.snap_horas_normais ?? null,
-              snap_horas_extras: l.snap_horas_extras ?? null,
-              snap_valor_horas: l.snap_valor_horas ?? null,
-              snap_valor_dsr: l.snap_valor_dsr ?? null,
-              snap_valor_producao: l.snap_valor_producao ?? null,
-              snap_valor_premio: l.snap_valor_premio ?? null,
-              snap_inss: l.snap_inss ?? null, snap_ir: l.snap_ir ?? null,
-              snap_desconto_vt: l.snap_desconto_vt ?? null,
-              snap_desconto_adiant: l.snap_desconto_adiant ?? null,
               snap_liquido: l.snap_liquido ?? null,
+              snap_valor_horas: l.snap_valor_horas ?? null,
+              snap_inss: l.snap_inss ?? null,
+              snap_ir: l.snap_ir ?? null,
+              snap_valor_dsr: l.snap_valor_dsr ?? null,
+              snap_valor_premio: l.snap_valor_premio ?? null,
+              snap_desconto_vt: l.snap_desconto_vt ?? null,
             }))
           if (batch.length) {
             const { error } = await supabaseV2.from('ponto_lancamentos_v2').insert(batch)
