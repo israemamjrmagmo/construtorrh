@@ -317,16 +317,20 @@ function MigracaoEmpresa({ empresaId, empresaNome }: { empresaId: string; empres
         for (let i = 0; i < regs.length; i += BATCH) {
           const batch = regs.slice(i, i + BATCH)
             .filter((r: any) => {
-              const ok2 = vMap2[String(r.colaborador_id)] && lMap[String(r.lancamento_id)]
-              if (!ok2) skipped++
-              return ok2
+              // Filtra apenas por colaborador (lancamento_id não existe em ponto_registros_v2)
+              if (!vMap2[String(r.colaborador_id)]) { skipped++; return false }
+              return true
             })
             .map((r: any) => ({
-              empresa_id: empresaId, id_legado: String(r.id),
+              empresa_id: empresaId,
+              id_legado: String(r.id),
               colaborador_id: vMap2[String(r.colaborador_id)],
-              lancamento_id: lMap[String(r.lancamento_id)],
-              data: r.data ?? null, presente: r.presente ?? null, falta: r.falta ?? null,
-              hora_entrada: r.hora_entrada ?? null, hora_saida: r.hora_saida ?? null,
+              // lancamento_id não existe em ponto_registros_v2 — será corrigido após receber schema
+              data: r.data ?? null,
+              presente: r.presente ?? null,
+              falta: r.falta ?? null,
+              hora_entrada: r.hora_entrada ?? null,
+              hora_saida: r.hora_saida ?? null,
               horas_trabalhadas: r.horas_trabalhadas ?? null,
               horas_extras: r.horas_extras ?? null,
               status: r.status ?? 'pendente',
