@@ -183,8 +183,6 @@ const NAV_GROUPS = [
       { to: '/gestor',        label: 'Portal do Gestor',      icon: BarChart3, color: '#f59e0b' },
       { to: '/configuracoes', label: 'Configurações',         icon: Settings,  color: '#94a3b8' },
       { to: '/acesso-colaboradores', label: 'Acesso Colaboradores', icon: KeyRound, color: '#f59e0b', adminOnly: true },
-      { to: '/migracao-v2',     label: 'Migração V2',           icon: Database,  color: '#7c3aed', adminOnly: true },
-      { to: '/saas-admin',      label: 'Painel SaaS',           icon: Globe,     color: '#6366f1', adminOnly: true },
     ],
   },
 ]
@@ -407,7 +405,7 @@ export function Layout({ children }: LayoutProps) {
             const groupBadge = getGroupBadge(group.id)
 
             const visibleItems = group.items.filter((item: any) => {
-              if (item.adminOnly) return false
+              if (item.adminOnly && role !== 'admin') return false
               const isFinanceiro = ['/ponto','/vt','/adiantamentos','/premios','/fechamento-ponto','/pagamentos','/encargos','/provisoes'].includes(item.to)
               if (isFinanceiro && !roleMeta.canViewFinanceiro) return false
               return true
