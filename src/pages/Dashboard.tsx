@@ -3,6 +3,7 @@ import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useProfile } from '@/hooks/useProfile'
+import { useEmpresaId } from '@/hooks/useEmpresaId'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer,
@@ -209,6 +210,7 @@ function CustomTooltip({ active, payload, label }: any) {
 export default function Dashboard() {
   const { user } = useAuth()
   const { profile } = useProfile()
+  const { empresaId } = useEmpresaId()
   const navigate   = useNavigate()
 
   const [data,    setData]    = useState<DashboardData | null>(null)
@@ -245,51 +247,59 @@ export default function Dashboard() {
           supabase
             .from('colaboradores')
             .select('id, tipo_contrato')
-            .eq('status', 'ativo'),
+            .eq('status', 'ativo')
+            .eq('empresa_id', empresaId ?? ''),
 
           // 2. Obras ativas (aceita 'ativo', 'em_andamento' e 'andamento')
           supabase
             .from('obras')
             .select('id', { count: 'exact', head: true })
-            .in('status', ['ativo', 'em_andamento', 'andamento']),
+            .in('status', ['ativo', 'em_andamento', 'andamento'])
+            .eq('empresa_id', empresaId ?? ''),
 
           // 3. Folha mês atual (snap_liquido, status liberado/pago)
           supabase
             .from('ponto_lancamentos')
             .select('snap_liquido')
             .eq('mes_referencia', mesAtual)
-            .in('status', ['liberado', 'pago']),
+            .in('status', ['liberado', 'pago'])
+            .eq('empresa_id', empresaId ?? ''),
 
           // 4. Provisionamento: lançamentos CLT liberados/pagos (todos os meses)
           supabase
             .from('ponto_lancamentos')
             .select('snap_valor_horas, snap_valor_dsr, colaborador_id')
-            .in('status', ['liberado', 'pago']),
+            .in('status', ['liberado', 'pago'])
+            .eq('empresa_id', empresaId ?? ''),
 
           // 5. Adiantamentos pendentes/aprovados
           supabase
             .from('adiantamentos')
             .select('valor')
-            .in('status', ['pendente', 'aprovado']),
+            .in('status', ['pendente', 'aprovado'])
+            .eq('empresa_id', empresaId ?? ''),
 
           // 6. Folha 6 meses p/ gráfico
           supabase
             .from('ponto_lancamentos')
             .select('mes_referencia, snap_liquido')
             .in('mes_referencia', ultimos6)
-            .in('status', ['liberado', 'pago']),
+            .in('status', ['liberado', 'pago'])
+            .eq('empresa_id', empresaId ?? ''),
 
           // 7. Colaboradores ativos com obra e tipo_contrato p/ headcount
           supabase
             .from('colaboradores')
             .select('tipo_contrato, obras(nome)')
-            .eq('status', 'ativo'),
+            .eq('status', 'ativo')
+            .eq('empresa_id', empresaId ?? ''),
 
           // 8. Atividade recente: 5 últimos lançamentos liberados/pagos
           supabase
             .from('ponto_lancamentos')
             .select('id, mes_referencia, snap_liquido, colaboradores(nome)')
             .in('status', ['liberado', 'pago'])
+            .eq('empresa_id', empresaId ?? '')
             .order('created_at', { ascending: false })
             .limit(5),
 
@@ -297,6 +307,7 @@ export default function Dashboard() {
           supabase
             .from('atestados')
             .select('id', { count: 'exact', head: true })
+            .eq('empresa_id', empresaId ?? '')
             .gte('data', mesStart)
             .lte('data', mesEnd),
 
@@ -304,12 +315,14 @@ export default function Dashboard() {
           supabase
             .from('premios')
             .select('valor')
-            .eq('status', 'aprovado'),
+            .eq('status', 'aprovado')
+            .eq('empresa_id', empresaId ?? ''),
 
           // 11. Rescisões do mês
           supabase
             .from('rescisoes')
             .select('total_rescisao')
+            .eq('empresa_id', empresaId ?? '')
             .gte('data_rescisao', mesStart)
             .lte('data_rescisao', mesEnd),
 
@@ -317,7 +330,8 @@ export default function Dashboard() {
           supabase
             .from('ponto_lancamentos')
             .select('id', { count: 'exact', head: true })
-            .eq('status', 'aguardando_aprovacao'),
+            .eq('status', 'aguardando_aprovacao')
+            .eq('empresa_id', empresaId ?? ''),
 
           // 13. Colaboradores CLT com data admissão (para calcular férias)
           supabase
@@ -325,14 +339,15 @@ export default function Dashboard() {
             .select('id,data_admissao')
             .eq('tipo_contrato','clt')
             .in('status',['ativo','ferias','afastado'])
+            .eq('empresa_id', empresaId ?? '')
             .not('data_admissao','is',null),
 
           // 14. Solicitações de férias pendentes
-          supabase.from('solicitacoes_ferias').select('id',{count:'exact',head:true}).eq('status','pendente'),
+          supabase.from('solicitacoes_ferias').select('id',{count:'exact',head:true}).eq('status','pendente').eq('empresa_id', empresaId ?? ''),
 
           // 16. Aniversariantes (mês atual)
           supabase.from('colaboradores').select('id,nome,data_nascimento')
-            .eq('status','ativo').not('data_nascimento','is',null),
+            .eq('status','ativo').eq('empresa_id', empresaId ?? '').not('data_nascimento','is',null),
 
           // 15. Configurações da empresa
           supabase.from('configuracoes').select('chave, valor').in('chave', ['empresa_nome']),
