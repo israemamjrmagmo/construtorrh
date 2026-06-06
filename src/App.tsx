@@ -61,6 +61,7 @@ const PortalValeTransporte = React.lazy(() => import('@/pages/portal/PortalValeT
 const Perfil             = React.lazy(() => import('@/pages/Perfil'))
 const CentralAprovacoes  = React.lazy(() => import('@/pages/CentralAprovacoes'))
 const DossieColaborador  = React.lazy(() => import('@/pages/DossieColaborador'))
+const MigracaoV2         = React.lazy(() => import('@/pages/MigracaoV2'))
 
 // Portal do Gestor
 const GestorDashboard    = React.lazy(() => import('@/pages/gestor/GestorDashboard'))
@@ -499,6 +500,16 @@ export default function App() {
                       <DossieColaborador />
                     </Layout>
                   </PrivateRoute>
+                }
+              />
+              <Route
+                path="/migracao-v2"
+                element={
+                  <MasterRoute>
+                    <Layout>
+                      <MigracaoV2 />
+                    </Layout>
+                  </MasterRoute>
                 }
               />
 

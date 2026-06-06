@@ -16,7 +16,7 @@ import {
   Search, Bell, ChevronDown,
   LayoutGrid, FolderKanban, HeartPulse, Banknote, Gavel, Cog,
   BookOpen, CreditCard, Layers, ClipboardCheck, ShoppingBasket, FolderOpen, ScrollText, Receipt, KeyRound, Umbrella,
-  RefreshCw, Trophy, History,
+  RefreshCw, Trophy, History, Database,
 } from 'lucide-react'
 import { useAutoRefresh } from '@/hooks/useAutoRefresh'
 
@@ -50,6 +50,7 @@ const PAGE_TITLES: Record<string, { label: string; icon: React.ElementType; colo
   '/relatorios':        { label: 'Relatórios',             icon: BarChart3,      color: '#6366f1' },
   '/central-aprovacoes':{ label: 'Central de Aprovações',  icon: ClipboardCheck, color: '#f59e0b' },
   '/dossie-colaborador':{ label: 'Dossiê do Colaborador',  icon: History,        color: '#0ea5e9' },
+  '/migracao-v2':       { label: 'Migração V2',            icon: Database,       color: '#7c3aed' },
   '/usuarios':          { label: 'Usuários',            icon: UserCog,         color: '#0ea5e9' },
   '/portal-admin':      { label: 'Portal da Obra',      icon: Smartphone,      color: '#10b981' },
   '/configuracoes':     { label: 'Configurações',       icon: Settings,        color: '#64748b' },
@@ -178,7 +179,8 @@ const NAV_GROUPS = [
       { to: '/gestor-admin',  label: 'Gestores',              icon: BarChart3, color: '#f59e0b', adminOnly: true },
       { to: '/gestor',        label: 'Portal do Gestor',      icon: BarChart3, color: '#f59e0b' },
       { to: '/configuracoes', label: 'Configurações',         icon: Settings,  color: '#94a3b8' },
-      { to: '/acesso-colaboradores', label: 'Acesso Colaboradores',  icon: KeyRound,  color: '#f59e0b', adminOnly: true },
+      { to: '/acesso-colaboradores', label: 'Acesso Colaboradores', icon: KeyRound, color: '#f59e0b', adminOnly: true },
+      { to: '/migracao-v2',   label: 'Migração V2',           icon: Database,  color: '#7c3aed', adminOnly: true },
     ],
   },
 ]
