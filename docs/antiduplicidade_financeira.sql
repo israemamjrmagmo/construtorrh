@@ -15,7 +15,7 @@ HAVING COUNT(*) > 1;
 
 -- VT: verificar duplicatas
 SELECT colaborador_id, competencia, COUNT(*) as qtd
-FROM vale_transportes
+FROM vale_transporte
 WHERE status != 'cancelado'
 GROUP BY colaborador_id, competencia
 HAVING COUNT(*) > 1;
@@ -29,7 +29,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_premios_colab_comp_tipo
 
 -- Vale Transporte: único por colaborador + competência (exceto cancelados)  
 CREATE UNIQUE INDEX IF NOT EXISTS uq_vt_colab_comp
-  ON vale_transportes (colaborador_id, competencia)
+  ON vale_transporte (colaborador_id, competencia)
   WHERE status != 'cancelado';
 
 -- Adiantamentos: único por colaborador + competência + tipo (exceto cancelados)
