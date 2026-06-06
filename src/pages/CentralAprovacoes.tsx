@@ -61,13 +61,13 @@ export default function CentralAprovacoes() {
       const [premiosRes, vtsRes, fechRes] = await Promise.all([
         supabase.from('premios').select('id, colaborador_id, tipo, descricao, valor, competencia, status, colaboradores(nome), obras(nome)').eq('status', 'pendente').order('created_at', { ascending: false }),
         supabase.from('vale_transportes').select('id, colaborador_id, competencia, valor, status, colaboradores(nome)').eq('status', 'pendente').order('created_at', { ascending: false }),
-        supabase.from('ponto_lancamentos').select('id, colaborador_id, obra_id, mes_referencia, status, snap_valor_total, valor_total, colaboradores(nome), obras(nome)').in('status', ['pendente_fechamento', 'aguardando_aprovacao']).order('created_at', { ascending: false }),
+        supabase.from('ponto_lancamentos').select('id, colaborador_id, obra_id, mes_referencia, status, snap_valor_total, valor_total, pessoas!colaborador_id(nome), obras(nome)').in('status', ['pendente_fechamento', 'aguardando_aprovacao']).order('created_at', { ascending: false }),
       ])
 
       if (premiosRes.data) {
         setPremios(premiosRes.data.map((p: any) => ({
           id: p.id, colaborador_id: p.colaborador_id,
-          colaborador_nome: p.colaboradores?.nome || '—',
+          colaborador_nome: (p as any).pessoas?.nome || p.colaboradores?.nome || '—',
           obra_nome: p.obras?.nome || null,
           tipo: p.tipo, descricao: p.descricao, valor: p.valor,
           competencia: p.competencia, status: p.status,
