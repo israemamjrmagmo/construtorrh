@@ -31,7 +31,7 @@ import {
   Building2, Plus, Pencil, Power, PowerOff, Search, Users, Shield,
   Crown, Package, Loader2, RefreshCw, UserPlus, Trash2, CheckCircle2,
   XCircle, LayoutDashboard, Settings, ChevronRight, Globe, Mail,
-  Phone, MapPin, Calendar, BarChart3, Star, Key, LogOut,
+  Phone, MapPin, Calendar, BarChart3, Star, Key, LogOut, Database,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
