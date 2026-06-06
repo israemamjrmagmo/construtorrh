@@ -35,6 +35,13 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 
+async function sha256(msg: string) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(msg))
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('')
+}
+
+
+
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 type Empresa = {
   id: string; created_at: string; nome: string; cnpj: string | null
@@ -217,18 +224,25 @@ export default function SaasPainel() {
     }
 
     setSavingUsr(true)
+    // Senha padrão = primeiros 5 dígitos do CNPJ da empresa
+    const cnpjDigits = (empresaSel.cnpj ?? '').replace(/\D/g, '')
+    const senhaDefault = cnpjDigits.substring(0, 5) || '12345'
+    const senhaHash = await sha256(senhaDefault)
+
     const payload = {
-      empresa_id: empresaSel.id,
-      nome:       formUsr.nome.trim(),
-      email:      formUsr.email.trim().toLowerCase(),
-      role:       formUsr.role,
-      ativo:      true,
-      user_id:    crypto.randomUUID(), // será substituído pelo auth.uid() quando o usuário fizer login
+      empresa_id:     empresaSel.id,
+      nome:           formUsr.nome.trim(),
+      email:          formUsr.email.trim().toLowerCase(),
+      role:           formUsr.role,
+      ativo:          true,
+      user_id:        crypto.randomUUID(),
+      senha_hash:     senhaHash,
+      primeiro_acesso: true,
     }
     const { error } = await supabaseV2.from('empresa_usuarios').insert(payload)
     setSavingUsr(false)
     if (error) { toast.error('Erro: ' + error.message); return }
-    toast.success('✅ Usuário adicionado!')
+    toast.success(`✅ Usuário adicionado! Senha padrão: ${senhaDefault}`)
     setModalUsr(false)
     setFormUsr(EMPTY_USR)
     fetchUsuarios(empresaSel.id)

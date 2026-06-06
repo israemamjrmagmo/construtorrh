@@ -66,6 +66,8 @@ const MigracaoV2         = React.lazy(() => import('@/pages/MigracaoV2'))
 const GestaoEmpresas     = React.lazy(() => import('@/pages/GestaoEmpresas'))
 const SaasPainel         = React.lazy(() => import('@/pages/SaasPainel'))
 const SaasLogin          = React.lazy(() => import('@/pages/SaasLogin'))
+const EmpresaLogin        = React.lazy(() => import('@/pages/EmpresaLogin'))
+const EmpresaTrocarSenha  = React.lazy(() => import('@/pages/EmpresaTrocarSenha'))
 
 // Portal do Gestor
 const GestorDashboard    = React.lazy(() => import('@/pages/gestor/GestorDashboard'))
@@ -150,7 +152,9 @@ export default function App() {
               {/* Public */}
               <Route path="/login" element={<Login />} />
 
-              <Route path="/saas-login" element={<SaasLogin />} />
+              <Route path="/saas-login"          element={<SaasLogin />} />
+              <Route path="/empresa-login"       element={<EmpresaLogin />} />
+              <Route path="/empresa-trocar-senha" element={<EmpresaTrocarSenha />} />
 
               {/* ── Portal Externo (público, sem Layout) ── */}
               <Route path="/portal"            element={<PortalLogin />} />
