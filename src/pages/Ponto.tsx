@@ -736,10 +736,11 @@ export default function Ponto() {
   // ── Carregar colaboradores + obras ──────────────────────────────────────
   useEffect(()=>{
     const load=async()=>{
-      const [{data:colsRaw},{data:obsRaw}]=await Promise.all([
-        supabase.from('colaboradores').select('id,nome,chapa,funcao_id,obra_id,tipo_contrato,data_admissao,status,data_status').in('status',['ativo','afastado','ferias']).order('nome'),
+      const [{data:colsRaw, error:colsErr},{data:obsRaw}]=await Promise.all([
+        supabase.from('colaboradores').select('id,nome,chapa,funcao_id,obra_id,tipo_contrato,data_admissao,status,data_status').order('nome'),
         supabase.from('obras').select('id,nome').order('nome'),
       ])
+      if(colsErr) { console.error('PONTO colaboradores error:', colsErr); toast.error('Erro ao carregar colaboradores: '+colsErr.message) }
       setColaboradores((colsRaw??[]).map((c:any)=>({
         id:c.id,nome:c.nome,chapa:c.chapa??null,
         funcao_id:c.funcao_id??null,
