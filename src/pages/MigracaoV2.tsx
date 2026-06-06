@@ -344,8 +344,8 @@ export default function MigracaoV2() {
 
     const { data: colabs, error } = await supabase
       .from('colaboradores')
-      .select('id,cpf,obra_id,funcao_id,chapa,tipo_contrato,salario,data_admissao,data_demissao,status,observacoes,ctps_numero,ctps_serie')
-      .order('created_at', { ascending: true })
+      .select('id,cpf,obra_id,funcao_id,chapa,tipo_contrato,salario,data_admissao,data_demissao,status,observacoes,ctps_numero,ctps_serie,created_at')
+      .order('created_at', { ascending: false }) // mais recente primeiro
 
     if (error) {
       upd('vinculos', { status: 'error', error: error.message })
@@ -356,58 +356,60 @@ export default function MigracaoV2() {
     upd('vinculos', { total: colabs?.length ?? 0 })
     log(`📋 ${colabs?.length ?? 0} vínculos a migrar`)
 
+    // Controla qual CPF já tem um vínculo 'ativo' registrado no V2
+    // O primeiro encontrado (mais recente) fica ativo; os demais ficam encerrados
+    const cpfAtivo = new Set<string>()
+
     let migrated = 0
-    const BATCH = 50
     const arr = colabs ?? []
 
-    for (let i = 0; i < arr.length; i += BATCH) {
-      const batch = arr.slice(i, i + BATCH)
-      const inserts = batch
-        .map(c => {
-          const cpf = c.cpf?.replace(/\D/g, '') ?? ''
-          const pessoaId = cpfToV2Id.get(cpf)
-          if (!pessoaId) return null
-          return {
-            pessoa_id:     pessoaId,
-            empresa_id:    empId,
-            obra_id:       obraMap.get(c.obra_id) ?? null,
-            funcao_id:     funcaoMap.get(c.funcao_id) ?? null,
-            chapa:         c.chapa,
-            tipo_contrato: c.tipo_contrato ?? 'clt',
-            salario:       c.salario,
-            data_admissao: c.data_admissao ?? new Date().toISOString().slice(0, 10),
-            data_demissao: c.data_demissao,
-            status:        c.status === 'ativo' ? 'ativo' : 'encerrado',
-            observacoes:   c.observacoes,
-            ctps_numero:   c.ctps_numero,
-            ctps_serie:    c.ctps_serie,
-          }
-        })
-        .filter(Boolean) as object[]
+    // Inserção individual para evitar que um erro numa linha bloqueie o lote inteiro
+    for (const c of arr) {
+      const cpf = c.cpf?.replace(/\D/g, '') ?? ''
+      const pessoaId = cpfToV2Id.get(cpf)
+      if (!pessoaId) continue
 
-      if (inserts.length === 0) continue
+      // Se o colaborador V1 está ativo E já tem outro vínculo ativo para este CPF → encerra
+      let statusFinal: string
+      if (c.status === 'ativo' && !cpfAtivo.has(cpf)) {
+        statusFinal = 'ativo'
+        cpfAtivo.add(cpf)
+      } else {
+        statusFinal = 'encerrado'
+      }
+
+      const payload = {
+        pessoa_id:     pessoaId,
+        empresa_id:    empId,
+        obra_id:       obraMap.get(c.obra_id) ?? null,
+        funcao_id:     funcaoMap.get(c.funcao_id) ?? null,
+        chapa:         c.chapa,
+        tipo_contrato: c.tipo_contrato ?? 'clt',
+        salario:       c.salario,
+        data_admissao: c.data_admissao ?? new Date().toISOString().slice(0, 10),
+        data_demissao: c.data_demissao,
+        status:        statusFinal,
+        observacoes:   c.observacoes,
+        ctps_numero:   c.ctps_numero,
+        ctps_serie:    c.ctps_serie,
+      }
 
       const { data: inserted, error: err } = await supabaseV2
         .from('vinculos_empregaticos')
-        .insert(inserts)
-        .select('id, pessoa_id')
+        .insert(payload)
+        .select('id')
+        .single()
 
       if (err) {
-        log(`⚠️ Lote vínculos ${i}-${i + BATCH}: ${err.message}`)
-      } else {
-        for (let j = 0; j < batch.length; j++) {
-          const c = batch[j]
-          const cpf = c.cpf?.replace(/\D/g, '') ?? ''
-          const pessoaId = cpfToV2Id.get(cpf)
-          const vins = inserted?.filter(v => v.pessoa_id === pessoaId)
-          if (vins?.length) colabToVinculo.set(c.id, vins[vins.length - 1].id)
-        }
-        migrated += inserted?.length ?? 0
+        log(`⚠️ Vínculo ${c.id} (${cpf}): ${err.message}`)
+      } else if (inserted) {
+        colabToVinculo.set(c.id, inserted.id)
+        migrated++
         upd('vinculos', { migrated })
       }
     }
 
-    log(`✅ ${migrated} vínculos migrados`)
+    log(`✅ ${migrated} vínculos migrados (${cpfAtivo.size} ativos, ${migrated - cpfAtivo.size} encerrados)`)
     upd('vinculos', { status: 'done', migrated, total: arr.length })
     return colabToVinculo
   }, [])
