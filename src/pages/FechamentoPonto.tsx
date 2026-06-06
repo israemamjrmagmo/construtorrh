@@ -218,7 +218,7 @@ export default function FechamentoPonto() {
         colaboradores(nome, chapa, tipo_contrato, funcao_id, vale_transporte, vt_dados, data_admissao, funcoes(nome)),
         obras(nome, considera_sabado_util, desconta_vt)
       `)
-      .in('status', ['em_fechamento', 'aguardando_aprovacao', 'aprovado', 'liberado', 'pago', 'rascunho', 'recusado'])
+      .in('status', ['em_fechamento', 'aguardando_aprovacao', 'pendente_fechamento', 'aprovado', 'liberado', 'pago', 'rascunho', 'recusado'])
       .eq('mes_referencia', mr)
       .order('data_inicio')
 
@@ -798,7 +798,7 @@ export default function FechamentoPonto() {
   // ── Contadores para as abas ─────────────────────────────────────────────
   const contAbas = useMemo(() => ({
     fechamento:  lancamentos.filter(l => ['em_fechamento','rascunho'].includes(l.status)).length,
-    pendente:    lancamentos.filter(l => l.status === 'aguardando_aprovacao').length,
+    pendente:    lancamentos.filter(l => l.status === 'pendente_fechamento' || l.status === 'aguardando_aprovacao').length,
     aprovado:    lancamentos.filter(l => l.status === 'aprovado').length,       // aguardando liberação
     liberado:    lancamentos.filter(l => l.status === 'liberado').length,       // liberado p/ pagamento
     pago:        lancamentos.filter(l => l.status === 'pago').length,           // já pago
@@ -812,7 +812,7 @@ export default function FechamentoPonto() {
     const statusAba: string[] = abaFechamento === 'fechamento'
       ? ['em_fechamento', 'rascunho']
       : abaFechamento === 'pendente'
-        ? ['aguardando_aprovacao']
+        ? ['pendente_fechamento', 'aguardando_aprovacao']
         : abaFechamento === 'aprovado'
           ? ['aprovado']
           : abaFechamento === 'liberado'
@@ -846,14 +846,14 @@ export default function FechamentoPonto() {
   }, [lancamentos, busca, abaFechamento, filtroObraFech, filtroFuncaoFech])
 
   const totalGeral  = useMemo(() => lancamentos.reduce((s, l) => s + l.valor_total, 0), [lancamentos])
-  const pendentes    = lancamentos.filter(l => ['em_fechamento','aguardando_aprovacao','aprovado','liberado','rascunho'].includes(l.status))
+  const pendentes    = lancamentos.filter(l => ['em_fechamento','pendente_fechamento','aguardando_aprovacao','aprovado','liberado','rascunho'].includes(l.status))
   const pagos        = lancamentos.filter(l => l.status === 'pago')
   // Totais financeiros separados
   const totalAberto  = useMemo(() => pendentes.reduce((s,l) => s + (l.snap_liquido ?? l.valor_total ?? 0), 0), [pendentes])
   const totalPago    = useMemo(() => pagos.reduce((s,l) => s + (l.snap_liquido ?? l.valor_total ?? 0), 0), [pagos])
   const totalLiberado= useMemo(() => lancamentos.filter(l=>l.status==='liberado').reduce((s,l)=>s+(l.snap_liquido??l.valor_total??0),0), [lancamentos])
   const qtdEmFech    = lancamentos.filter(l=>l.status==='em_fechamento').length
-  const qtdAguard    = lancamentos.filter(l=>l.status==='aguardando_aprovacao').length
+  const qtdAguard    = lancamentos.filter(l=>l.status==='pendente_fechamento'||l.status==='aguardando_aprovacao').length
   const qtdAprov     = lancamentos.filter(l=>l.status==='aprovado').length
   const qtdLib       = lancamentos.filter(l=>l.status==='liberado').length
 
@@ -1154,12 +1154,13 @@ export default function FechamentoPonto() {
 
   // ── Liberar para pagamento (direto, sem fechamento intermediário) ──────────
     const STATUS_BADGE: Record<string, { bg: string; color: string; label: string }> = {
-    em_fechamento:        { bg: '#dbeafe', color: '#1d4ed8', label: '🔒 Em Fechamento' },
-    aguardando_aprovacao: { bg: '#fef3c7', color: '#b45309', label: '⏳ Ag. Aprovação' },
+    em_fechamento:        { bg: '#dbeafe', color: '#1d4ed8', label: '📋 Em Fechamento' },
+    pendente_fechamento:  { bg: '#fef3c7', color: '#b45309', label: '⏳ Pendente de Fechamento' },
+    aguardando_aprovacao: { bg: '#fef3c7', color: '#b45309', label: '⏳ Pendente de Fechamento' },
     aprovado:             { bg: '#dcfce7', color: '#15803d', label: '✅ Aprovado' },
-    liberado:             { bg: '#ede9fe', color: '#7c3aed', label: '📜 Liberado p/ Pgto' },
+    liberado:             { bg: '#ede9fe', color: '#7c3aed', label: '💰 Liberado p/ Pagamento' },
     pago:                 { bg: '#f0fdf4', color: '#166534', label: '💳 Pago' },
-    rascunho:             { bg: '#f1f5f9', color: '#475569', label: '↩ Devolvido p/ Edição' },
+    rascunho:             { bg: '#f1f5f9', color: '#475569', label: '📝 Rascunho' },
     recusado:             { bg: '#fee2e2', color: '#dc2626', label: '❌ Recusado' },
   }
 
@@ -1217,7 +1218,7 @@ export default function FechamentoPonto() {
       <div style={{ display: 'flex', gap: 0, marginBottom: 20, borderBottom: '2px solid var(--border)', flexWrap: 'wrap' }}>
         {([
           { key: 'fechamento',  label: '🔒 Em Fechamento',              cnt: contAbas.fechamento,  cor: '#1d4ed8' },
-          { key: 'pendente',    label: '⏳ Ag. Aprovação',               cnt: contAbas.pendente,    cor: '#b45309' },
+          { key: 'pendente',    label: '⏳ Pendente de Fechamento',          cnt: contAbas.pendente,    cor: '#b45309' },
           { key: 'aprovado',    label: '✅ Aprovado',                cnt: contAbas.aprovado,    cor: '#059669' },
           { key: 'liberado',    label: '💜 Liberado p/ Pagamento',   cnt: contAbas.liberado,    cor: '#7c3aed' },
           { key: 'pago',        label: '💳 Pago',                    cnt: contAbas.pago,        cor: '#1d4ed8' },
@@ -1276,7 +1277,7 @@ export default function FechamentoPonto() {
               <span>🔒 Em Fechamento</span><strong>{qtdEmFech}</strong>
             </div>
             <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, color:'#92400e' }}>
-              <span>⏱ Ag. Aprovação</span><strong>{qtdAguard}</strong>
+              <span>⏳ Pendente de Fechamento</span><strong>{qtdAguard}</strong>
             </div>
             <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, color:'#92400e' }}>
               <span>✅ Aprovados</span><strong>{qtdAprov}</strong>
@@ -1548,7 +1549,7 @@ export default function FechamentoPonto() {
                                   onClick={() => abrirEspelho(lanc)}>
                                   <Eye size={11} /> Ver Ponto
                                 </Button>
-                                {(lanc.status === 'em_fechamento' || lanc.status === 'aguardando_aprovacao') && (
+                                {(lanc.status === 'em_fechamento' || lanc.status === 'aguardando_aprovacao' || lanc.status === 'pendente_fechamento') && (
                                   <>
                                     <Button size="sm" style={{ height: 26, fontSize: 11, background: '#15803d', color: '#fff' }}
                                       disabled={saving}

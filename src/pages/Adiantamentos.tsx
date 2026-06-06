@@ -235,6 +235,22 @@ export default function Adiantamentos() {
       desconto_obs:           form.desconto_obs||null,
     }
     if(form.obra_id) payload.obra_id = form.obra_id
+    // ── Anti-duplicidade: verificar antes de inserir ─────────────────────────
+    if (!editando && form.competencia && form.tipo) {
+      const { data: dup } = await supabase
+        .from('adiantamentos')
+        .select('id')
+        .eq('colaborador_id', form.colaborador_id)
+        .eq('competencia', form.competencia)
+        .eq('tipo', form.tipo)
+        .neq('status', 'cancelado')
+        .limit(1)
+      if (dup && dup.length > 0) {
+        toast.error(`Já existe um adiantamento do tipo "${form.tipo}" para este colaborador em ${form.competencia}.`)
+        setSaving(false)
+        return
+      }
+    }
     if(!editando && arquivoReq){
       const fp=`adiantamentos/${form.colaborador_id}/${Date.now()}_${arquivoReq.name}`
       const {error:upErr} = await supabase.storage.from('documentos').upload(fp, arquivoReq)

@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 
 // ─── Roles disponíveis ────────────────────────────────────────────────────────
-export type Role = 'admin' | 'rh' | 'obra' | 'visualizador'
+export type Role = 'admin' | 'rh' | 'gestor' | 'obra' | 'visualizador'
 
 export interface Profile {
   id: string
@@ -31,6 +31,10 @@ export const ROLE_PERMISSIONS: Record<Role, {
     canCreate: true, canEdit: true, canDelete: false, canViewFinanceiro: true,
     label: 'RH', color: '#0369a1', bg: '#e0f2fe',
   },
+  gestor: {
+    canCreate: true, canEdit: true, canDelete: false, canViewFinanceiro: true,
+    label: 'Gestor', color: '#16a34a', bg: '#dcfce7',
+  },
   obra: {
     canCreate: true, canEdit: false, canDelete: false, canViewFinanceiro: false,
     label: 'Obra', color: '#b45309', bg: '#fef3c7',
@@ -44,6 +48,7 @@ export const ROLE_PERMISSIONS: Record<Role, {
 export const ROLE_DESCRIPTIONS: Record<Role, string[]> = {
   admin:       ['Acesso total', 'Criar / Editar / Excluir', 'Financeiro visível', 'Gerenciar usuários'],
   rh:          ['Criar e editar registros', 'Visualizar tudo', 'Financeiro visível', 'Não pode excluir'],
+  gestor:      ['Aprovar/reprovar lançamentos', 'Criar e editar registros', 'Financeiro visível', 'Pode excluir documentos'],
   obra:        ['Registrar ocorrências', 'Visualizar própria obra', 'Sem acesso financeiro', 'Não pode editar/excluir'],
   visualizador:['Apenas visualização', 'Sem criação/edição', 'Sem financeiro', 'Sem exclusão'],
 }

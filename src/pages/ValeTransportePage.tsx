@@ -586,6 +586,22 @@ export default function ValeTransportePage() {
       descontar_6pct: form.descontar_6pct,
       observacoes: form.observacoes || null,
     }
+    // ── Anti-duplicidade: verificar antes de inserir ─────────────────────────
+    if (!editando && form.competencia) {
+      const { data: dup } = await supabase
+        .from('vale_transporte')
+        .select('id')
+        .eq('colaborador_id', colabSel.id)
+        .eq('competencia', form.competencia)
+        .neq('status', 'cancelado')
+        .limit(1)
+      if (dup && dup.length > 0) {
+        toast.error(`Já existe um Vale Transporte para este colaborador em ${form.competencia}. Edite o registro existente.`)
+        setSaving(false)
+        return
+      }
+    }
+
     const { error } = editando
       ? await supabase.from('vale_transporte').update(payload).eq('id', editando.id)
       : await supabase.from('vale_transporte').insert(payload)

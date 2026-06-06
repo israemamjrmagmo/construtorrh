@@ -1270,6 +1270,7 @@ export default function Documentos() {
   }
 
   const isAdmin = profile?.role === 'admin' || profile?.role === 'rh'
+  const podeExcluir = profile?.role === 'admin' || profile?.role === 'gestor'
 
   // ── Tabs config ────────────────────────────────────────────────────────────
   const tabs: { id: Aba; label: string; icon: React.ReactNode }[] = [
@@ -1404,11 +1405,10 @@ export default function Documentos() {
                   ) : (
                     <div style={{ border:'1px solid var(--border)', borderRadius:10, overflow:'hidden', background:'var(--card)' }}>
                       {/* Cabeçalho da tabela */}
-                      <div style={{ display:'grid', gridTemplateColumns:'200px 1fr 200px 95px', gap:0,
+                      <div style={{ display:'grid', gridTemplateColumns:'1fr 200px 95px', gap:0,
                         background:'#f1f5f9', borderBottom:'2px solid var(--border)', padding:'7px 14px',
                         fontSize:11, fontWeight:700, color:'#64748b', textTransform:'uppercase', letterSpacing:'.5px' }}>
-                        <div>Tipo</div>
-                        <div>Nome / Arquivo</div>
+                        <div>Tipo / Documento</div>
                         <div>Data</div>
                         <div style={{ textAlign:'center' }}>Ações</div>
                       </div>
@@ -1417,46 +1417,41 @@ export default function Documentos() {
                         const s = TIPO_COLORS[doc.tipo] ?? { bg:'#f3f4f6', color:'#6b7280' }
                         return (
                           <div key={`${doc.source}-${doc.id}`}
-                            style={{ display:'grid', gridTemplateColumns:'200px 1fr 200px 95px', gap:0,
+                            style={{ display:'grid', gridTemplateColumns:'1fr 200px 95px', gap:0,
                               padding:'9px 14px', borderBottom: idx < docsFiltrados.length-1 ? '1px solid var(--border)' : 'none',
                               background: idx % 2 === 0 ? 'var(--card)' : '#f8fafc',
                               alignItems:'center' }}>
 
-                            {/* Coluna 1: TIPO */}
-                            <div style={{ paddingRight:10 }}>
-                              <span style={{ display:'inline-block', padding:'3px 9px', borderRadius:6,
-                                fontSize:10, fontWeight:700, background:s.bg, color:s.color,
-                                whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', maxWidth:'100%' }}>
-                                {doc.tipo || 'Outros'}
-                              </span>
-                            </div>
-
-                            {/* Coluna 2: NOME / ARQUIVO */}
+                            {/* Coluna 1: TIPO + ARQUIVO (consolidado) */}
                             <div style={{ minWidth:0, paddingRight:10 }}>
-                              {doc.descricao && (
-                                <div style={{ fontSize:13, fontWeight:600, color:'var(--foreground)',
-                                  overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', lineHeight:1.3 }}
-                                  title={doc.descricao}>
-                                  {doc.descricao}
-                                </div>
-                              )}
+                              <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom: doc.documento_nome ? 3 : 0 }}>
+                                <span style={{ display:'inline-block', padding:'3px 9px', borderRadius:6,
+                                  fontSize:11, fontWeight:700, background:s.bg, color:s.color,
+                                  whiteSpace:'nowrap', flexShrink:0 }}>
+                                  {doc.tipo || 'Outros'}
+                                </span>
+                                {doc.descricao && (
+                                  <span style={{ fontSize:13, fontWeight:600, color:'var(--foreground)',
+                                    overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}
+                                    title={doc.descricao}>
+                                    {doc.descricao}
+                                  </span>
+                                )}
+                              </div>
                               {doc.documento_nome && (
                                 <div style={{ fontSize:11, color:'#64748b', overflow:'hidden', textOverflow:'ellipsis',
-                                  whiteSpace:'nowrap', marginTop:2 }} title={doc.documento_nome}>
+                                  whiteSpace:'nowrap', paddingLeft:2 }} title={doc.documento_nome}>
                                   📎 {doc.documento_nome}
                                 </div>
                               )}
-                              {!doc.descricao && !doc.documento_nome && (
-                                <span style={{ fontSize:11, color:'#94a3b8' }}>—</span>
-                              )}
                             </div>
 
-                            {/* Coluna 3: DATA */}
+                            {/* Coluna 2: DATA */}
                             <div style={{ fontSize:12, color:'#475569', whiteSpace:'nowrap' }}>
                               {formatDate(doc.data) || '—'}
                             </div>
 
-                            {/* Coluna 4: AÇÕES */}
+                            {/* Coluna 3: AÇÕES */}
                             <div style={{ display:'flex', gap:5, alignItems:'center', justifyContent:'center' }}>
                               {doc.documento_url ? (
                                 <>
@@ -1481,7 +1476,7 @@ export default function Documentos() {
                                   <AlertCircle size={12}/>
                                 </span>
                               )}
-                              {isAdmin && (
+                              {podeExcluir && (
                                 <button
                                   onClick={() => { setDeleteId(doc.id); setDeleteSource(doc.source) }}
                                   title="Excluir documento"

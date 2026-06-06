@@ -59,6 +59,8 @@ const AcessoColaboradores = React.lazy(() => import('@/pages/AcessoColaboradores
 const PortalContracheque    = React.lazy(() => import('@/pages/portal/PortalContracheque'))
 const PortalValeTransporte = React.lazy(() => import('@/pages/portal/PortalValeTransporte'))
 const Perfil             = React.lazy(() => import('@/pages/Perfil'))
+const CentralAprovacoes  = React.lazy(() => import('@/pages/CentralAprovacoes'))
+const DossieColaborador  = React.lazy(() => import('@/pages/DossieColaborador'))
 
 // Portal do Gestor
 const GestorDashboard    = React.lazy(() => import('@/pages/gestor/GestorDashboard'))
@@ -475,6 +477,26 @@ export default function App() {
                   <PrivateRoute>
                     <Layout>
                       <AcessoColaboradores />
+                    </Layout>
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/central-aprovacoes"
+                element={
+                  <PrivateRoute>
+                    <Layout>
+                      <CentralAprovacoes />
+                    </Layout>
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/dossie-colaborador"
+                element={
+                  <PrivateRoute>
+                    <Layout>
+                      <DossieColaborador />
                     </Layout>
                   </PrivateRoute>
                 }

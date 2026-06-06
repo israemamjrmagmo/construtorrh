@@ -40,7 +40,7 @@ interface PlaybookItem {
 interface Lancamento {
   id: string; obra_id: string; obra_nome: string
   mes_referencia: string; data_inicio: string; data_fim: string
-  status: 'rascunho'|'aguardando_aprovacao'|'em_fechamento'|'aprovado'|'recusado'|'liberado'|'pago'
+  status: 'rascunho'|'aguardando_aprovacao'|'pendente_fechamento'|'em_fechamento'|'aprovado'|'recusado'|'liberado'|'pago'
   motivo_recusa: string | null
   valor_hora_snapshot: number | null  // gravado ao salvar (salvarLanc) — imutável
   snap_valor_hora:     number | null  // gravado pelo Fechamento (aprovarLanc) — fallback
@@ -1363,7 +1363,7 @@ export default function Ponto() {
     const novoLancInicioFinal = iniClamp
     const novoLancFimFinal    = fimClamp
     // Bloquear se houver lançamento em rascunho ou recusado (precisa aprovar antes)
-    const temAberto=lancamentos.some(l=>l.status==='rascunho'||l.status==='recusado'||l.status==='aguardando_aprovacao')
+    const temAberto=lancamentos.some(l=>l.status==='rascunho'||l.status==='recusado'||l.status==='aguardando_aprovacao'||l.status==='pendente_fechamento')
     if(temAberto){toast.error('Finalize os lançamentos em aberto (envie para Fechamento) antes de criar um novo');return}
     const lancsPorObra=lancamentos.filter(l=>l.obra_id===novoLancObraId).length
     if(lancsPorObra>=2){toast.error('Esta obra já tem 2 lançamentos neste mês');return}
@@ -1409,7 +1409,7 @@ export default function Ponto() {
 
   async function excluirLancamento(id:string){
     const lanc=lancamentos.find(l=>l.id===id)
-    if(lanc&&!['rascunho','recusado','aguardando_aprovacao'].includes(lanc.status)){toast.error('Apenas lançamentos não aprovados podem ser excluídos');return}
+    if(lanc&&!['rascunho','recusado','aguardando_aprovacao','pendente_fechamento'].includes(lanc.status)){toast.error('Apenas lançamentos não aprovados podem ser excluídos');return}
     setModalExcluir(id)
   }
 
@@ -1427,7 +1427,7 @@ export default function Ponto() {
   async function mudarStatus(id:string,status:Lancamento['status'],motivo?:string){
     // Ao enviar para aprovação: gravar valor_hora como snapshot imutável usando o valor do próprio lançamento
     const payload: Record<string,unknown> = { status, motivo_recusa:motivo??null }
-    if(status==='aguardando_aprovacao'){
+    if(status==='aguardando_aprovacao'||status==='pendente_fechamento'){
       const snapLanc = snapshotPorLanc.get(id)
       const vhParaSnap = (snapLanc != null && snapLanc > 0) ? snapLanc : (valorHora > 0 ? valorHora : 0)
       if(vhParaSnap > 0) payload.valor_hora_snapshot = vhParaSnap
@@ -1452,6 +1452,7 @@ export default function Ponto() {
     if(error){toast.error('Erro: '+error.message);return}
     const msgs:Record<string,string>={
       aguardando_aprovacao:'Enviado para aprovação!',
+      pendente_fechamento:'⏳ Enviado para Fechamento!',
       em_fechamento:'✅ Ponto enviado para o Fechamento!',
       aprovado:'✅ Ponto aprovado!',
       recusado:'Ponto recusado — devolvido para edição',
@@ -1755,7 +1756,7 @@ export default function Ponto() {
                 const periodoHoje2 = historicoContrato.find(p => p.data_inicio<=today4 && (p.data_fim===null||p.data_fim>=today4))
                 const tipoAtivo2 = periodoHoje2?.tipo_contrato ?? colabSel.tipo_contrato ?? 'clt'
                 const abaEhAtiva = abaContrato === tipoAtivo2
-                const temAberto = lancamentos.filter(l=>(l as any).tipo_contrato_lanc===abaContrato||(!((l as any).tipo_contrato_lanc)&&abaContrato===tipoAtivo2)).some(l=>['rascunho','recusado','aguardando_aprovacao'].includes(l.status))
+                const temAberto = lancamentos.filter(l=>(l as any).tipo_contrato_lanc===abaContrato||(!((l as any).tipo_contrato_lanc)&&abaContrato===tipoAtivo2)).some(l=>['rascunho','recusado','aguardando_aprovacao','pendente_fechamento'].includes(l.status))
                 return (
                   <Button size="sm"
                     disabled={!colabSel || !abaEhAtiva || temAberto}
@@ -2077,12 +2078,12 @@ export default function Ponto() {
                           {prodExpandida===lanc.id?<ChevronDown size={11}/>:<ChevronRight size={11}/>}
                         </Button>
                       )}
-                      {lanc.status==='rascunho'&&<Button size="sm" variant="outline" style={{height:26,fontSize:11,gap:2,borderColor:'#16a34a',color:'#15803d',background:'#f0fdf4'}} disabled={saving} onClick={async()=>{await salvarLanc(lanc.id);await mudarStatus(lanc.id,'aguardando_aprovacao')}}>✔ Salvar e Aprovar</Button>}
-                      {lanc.status==='aguardando_aprovacao'&&<Button size="sm" variant="outline" style={{height:26,fontSize:11,gap:2,borderColor:'#7c3aed',color:'#6d28d9',background:'#faf5ff'}} onClick={()=>mudarStatus(lanc.id,'em_fechamento')}>📋 Enviar p/ Fechamento</Button>}
-                      {lanc.status==='aguardando_aprovacao'&&<Button size="sm" variant="outline" style={{height:26,fontSize:11,gap:2,borderColor:'#b45309',color:'#b45309',background:'#fef3c7'}} onClick={()=>mudarStatus(lanc.id,'rascunho')}>✏️ Editar</Button>}
-                      {lanc.status==='recusado'&&<Button size="sm" variant="outline" style={{height:26,fontSize:11,gap:2,borderColor:'#16a34a',color:'#15803d',background:'#f0fdf4'}} disabled={saving} onClick={async()=>{await salvarLanc(lanc.id);await mudarStatus(lanc.id,'aguardando_aprovacao')}}>↩ Salvar e Reenviar</Button>}
+                      {lanc.status==='rascunho'&&<Button size="sm" variant="outline" style={{height:26,fontSize:11,gap:2,borderColor:'#16a34a',color:'#15803d',background:'#f0fdf4'}} disabled={saving} onClick={async()=>{await salvarLanc(lanc.id);await mudarStatus(lanc.id,'pendente_fechamento')}}>✔ Salvar e Aprovar</Button>}
+                      {(lanc.status==='aguardando_aprovacao'||lanc.status==='pendente_fechamento')&&<Button size="sm" variant="outline" style={{height:26,fontSize:11,gap:2,borderColor:'#7c3aed',color:'#6d28d9',background:'#faf5ff'}} onClick={()=>mudarStatus(lanc.id,'em_fechamento')}>📋 Enviar p/ Fechamento</Button>}
+                      {(lanc.status==='aguardando_aprovacao'||lanc.status==='pendente_fechamento')&&<Button size="sm" variant="outline" style={{height:26,fontSize:11,gap:2,borderColor:'#b45309',color:'#b45309',background:'#fef3c7'}} onClick={()=>mudarStatus(lanc.id,'rascunho')}>✏️ Editar</Button>}
+                      {lanc.status==='recusado'&&<Button size="sm" variant="outline" style={{height:26,fontSize:11,gap:2,borderColor:'#16a34a',color:'#15803d',background:'#f0fdf4'}} disabled={saving} onClick={async()=>{await salvarLanc(lanc.id);await mudarStatus(lanc.id,'pendente_fechamento')}}>↩ Salvar e Reenviar</Button>}
                       {/* Botão Excluir — disponível para lançamentos não aprovados */}
-                      {['rascunho','aguardando_aprovacao','recusado'].includes(lanc.status)&&(
+                      {['rascunho','aguardando_aprovacao','pendente_fechamento','recusado'].includes(lanc.status)&&(
                         <Button size="sm" variant="outline" style={{height:26,fontSize:11,gap:2,borderColor:'#dc2626',color:'#dc2626',background:'#fff5f5'}} onClick={()=>excluirLancamento(lanc.id)}>
                           <Trash2 size={11}/> Excluir
                         </Button>
