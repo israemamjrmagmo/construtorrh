@@ -93,6 +93,20 @@ function calcLiquido(form: FormData): number {
 }
 
 // ─── componente ──────────────────────────────────────────────────────────────
+// Helper: formata data como "05/Mai/2026"
+function fmtDiaMes(dateStr: string | null | undefined): string {
+  if (!dateStr) return '—'
+  const MESES_ABR = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
+  const [y, m, d] = dateStr.split('-')
+  return `${d}/${MESES_ABR[parseInt(m)-1]}/${y}`
+}
+function fmtMesAno(ym: string | null | undefined): string {
+  if (!ym) return '—'
+  const MESES_ABR = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
+  const [y, m] = ym.split('-')
+  return `${MESES_ABR[parseInt(m)-1]}/${y}`
+}
+
 export default function Pagamentos() {
   const [rows, setRows] = useState<PagamentoRow[]>([])
   const [colaboradores, setColaboradores] = useState<Pick<Colaborador, 'id' | 'nome' | 'chapa'>[]>([])
@@ -1219,11 +1233,11 @@ export default function Pagamentos() {
                           </TableCell>
                           <TableCell className="text-sm">{l.obras?.nome ?? '—'}</TableCell>
                           <TableCell className="text-center text-xs text-muted-foreground">
-                            {l.data_inicio?.slice(8)}/{l.data_inicio?.slice(5,7)} → {l.data_fim?.slice(8)}/{l.data_fim?.slice(5,7)}
+                            {fmtDiaMes(l.data_inicio)} → {fmtDiaMes(l.data_fim)}
                           </TableCell>
                           <TableCell className="text-center">
                             <BadgeStatus status="liberado" />
-                            <div className="text-xs text-muted-foreground mt-0.5">{l.mes_referencia?.slice(5)}/{l.mes_referencia?.slice(0,4)}</div>
+                            <div className="text-xs text-muted-foreground mt-0.5">{fmtMesAno(l.mes_referencia)}</div>
                           </TableCell>
                           <TableCell className="text-right font-bold text-sm" style={{ color:'#15803d' }}>
                             {l.snap_liquido ? formatCurrency(l.snap_liquido) : '—'}
@@ -1439,7 +1453,7 @@ export default function Pagamentos() {
                                 </TableCell>
                                 <TableCell className="text-sm">{l.obras?.nome ?? '—'}</TableCell>
                                 <TableCell className="text-center text-xs text-muted-foreground">
-                                  {l.data_inicio?.slice(8)}/{l.data_inicio?.slice(5,7)} → {l.data_fim?.slice(8)}/{l.data_fim?.slice(5,7)}
+                                  {fmtDiaMes(l.data_inicio)} → {fmtDiaMes(l.data_fim)}
                                 </TableCell>
                                 <TableCell className="text-center">
                                   <span className="text-sm font-semibold" style={{ color:'#15803d' }}>
