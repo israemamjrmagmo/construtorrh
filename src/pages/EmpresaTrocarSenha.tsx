@@ -7,7 +7,23 @@ import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabaseV2 } from '@/lib/supabase-v2'
 import { ShieldCheck, Eye, EyeOff, Loader2, KeyRound, CheckCircle2 } from 'lucide-react'
-import { getEmpresaUsuarioSession, setEmpresaUsuarioSession, empresaUsuarioLogout } from './EmpresaLogin'
+// Funções de sessão inline (EmpresaLogin foi simplificado para redirect)
+const EU_SESSION_KEY = 'empresa_usuario_session'
+function getEmpresaUsuarioSession() {
+  try {
+    const raw = localStorage.getItem(EU_SESSION_KEY)
+    if (!raw) return null
+    const s = JSON.parse(raw)
+    if (Date.now() - s.ts > 8 * 60 * 60 * 1000) { localStorage.removeItem(EU_SESSION_KEY); return null }
+    return s
+  } catch { return null }
+}
+function setEmpresaUsuarioSession(data: object) {
+  localStorage.setItem(EU_SESSION_KEY, JSON.stringify({ ...data, ts: Date.now() }))
+}
+function empresaUsuarioLogout() {
+  localStorage.removeItem(EU_SESSION_KEY)
+}
 
 function Req({ ok, text }: { ok: boolean; text: string }) {
   return (
