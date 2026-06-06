@@ -422,7 +422,7 @@ export default function MigracaoV2() {
     log('Buscando registros de ponto no banco V1…')
 
     const { data, error } = await supabase
-      .from('registros_ponto')
+      .from('registro_ponto')
       .select('id,colaborador_id,obra_id,data,hora_entrada,saida_almoco,retorno_almoco,hora_saida,horas_trabalhadas,horas_extras,falta,justificativa')
       .order('data', { ascending: true })
 
@@ -490,7 +490,7 @@ export default function MigracaoV2() {
 
     const { data, error } = await supabase
       .from('ponto_lancamentos')
-      .select('id,colaborador_id,obra_id,mes_referencia,status,horas_normais,horas_extras,valor_horas,faltas,dias_trabalhados,snap_valor_total,snap_liquido,snap_valor_horas,snap_inss,snap_ir,snap_valor_dsr,snap_valor_premio,snap_desconto_vt,snap_faltas,valor_total')
+      .select('id,colaborador_id,obra_id,mes_referencia,status,snap_horas_normais,snap_horas_extras,snap_valor_horas,snap_faltas,snap_valor_total,snap_liquido,snap_inss,snap_ir,snap_valor_dsr,snap_valor_premio,snap_desconto_vt,snap_desconto_adiant,snap_liquido')
       .order('mes_referencia', { ascending: true })
 
     if (error) {
@@ -518,11 +518,11 @@ export default function MigracaoV2() {
           id_legado:        f.id,
           mes_referencia:   f.mes_referencia,
           status:           f.status ?? 'pendente_fechamento',
-          horas_normais:    f.horas_normais ?? 0,
-          horas_extras:     f.horas_extras ?? 0,
-          valor_horas:      f.valor_horas ?? 0,
-          faltas:           f.faltas ?? 0,
-          dias_trabalhados: f.dias_trabalhados ?? 0,
+          horas_normais:    f.snap_horas_normais ?? 0,
+          horas_extras:     f.snap_horas_extras ?? 0,
+          valor_horas:      f.snap_valor_horas ?? 0,
+          faltas:           f.snap_faltas ?? 0,
+          dias_trabalhados: 0,
           snap_valor_total: f.snap_valor_total,
           snap_liquido:     f.snap_liquido,
           snap_valor_horas: f.snap_valor_horas,
@@ -654,7 +654,7 @@ export default function MigracaoV2() {
       log('Buscando adiantamentos no banco V1…')
       const { data: adiant, error: errA } = await supabase
         .from('adiantamentos')
-        .select('id,colaborador_id,obra_id,competencia,tipo,valor,observacoes,status,data_pagamento')
+        .select('id,colaborador_id,obra_id,competencia,tipo,valor,observacoes,status')
         .order('created_at', { ascending: true })
 
       if (errA) {
@@ -674,7 +674,6 @@ export default function MigracaoV2() {
             valor:         a.valor,
             observacoes:   a.observacoes,
             status:        a.status ?? 'pendente',
-            data_pagamento: a.data_pagamento,
           }))
 
           const { data: ins, error: errIns } = await supabaseV2
@@ -699,7 +698,7 @@ export default function MigracaoV2() {
       log('Buscando vale transporte no banco V1…')
       const { data: vts, error: errVT } = await supabase
         .from('vale_transporte')
-        .select('id,colaborador_id,competencia,tipo,valor,dias_trabalhados,desconto_colaborador,valor_empresa,descontar_6pct,status,data_pagamento,observacoes')
+        .select('id,colaborador_id,competencia,tipo,valor,dias_trabalhados,desconto_colaborador,valor_empresa,descontar_6pct,status,observacoes')
         .order('created_at', { ascending: true })
 
       if (errVT) {
@@ -720,7 +719,6 @@ export default function MigracaoV2() {
             valor_empresa:        v.valor_empresa,
             descontar_6pct:       v.descontar_6pct ?? true,
             status:               v.status ?? 'pendente',
-            data_pagamento:       v.data_pagamento,
             observacoes:          v.observacoes,
           }))
 
