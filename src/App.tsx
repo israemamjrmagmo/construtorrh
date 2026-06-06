@@ -6,6 +6,7 @@ import { Toaster } from 'sonner'
 import { useAuth } from '@/hooks/useAuth'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { Layout } from '@/components/Layout'
+import SaasRoute from '@/components/SaasRoute'
 
 // ─── Lazy pages ──────────────────────────────────────────────────────────────
 const Login          = React.lazy(() => import('@/pages/Login'))
@@ -64,6 +65,7 @@ const DossieColaborador  = React.lazy(() => import('@/pages/DossieColaborador'))
 const MigracaoV2         = React.lazy(() => import('@/pages/MigracaoV2'))
 const GestaoEmpresas     = React.lazy(() => import('@/pages/GestaoEmpresas'))
 const SaasPainel         = React.lazy(() => import('@/pages/SaasPainel'))
+const SaasLogin          = React.lazy(() => import('@/pages/SaasLogin'))
 
 // Portal do Gestor
 const GestorDashboard    = React.lazy(() => import('@/pages/gestor/GestorDashboard'))
@@ -514,14 +516,15 @@ export default function App() {
                   </MasterRoute>
                 }
               />
+              <Route path="/saas-login" element={<SaasLogin />} />
               <Route
                 path="/saas-admin"
                 element={
-                  <MasterRoute>
+                  <SaasRoute>
                     <Layout>
                       <SaasPainel />
                     </Layout>
-                  </MasterRoute>
+                  </SaasRoute>
                 }
               />
               <Route
