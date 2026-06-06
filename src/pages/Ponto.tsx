@@ -873,7 +873,11 @@ export default function Ponto() {
     ;(pontosRaw??[]).forEach((r:any)=>{mapaP[r.data]=r})
     const horObra=horMapa[lanc.obra_id]??{}
 
-    return expandRange(lanc.data_inicio,lanc.data_fim).map(d=>{
+    // V2 não tem data_inicio/data_fim → derivar do mes_referencia
+    const dInicio = lanc.data_inicio || `${lanc.mes_referencia}-01`
+    const dFim    = lanc.data_fim    || `${lanc.mes_referencia}-${getUltimoDia(lanc.mes_referencia)}`
+
+    return expandRange(dInicio, dFim).map(d=>{
       const r=mapaP[d]
       const isAtestado=diasAtestado.has(d)
       const isSuspensao=diasSuspensao.has(d)
