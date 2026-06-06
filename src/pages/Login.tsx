@@ -5,8 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { toast } from 'sonner'
 import { HardHat, Mail, Lock, LogIn } from 'lucide-react'
-import { useAuth } from '@/hooks/useAuth'
-import { supabaseV2 } from '@/lib/supabase-v2'
+import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -21,8 +20,7 @@ const EU_SESSION_KEY = 'empresa_usuario_session'
 
 export default function Login() {
   const navigate   = useNavigate()
-  const { signIn } = useAuth()
-  const [submitting, setSubmitting] = useState(false)
+    const [submitting, setSubmitting] = useState(false)
 
   const { register, handleSubmit, formState: { errors } } = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
@@ -34,14 +32,14 @@ export default function Login() {
 
     try {
       // Login direto via supabaseV2 — sem passar pelo useAuth (evita checagem de profiles)
-      const { data: authData, error: authError } = await supabaseV2.auth.signInWithPassword({
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email:    emailLower,
         password: data.password,
       })
       if (authError) throw authError
 
       // Verificar se é usuário de empresa (primeiro_acesso)
-      const { data: eu } = await supabaseV2
+      const { data: eu } = await supabase
         .from('empresa_usuarios')
         .select('id, nome, email, role, empresa_id, primeiro_acesso')
         .eq('email', emailLower)
