@@ -99,92 +99,238 @@ const fmtDate = (d: string) =>
 import { supabaseV1 } from '@/lib/supabase-v1'
 
 function MigracaoEmpresa({ empresaId, empresaNome }: { empresaId: string; empresaNome: string }) {
-  const [log, setLog]     = React.useState<string[]>([])
+  const [log, setLog]       = React.useState<string[]>([])
   const [running, setRunning] = React.useState(false)
-  const [done, setDone]   = React.useState(false)
+  const [done, setDone]     = React.useState(false)
 
-  const addLog = (msg: string) => setLog(prev => [...prev, msg])
+  // Usa ref para logs imediatos (sem batching do React)
+  const logRef = React.useRef<string[]>([])
+  const addLog = (msg: string) => {
+    logRef.current = [...logRef.current, msg]
+    setLog([...logRef.current])
+  }
 
+  // ── Lê tabela do V1 com diagnóstico explícito ───────────────────────────────
+  async function lerV1<T = any>(tabela: string): Promise<T[]> {
+    const { data, error } = await supabaseV1.from(tabela).select('*')
+    if (error) {
+      addLog(`  ⚠️ V1.${tabela} erro: ${error.message} (code: ${error.code})`)
+      return []
+    }
+    const count = data?.length ?? 0
+    if (count === 0) {
+      addLog(`  ⚠️ V1.${tabela} retornou 0 registros — verifique se o RLS está desabilitado no V1`)
+    } else {
+      addLog(`  📥 V1.${tabela}: ${count} registros encontrados`)
+    }
+    return (data ?? []) as T[]
+  }
+
+  // ── Diagnóstico rápido (sem inserir) ────────────────────────────────────────
+  const diagnosticar = async () => {
+    if (!empresaId) return toast.error('Selecione uma empresa primeiro')
+    setRunning(true); logRef.current = []; setLog([])
+    addLog('🔍 Diagnóstico V1 — testando leitura (sem inserir nada)...')
+    await lerV1('funcoes')
+    await lerV1('obras')
+    await lerV1('colaboradores')
+    await lerV1('ponto_lancamentos')
+    await lerV1('ponto_registros')
+    addLog('─────────────────────────────')
+    addLog('Se todos retornaram 0: desabilite o RLS no V1 e tente novamente.')
+    addLog('Se retornaram dados: clique em "Iniciar Migração".')
+    setRunning(false)
+  }
+
+  // ── Migração completa ────────────────────────────────────────────────────────
   const iniciar = async () => {
     if (!empresaId) return toast.error('Selecione uma empresa primeiro')
-    setRunning(true); setDone(false); setLog([])
-    addLog(`🚀 Iniciando migração para ${empresaNome} (${empresaId})`)
+    setRunning(true); setDone(false); logRef.current = []; setLog([])
+    addLog(`🚀 Iniciando migração para ${empresaNome}`)
+    addLog(`   empresa_id: ${empresaId}`)
 
     try {
-      // 1. Funcoes
-      addLog('📋 Migrando funções...')
-      const { data: fns } = await supabaseV1.from('funcoes').select('*')
-      if (fns?.length) {
-        const batch = fns.map((f: any) => ({ empresa_id: empresaId, id_legado: f.id, nome: f.nome, sigla: f.sigla, descricao: f.descricao, cbo: f.cbo, valor_hora_clt: f.valor_hora_clt, valor_hora_autonomo: f.valor_hora_autonomo, ativo: f.ativo ?? true }))
-        const { error } = await supabaseV2.from('funcoes_v2').upsert(batch, { onConflict: 'empresa_id,id_legado', ignoreDuplicates: false })
-        addLog(error ? `❌ Funções: ${error.message}` : `✅ ${fns.length} funções migradas`)
+      // ── 1. Funções ──────────────────────────────────────────────────────────
+      addLog('📋 [1/5] Migrando funções...')
+      const fns = await lerV1('funcoes')
+      if (fns.length) {
+        const batch = fns.map((f: any) => ({
+          empresa_id: empresaId, id_legado: String(f.id),
+          nome: f.nome, sigla: f.sigla ?? null, descricao: f.descricao ?? null,
+          cbo: f.cbo ?? null, valor_hora_clt: f.valor_hora_clt ?? null,
+          valor_hora_autonomo: f.valor_hora_autonomo ?? null, ativo: f.ativo ?? true,
+        }))
+        const { error } = await supabaseV2.from('funcoes_v2').insert(batch)
+        addLog(error ? `  ❌ Funções insert: ${error.message}` : `  ✅ ${fns.length} funções inseridas`)
+      } else {
+        addLog('  ⏭️ Nenhuma função no V1 — pulando')
       }
 
-      // 2. Obras
-      addLog('🏗️ Migrando obras...')
-      const { data: obs } = await supabaseV1.from('obras').select('*')
-      if (obs?.length) {
-        const batch = obs.map((o: any) => ({ empresa_id: empresaId, id_legado: o.id, nome: o.nome, codigo: o.codigo, endereco: o.endereco, cidade: o.cidade, estado: o.estado, cliente: o.cliente, responsavel: o.responsavel, data_inicio: o.data_inicio, data_previsao_fim: o.data_previsao_fim, status: o.status ?? 'em_andamento', considera_sabado_util: o.considera_sabado_util ?? false, desconta_vt: o.desconta_vt ?? true, ativo: true }))
-        const { error } = await supabaseV2.from('obras_v2').upsert(batch, { onConflict: 'empresa_id,id_legado', ignoreDuplicates: false })
-        addLog(error ? `❌ Obras: ${error.message}` : `✅ ${obs.length} obras migradas`)
+      // ── 2. Obras ────────────────────────────────────────────────────────────
+      addLog('🏗️ [2/5] Migrando obras...')
+      const obs = await lerV1('obras')
+      if (obs.length) {
+        const batch = obs.map((o: any) => ({
+          empresa_id: empresaId, id_legado: String(o.id),
+          nome: o.nome, codigo: o.codigo ?? null, endereco: o.endereco ?? null,
+          cidade: o.cidade ?? null, estado: o.estado ?? null, cliente: o.cliente ?? null,
+          responsavel: o.responsavel ?? null, data_inicio: o.data_inicio ?? null,
+          data_previsao_fim: o.data_previsao_fim ?? null,
+          status: o.status ?? 'em_andamento',
+          considera_sabado_util: o.considera_sabado_util ?? false,
+          desconta_vt: o.desconta_vt ?? true, ativo: true,
+        }))
+        const { error } = await supabaseV2.from('obras_v2').insert(batch)
+        addLog(error ? `  ❌ Obras insert: ${error.message}` : `  ✅ ${obs.length} obras inseridas`)
+      } else {
+        addLog('  ⏭️ Nenhuma obra no V1 — pulando')
       }
 
-      // 3. Colaboradores (pessoas + vinculos)
-      addLog('👷 Migrando colaboradores...')
-      const { data: cols } = await supabaseV1.from('colaboradores').select('*')
-      if (cols?.length) {
-        // Buscar mapa funcoes e obras do V2
+      // ── 3. Colaboradores → pessoas + vinculos_empregaticos ──────────────────
+      addLog('👷 [3/5] Migrando colaboradores...')
+      const cols = await lerV1('colaboradores')
+      if (cols.length) {
+        // Buscar mapa funcoes e obras já inseridos no V2
         const { data: fnsV2 } = await supabaseV2.from('funcoes_v2').select('id, id_legado').eq('empresa_id', empresaId)
         const { data: obsV2 } = await supabaseV2.from('obras_v2').select('id, id_legado').eq('empresa_id', empresaId)
-        const fMap: Record<string,string> = {}; (fnsV2??[]).forEach((f:any) => { if(f.id_legado) fMap[f.id_legado] = f.id })
-        const oMap: Record<string,string> = {}; (obsV2??[]).forEach((o:any) => { if(o.id_legado) oMap[o.id_legado] = o.id })
+        const fMap: Record<string,string> = {}
+        ;(fnsV2 ?? []).forEach((f: any) => { if (f.id_legado) fMap[String(f.id_legado)] = f.id })
+        const oMap: Record<string,string> = {}
+        ;(obsV2 ?? []).forEach((o: any) => { if (o.id_legado) oMap[String(o.id_legado)] = o.id })
+        addLog(`  🗺️ Mapa funções: ${Object.keys(fMap).length} | Mapa obras: ${Object.keys(oMap).length}`)
 
-        let ok = 0, err = 0
+        let ok = 0, err = 0, errMsg = ''
         for (const c of cols) {
-          const { data: p, error: pe } = await supabaseV2.from('pessoas').upsert({ nome: c.nome, cpf: c.cpf, pis_nit: c.pis_nit, data_nascimento: c.data_nascimento, genero: c.genero, estado_civil: c.estado_civil, telefone: c.telefone, email: c.email, endereco: c.endereco, cidade: c.cidade, estado: c.estado, cep: c.cep }, { onConflict: 'cpf', ignoreDuplicates: false }).select('id').single()
-          if (pe || !p) { err++; continue }
-          const { error: ve } = await supabaseV2.from('vinculos_empregaticos').upsert({ empresa_id: empresaId, pessoa_id: p.id, id_legado: c.id, funcao_id: fMap[c.funcao_id] ?? null, obra_id: oMap[c.obra_id] ?? null, status: c.status ?? 'ativo', tipo_contrato: c.tipo_contrato, chapa: c.chapa, salario: c.salario, data_admissao: c.data_admissao, data_demissao: c.data_demissao, vale_transporte: c.vale_transporte ?? false, banco: c.banco, agencia: c.agencia, conta: c.conta, tipo_conta: c.tipo_conta, pix_chave: c.pix_chave, pix_tipo: c.pix_tipo }, { onConflict: 'empresa_id,id_legado', ignoreDuplicates: false })
-          if (ve) err++; else ok++
+          // Inserir/atualizar pessoa pelo CPF
+          const pessoaPayload: any = {
+            nome: c.nome, cpf: c.cpf ?? null, pis_nit: c.pis_nit ?? null,
+            data_nascimento: c.data_nascimento ?? null, genero: c.genero ?? null,
+            estado_civil: c.estado_civil ?? null, telefone: c.telefone ?? null,
+            email: c.email ?? null, endereco: c.endereco ?? null,
+            cidade: c.cidade ?? null, estado: c.estado ?? null, cep: c.cep ?? null,
+          }
+          let pessoaId: string | null = null
+          // Tenta upsert por CPF se tiver CPF, senão insert direto
+          if (c.cpf) {
+            const { data: p, error: pe } = await supabaseV2
+              .from('pessoas').upsert(pessoaPayload, { onConflict: 'cpf' }).select('id').single()
+            if (pe || !p) { err++; errMsg = pe?.message ?? 'sem retorno'; continue }
+            pessoaId = p.id
+          } else {
+            const { data: p, error: pe } = await supabaseV2
+              .from('pessoas').insert(pessoaPayload).select('id').single()
+            if (pe || !p) { err++; errMsg = pe?.message ?? 'sem retorno'; continue }
+            pessoaId = p.id
+          }
+          // Inserir vínculo
+          const vinculoPayload: any = {
+            empresa_id: empresaId, pessoa_id: pessoaId,
+            id_legado: String(c.id),
+            funcao_id: fMap[String(c.funcao_id)] ?? null,
+            obra_id: oMap[String(c.obra_id)] ?? null,
+            status: c.status ?? 'ativo',
+            tipo_contrato: c.tipo_contrato ?? null, chapa: c.chapa ?? null,
+            salario: c.salario ?? null, data_admissao: c.data_admissao ?? null,
+            data_demissao: c.data_demissao ?? null,
+            vale_transporte: c.vale_transporte ?? false,
+            banco: c.banco ?? null, agencia: c.agencia ?? null,
+            conta: c.conta ?? null, tipo_conta: c.tipo_conta ?? null,
+            pix_chave: c.pix_chave ?? null, pix_tipo: c.pix_tipo ?? null,
+          }
+          const { error: ve } = await supabaseV2.from('vinculos_empregaticos').insert(vinculoPayload)
+          if (ve) { err++; errMsg = ve.message } else ok++
         }
-        addLog(`✅ ${ok} colaboradores migrados${err ? `, ❌ ${err} erros` : ''}`)
+        addLog(`  ✅ ${ok} colaboradores migrados${err ? ` | ❌ ${err} erros (último: ${errMsg})` : ''}`)
+      } else {
+        addLog('  ⏭️ Nenhum colaborador no V1 — pulando')
       }
 
-      // 4. Ponto Lançamentos
-      addLog('📊 Migrando lançamentos de ponto...')
-      const { data: lancs } = await supabaseV1.from('ponto_lancamentos').select('*')
-      if (lancs?.length) {
+      // ── 4. Lançamentos de Ponto ─────────────────────────────────────────────
+      addLog('📊 [4/5] Migrando lançamentos de ponto...')
+      const lancs = await lerV1('ponto_lancamentos')
+      if (lancs.length) {
         const { data: vincsV2 } = await supabaseV2.from('vinculos_empregaticos').select('id, id_legado').eq('empresa_id', empresaId)
-        const { data: obsV2b } = await supabaseV2.from('obras_v2').select('id, id_legado').eq('empresa_id', empresaId)
-        const vMap: Record<string,string> = {}; (vincsV2??[]).forEach((v:any) => { if(v.id_legado) vMap[v.id_legado] = v.id })
-        const oMap2: Record<string,string> = {}; (obsV2b??[]).forEach((o:any) => { if(o.id_legado) oMap2[o.id_legado] = o.id })
-        const BATCH = 50; let ok = 0
+        const { data: obsV2b }  = await supabaseV2.from('obras_v2').select('id, id_legado').eq('empresa_id', empresaId)
+        const vMap: Record<string,string> = {}
+        ;(vincsV2 ?? []).forEach((v: any) => { if (v.id_legado) vMap[String(v.id_legado)] = v.id })
+        const oMap2: Record<string,string> = {}
+        ;(obsV2b ?? []).forEach((o: any) => { if (o.id_legado) oMap2[String(o.id_legado)] = o.id })
+        addLog(`  🗺️ Mapa vinculos: ${Object.keys(vMap).length}`)
+        const BATCH = 50; let ok = 0, skipped = 0
         for (let i = 0; i < lancs.length; i += BATCH) {
-          const batch = lancs.slice(i, i+BATCH)
-            .filter((l:any) => vMap[l.colaborador_id])
-            .map((l:any) => ({ empresa_id: empresaId, id_legado: l.id, colaborador_id: vMap[l.colaborador_id], obra_id: oMap2[l.obra_id] ?? null, mes_referencia: l.mes_referencia, data_inicio: l.data_inicio, data_fim: l.data_fim, status: l.status, tipo_pagamento: l.tipo_pagamento, snap_liquido: l.snap_liquido, snap_valor_total: l.snap_valor_total, snap_horas_normais: l.snap_horas_normais, snap_horas_extras: l.snap_horas_extras, snap_valor_horas: l.snap_valor_horas, snap_valor_dsr: l.snap_valor_dsr, snap_valor_producao: l.snap_valor_producao, snap_valor_premio: l.snap_valor_premio, snap_inss: l.snap_inss, snap_ir: l.snap_ir, snap_desconto_vt: l.snap_desconto_vt, snap_desconto_adiant: l.snap_desconto_adiant, snap_liquido: l.snap_liquido }))
-          if (batch.length) { const { error } = await supabaseV2.from('ponto_lancamentos_v2').upsert(batch, { onConflict: 'empresa_id,id_legado', ignoreDuplicates: false }); if(!error) ok += batch.length }
+          const batch = lancs.slice(i, i + BATCH)
+            .filter((l: any) => { if (!vMap[String(l.colaborador_id)]) { skipped++; return false } return true })
+            .map((l: any) => ({
+              empresa_id: empresaId, id_legado: String(l.id),
+              colaborador_id: vMap[String(l.colaborador_id)],
+              obra_id: oMap2[String(l.obra_id)] ?? null,
+              mes_referencia: l.mes_referencia ?? null,
+              data_inicio: l.data_inicio ?? null, data_fim: l.data_fim ?? null,
+              status: l.status ?? 'aberto', tipo_pagamento: l.tipo_pagamento ?? null,
+              snap_valor_total: l.snap_valor_total ?? null,
+              snap_horas_normais: l.snap_horas_normais ?? null,
+              snap_horas_extras: l.snap_horas_extras ?? null,
+              snap_valor_horas: l.snap_valor_horas ?? null,
+              snap_valor_dsr: l.snap_valor_dsr ?? null,
+              snap_valor_producao: l.snap_valor_producao ?? null,
+              snap_valor_premio: l.snap_valor_premio ?? null,
+              snap_inss: l.snap_inss ?? null, snap_ir: l.snap_ir ?? null,
+              snap_desconto_vt: l.snap_desconto_vt ?? null,
+              snap_desconto_adiant: l.snap_desconto_adiant ?? null,
+              snap_liquido: l.snap_liquido ?? null,
+            }))
+          if (batch.length) {
+            const { error } = await supabaseV2.from('ponto_lancamentos_v2').insert(batch)
+            if (error) addLog(`  ❌ Lançamentos batch ${i}: ${error.message}`)
+            else ok += batch.length
+          }
         }
-        addLog(`✅ ${ok} lançamentos migrados`)
+        addLog(`  ✅ ${ok} lançamentos inseridos${skipped ? ` | ⚠️ ${skipped} pulados (colob. não mapeado)` : ''}`)
+      } else {
+        addLog('  ⏭️ Nenhum lançamento no V1 — pulando')
       }
 
-      // 5. Ponto Registros
-      addLog('⏱️ Migrando registros de ponto...')
-      const { data: regs } = await supabaseV1.from('ponto_registros').select('*')
-      if (regs?.length) {
+      // ── 5. Registros de Ponto ───────────────────────────────────────────────
+      addLog('⏱️ [5/5] Migrando registros de ponto...')
+      const regs = await lerV1('ponto_registros')
+      if (regs.length) {
         const { data: vincsV2b } = await supabaseV2.from('vinculos_empregaticos').select('id, id_legado').eq('empresa_id', empresaId)
-        const { data: lancsV2 } = await supabaseV2.from('ponto_lancamentos_v2').select('id, id_legado').eq('empresa_id', empresaId)
-        const vMap2: Record<string,string> = {}; (vincsV2b??[]).forEach((v:any) => { if(v.id_legado) vMap2[v.id_legado] = v.id })
-        const lMap: Record<string,string> = {}; (lancsV2??[]).forEach((l:any) => { if(l.id_legado) lMap[l.id_legado] = l.id })
-        const BATCH = 100; let ok = 0
+        const { data: lancsV2 }  = await supabaseV2.from('ponto_lancamentos_v2').select('id, id_legado').eq('empresa_id', empresaId)
+        const vMap2: Record<string,string> = {}
+        ;(vincsV2b ?? []).forEach((v: any) => { if (v.id_legado) vMap2[String(v.id_legado)] = v.id })
+        const lMap: Record<string,string> = {}
+        ;(lancsV2 ?? []).forEach((l: any) => { if (l.id_legado) lMap[String(l.id_legado)] = l.id })
+        addLog(`  🗺️ Mapa vinculos: ${Object.keys(vMap2).length} | Mapa lançamentos: ${Object.keys(lMap).length}`)
+        const BATCH = 100; let ok = 0, skipped = 0
         for (let i = 0; i < regs.length; i += BATCH) {
-          const batch = regs.slice(i, i+BATCH)
-            .filter((r:any) => vMap2[r.colaborador_id] && lMap[r.lancamento_id])
-            .map((r:any) => ({ empresa_id: empresaId, id_legado: r.id, colaborador_id: vMap2[r.colaborador_id], lancamento_id: lMap[r.lancamento_id], data: r.data, presente: r.presente, falta: r.falta, hora_entrada: r.hora_entrada, hora_saida: r.hora_saida, horas_trabalhadas: r.horas_trabalhadas, horas_extras: r.horas_extras, status: r.status ?? 'pendente' }))
-          if (batch.length) { const { error } = await supabaseV2.from('ponto_registros_v2').upsert(batch, { onConflict: 'empresa_id,id_legado', ignoreDuplicates: false }); if(!error) ok += batch.length }
+          const batch = regs.slice(i, i + BATCH)
+            .filter((r: any) => {
+              const ok2 = vMap2[String(r.colaborador_id)] && lMap[String(r.lancamento_id)]
+              if (!ok2) skipped++
+              return ok2
+            })
+            .map((r: any) => ({
+              empresa_id: empresaId, id_legado: String(r.id),
+              colaborador_id: vMap2[String(r.colaborador_id)],
+              lancamento_id: lMap[String(r.lancamento_id)],
+              data: r.data ?? null, presente: r.presente ?? null, falta: r.falta ?? null,
+              hora_entrada: r.hora_entrada ?? null, hora_saida: r.hora_saida ?? null,
+              horas_trabalhadas: r.horas_trabalhadas ?? null,
+              horas_extras: r.horas_extras ?? null,
+              status: r.status ?? 'pendente',
+            }))
+          if (batch.length) {
+            const { error } = await supabaseV2.from('ponto_registros_v2').insert(batch)
+            if (error) addLog(`  ❌ Registros batch ${i}: ${error.message}`)
+            else ok += batch.length
+          }
         }
-        addLog(`✅ ${ok} registros de ponto migrados`)
+        addLog(`  ✅ ${ok} registros inseridos${skipped ? ` | ⚠️ ${skipped} pulados` : ''}`)
+      } else {
+        addLog('  ⏭️ Nenhum registro no V1 — pulando')
       }
 
+      addLog('─────────────────────────────')
       addLog('🎉 Migração concluída!')
       setDone(true)
     } catch (e: any) {
@@ -198,14 +344,33 @@ function MigracaoEmpresa({ empresaId, empresaNome }: { empresaId: string; empres
       <div style={{ marginBottom: 12, padding: '10px 14px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8 }}>
         <p style={{ fontSize: 13, fontWeight: 600, color: '#1e40af', marginBottom: 4 }}>🔄 Migração V1 → V2</p>
         <p style={{ fontSize: 12, color: '#3b82f6' }}>Empresa: <strong>{empresaNome}</strong></p>
-        <p style={{ fontSize: 11, color: '#6b7280', marginTop: 4 }}>Importa funções, obras, colaboradores, lançamentos e registros de ponto do banco V1 para esta empresa no V2.</p>
+        <p style={{ fontSize: 11, color: '#6b7280', marginTop: 4 }}>
+          Importa funções, obras, colaboradores, lançamentos e registros do banco V1 para esta empresa no V2.<br/>
+          <strong>Pré-requisito:</strong> Execute no V1 → <code>ALTER TABLE funcoes DISABLE ROW LEVEL SECURITY;</code> (e para obras, colaboradores, ponto_lancamentos, ponto_registros).
+        </p>
       </div>
-      <Button onClick={iniciar} disabled={running || !empresaId} className="w-full mb-4" size="sm">
-        {running ? <><Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />Migrando...</> : done ? '✅ Concluído — Migrar Novamente' : '🚀 Iniciar Migração'}
-      </Button>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+        <Button onClick={diagnosticar} disabled={running || !empresaId} variant="outline" size="sm" style={{ flex: 1 }}>
+          {running ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : null}
+          🔍 Diagnosticar V1
+        </Button>
+        <Button onClick={iniciar} disabled={running || !empresaId} size="sm" style={{ flex: 2 }}>
+          {running ? <><Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />Migrando...</> : done ? '✅ Migrar Novamente' : '🚀 Iniciar Migração'}
+        </Button>
+      </div>
       {log.length > 0 && (
-        <div style={{ background: '#0f172a', borderRadius: 8, padding: 12, maxHeight: 300, overflowY: 'auto' }}>
-          {log.map((l, i) => <div key={i} style={{ fontSize: 11, fontFamily: 'monospace', color: l.startsWith('❌') ? '#f87171' : l.startsWith('✅') ? '#4ade80' : l.startsWith('🎉') ? '#fbbf24' : '#94a3b8', marginBottom: 2 }}>{l}</div>)}
+        <div style={{ background: '#0f172a', borderRadius: 8, padding: 12, maxHeight: 380, overflowY: 'auto' }}>
+          {log.map((l, i) => (
+            <div key={i} style={{
+              fontSize: 11, fontFamily: 'monospace', marginBottom: 2,
+              color: l.startsWith('  ❌') || l.startsWith('❌') ? '#f87171'
+                   : l.startsWith('  ✅') || l.startsWith('✅') ? '#4ade80'
+                   : l.startsWith('🎉') ? '#fbbf24'
+                   : l.startsWith('  ⚠️') || l.startsWith('  ⏭️') ? '#fb923c'
+                   : l.startsWith('  🗺️') || l.startsWith('  📥') ? '#60a5fa'
+                   : '#94a3b8'
+            }}>{l}</div>
+          ))}
         </div>
       )}
     </div>
