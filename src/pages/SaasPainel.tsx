@@ -222,17 +222,19 @@ function MigracaoEmpresa({ empresaId, empresaNome }: { empresaId: string; empres
             if (pe || !p) { err++; errMsg = pe?.message ?? 'sem retorno'; continue }
             pessoaId = p.id
           }
-          // Inserir vínculo (somente colunas existentes em vinculos_empregaticos V2)
+          // Inserir vínculo (colunas confirmadas em vinculos_empregaticos V2)
           const vinculoPayload: any = {
             empresa_id: empresaId, pessoa_id: pessoaId,
             id_legado: String(c.id),
             funcao_id: fMap[String(c.funcao_id)] ?? null,
             obra_id: oMap[String(c.obra_id)] ?? null,
             status: c.status ?? 'ativo',
+            chapa: c.chapa ?? null,
+            tipo_contrato: c.tipo_contrato ?? null,
             salario: c.salario ?? null,
             data_admissao: c.data_admissao ?? null,
             data_demissao: c.data_demissao ?? null,
-            vale_transporte: c.vale_transporte ?? false,
+            observacoes: c.observacoes ?? null,
           }
           const { error: ve } = await supabaseV2.from('vinculos_empregaticos').insert(vinculoPayload)
           if (ve) { err++; errMsg = ve.message } else ok++
