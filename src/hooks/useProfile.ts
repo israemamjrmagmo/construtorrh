@@ -58,18 +58,31 @@ export function useProfile() {
   const { user } = useAuth()
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading,  setLoading]  = useState(true)
+  const [isSaasAdmin, setIsSaasAdmin] = useState(false)
 
   useEffect(() => {
     if (!user) { setProfile(null); setLoading(false); return }
 
     supabase.from('profiles').select('*').eq('id', user.id).single()
-      .then(({ data, error }) => {
+      .then(async ({ data, error }) => {
         if (error || !data) {
           // Se não tem perfil ainda → assume admin (primeiro usuário)
           setProfile({ id: user.id, nome: user.email ?? 'Usuário', email: user.email ?? '', role: 'admin', ativo: true })
         } else {
           setProfile(data as Profile)
         }
+
+        // Verificar se é SaaS Admin
+        if (user) {
+          const { data: saasData } = await supabase
+            .from('saas_admins')
+            .select('id')
+            .eq('email', user.email ?? '')
+            .eq('ativo', true)
+            .maybeSingle()
+          setIsSaasAdmin(!!saasData)
+        }
+
         setLoading(false)
       })
   }, [user])
@@ -81,5 +94,5 @@ export function useProfile() {
 
   const isAdmin = profile?.role === 'admin'
 
-  return { profile, loading, permissions, isAdmin }
+  return { profile, loading, permissions, isAdmin, isSaasAdmin }
 }

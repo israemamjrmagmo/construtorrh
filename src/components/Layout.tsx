@@ -252,7 +252,7 @@ export function Layout({ children }: LayoutProps) {
   const notifRef    = useRef<HTMLDivElement>(null)
 
   const { user, signOut } = useAuth()
-  const { profile }       = useProfile()
+  const { profile, isSaasAdmin } = useProfile()
   const navigate          = useNavigate()
   const location          = useLocation()
 
@@ -406,7 +406,7 @@ export function Layout({ children }: LayoutProps) {
             const groupBadge = getGroupBadge(group.id)
 
             const visibleItems = group.items.filter((item: any) => {
-              if (item.adminOnly && user?.email !== 'magmodrive@gmail.com') return false
+              if (item.adminOnly && !isSaasAdmin) return false
               const isFinanceiro = ['/ponto','/vt','/adiantamentos','/premios','/fechamento-ponto','/pagamentos','/encargos','/provisoes'].includes(item.to)
               if (isFinanceiro && !roleMeta.canViewFinanceiro) return false
               return true
