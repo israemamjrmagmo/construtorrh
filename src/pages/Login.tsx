@@ -33,8 +33,12 @@ export default function Login() {
     const emailLower = data.email.trim().toLowerCase()
 
     try {
-      // Login único via Supabase Auth para todos os usuários
-      await signIn(emailLower, data.password)
+      // Login direto via supabaseV2 — sem passar pelo useAuth (evita checagem de profiles)
+      const { data: authData, error: authError } = await supabaseV2.auth.signInWithPassword({
+        email:    emailLower,
+        password: data.password,
+      })
+      if (authError) throw authError
 
       // Verificar se é usuário de empresa (primeiro_acesso)
       const { data: eu } = await supabaseV2
