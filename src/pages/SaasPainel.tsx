@@ -307,27 +307,25 @@ function MigracaoEmpresa({ empresaId, empresaNome }: { empresaId: string; empres
       const regs = await lerV1('registro_ponto')
       if (regs.length) {
         const { data: vincsV2b } = await supabaseV2.from('vinculos_empregaticos').select('id, id_legado').eq('empresa_id', empresaId)
-        const { data: lancsV2 }  = await supabaseV2.from('ponto_lancamentos_v2').select('id, id_legado').eq('empresa_id', empresaId)
+        const { data: obsV2c }   = await supabaseV2.from('obras_v2').select('id, id_legado').eq('empresa_id', empresaId)
         const vMap2: Record<string,string> = {}
         ;(vincsV2b ?? []).forEach((v: any) => { if (v.id_legado) vMap2[String(v.id_legado)] = v.id })
-        const lMap: Record<string,string> = {}
-        ;(lancsV2 ?? []).forEach((l: any) => { if (l.id_legado) lMap[String(l.id_legado)] = l.id })
-        addLog(`  🗺️ Mapa vinculos: ${Object.keys(vMap2).length} | Mapa lançamentos: ${Object.keys(lMap).length}`)
+        const oMap3: Record<string,string> = {}
+        ;(obsV2c ?? []).forEach((o: any) => { if (o.id_legado) oMap3[String(o.id_legado)] = o.id })
+        addLog(`  🗺️ Mapa vinculos: ${Object.keys(vMap2).length} | Mapa obras: ${Object.keys(oMap3).length}`)
         const BATCH = 100; let ok = 0, skipped = 0
         for (let i = 0; i < regs.length; i += BATCH) {
           const batch = regs.slice(i, i + BATCH)
             .filter((r: any) => {
-              // Filtra apenas por colaborador (lancamento_id não existe em ponto_registros_v2)
               if (!vMap2[String(r.colaborador_id)]) { skipped++; return false }
               return true
             })
             .map((r: any) => ({
               empresa_id: empresaId,
               id_legado: String(r.id),
-              // vinculo_id e colaborador_id = vinculos_empregaticos.id
               vinculo_id: vMap2[String(r.colaborador_id)],
               colaborador_id: vMap2[String(r.colaborador_id)],
-              obra_id: r.obra_id ?? null,
+              obra_id: oMap3[String(r.obra_id)] ?? null,   // ← mapeado para UUID do V2
               data: r.data ?? null,
               hora_entrada: r.hora_entrada ?? null,
               saida_almoco: r.saida_almoco ?? null,
