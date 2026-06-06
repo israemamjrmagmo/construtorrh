@@ -334,7 +334,7 @@ export default function Relatorios() {
   useEffect(() => {
     Promise.all([
       supabase.from('obras').select('id,nome,codigo,status').order('nome'),
-      supabase.from('colaboradores').select('id,nome,chapa,cpf,obra_id,funcoes(nome)').eq('status', 'ativo').order('nome'),
+      supabase.from('colaboradores').select('id,nome,chapa,cpf,funcao_id,obra_id').eq('status', 'ativo').order('nome'),
       supabase.from('funcoes').select('id,nome,categoria').order('nome'),
     ]).then(([obrasRes, colabRes, funcRes]) => {
       setObras(obrasRes.data ?? [])
@@ -391,7 +391,7 @@ export default function Relatorios() {
       else if (relatAtivo === 'custo-obra') {
         // Busca lançamentos com função para detalhar por categoria
         const plQ = supabase.from('ponto_lancamentos')
-          .select(`obra_id, snap_valor_total, snap_liquido, colaborador_id, obras(nome), colaboradores(funcao_id, funcoes(nome, categoria))`)
+          .select(`obra_id, snap_valor_total, snap_liquido, colaborador_id, obras(nome), colaboradores(funcao_id)`)
           .gte('mes_referencia', mesRefIni)
           .lte('mes_referencia', mesRefFim)
         if (filtroObra !== 'todos') plQ.eq('obra_id', filtroObra)
@@ -495,7 +495,7 @@ export default function Relatorios() {
       // ── 4. Faltas por Obra ───────────────────────────────────────────────
       else if (relatAtivo === 'faltas-obra') {
         const faltasQ = supabase.from('ponto_lancamentos')
-          .select(`colaborador_id, obra_id, snap_faltas, snap_horas_normais, snap_horas_extras, obras(nome), colaboradores(nome, chapa, funcao_id, funcoes(nome, categoria))`)
+          .select(`colaborador_id, obra_id, snap_faltas, snap_horas_normais, snap_horas_extras, obras(nome), colaboradores(nome, chapa, funcao_id)`)
           .gte('mes_referencia', mesRefIni)
           .lte('mes_referencia', mesRefFim)
         if (filtroObra !== 'todos') faltasQ.eq('obra_id', filtroObra)
@@ -620,7 +620,7 @@ export default function Relatorios() {
         if (filtroObra === 'todos') { toast.warning('Selecione uma obra.'); setLoading(false); return }
         // Busca todos os registros de ponto da obra no período
         const { data } = await supabase.from('registro_ponto')
-          .select('data, presente, falta, hora_entrada, saida_almoco, retorno_almoco, hora_saida, horas_trabalhadas, horas_extras, justificativa, status, colaborador_id, colaboradores(nome, chapa, cpf, funcoes(nome))')
+          .select('data, presente, falta, hora_entrada, saida_almoco, retorno_almoco, hora_saida, horas_trabalhadas, horas_extras, justificativa, status, colaborador_id, colaboradores(nome, chapa, cpf, funcao_id)')
           .eq('obra_id', filtroObra)
           .gte('data', filtroDataIni)
           .lte('data', filtroDataFim)
@@ -752,7 +752,7 @@ export default function Relatorios() {
       else if (relatAtivo === 'producao-funcao') {
         // ponto_producao: filtrar por mes_referencia (sem coluna 'data')
         const { data } = await supabase.from('ponto_producao')
-          .select('quantidade, colaboradores(funcao_id, funcoes(nome, categoria))')
+          .select('quantidade, colaboradores(funcao_id)')
           .gte('mes_referencia', mesRefIni)
           .lte('mes_referencia', mesRefFim)
         const map: Record<string, Record<string, unknown>> = {}

@@ -72,7 +72,7 @@ export default function DossieColaborador() {
       // Carregar todos os vínculos com mesmo CPF
       const { data: vincsData } = await supabase
         .from('colaboradores')
-        .select('id, nome, cpf, telefone, email, data_nascimento, status, data_admissao, data_demissao, funcoes(nome), obras(nome)')
+        .select('id, nome, cpf, funcao_id, telefone, email, data_nascimento, status, data_admissao, data_demissao, obras(nome)')
         .eq('cpf', cpf)
         .order('data_admissao', { ascending: true })
 

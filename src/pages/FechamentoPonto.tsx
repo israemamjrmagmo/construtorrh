@@ -215,7 +215,7 @@ export default function FechamentoPonto() {
         snap_valor_producao, snap_valor_dsr, snap_valor_premio, snap_valor_total,
         snap_faltas, snap_vt_diario, snap_desconto_vt, snap_desconto_adiant,
         snap_inss, snap_ir, snap_liquido, snap_fechado_em,
-        colaboradores(nome, chapa, tipo_contrato, funcao_id, vale_transporte, vt_dados, data_admissao, funcoes(nome)),
+        colaboradores(nome, chapa, tipo_contrato, funcao_id, vale_transporte, vt_dados, data_admissao),
         obras(nome, considera_sabado_util, desconta_vt)
       `)
       .in('status', ['em_fechamento', 'aguardando_aprovacao', 'pendente_fechamento', 'aprovado', 'liberado', 'pago', 'rascunho', 'recusado'])

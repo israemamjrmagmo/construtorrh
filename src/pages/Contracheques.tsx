@@ -301,7 +301,7 @@ function ModalHolerite({ open, onClose, colaborador, onSaved }: {
       // 1 – Dados do colaborador
       const { data: colab } = await supabase
         .from('colaboradores')
-        .select('salario, funcao_id, tipo_contrato, data_admissao, funcoes(nome)')
+        .select('salario, funcao_id, tipo_contrato, data_admissao')
         .eq('id', colaborador.id)
         .single()
       // normaliza campos
@@ -993,7 +993,7 @@ export default function Contracheques() {
   const carregarColaboradores = useCallback(async () => {
     setLoadingList(true)
     const { data, error: colErr } = await supabase.from('colaboradores')
-      .select('id,nome,chapa,cpf,funcao_id,tipo_contrato,status,salario,funcoes(nome)')
+      .select('id,nome,chapa,cpf,funcao_id,tipo_contrato,status,salario')
       .in('status', ['ativo', 'afastado'])
       .eq('tipo_contrato', 'clt')
       .order('nome')
@@ -1181,7 +1181,7 @@ export default function Contracheques() {
       // 1. Buscar todos os colaboradores CLT ativos
       const { data: colabsAll } = await supabase
         .from('colaboradores')
-        .select('id,nome,chapa,cpf,funcao_id,tipo_contrato,salario,funcoes(nome)')
+        .select('id,nome,chapa,cpf,funcao_id,tipo_contrato,salario')
         .in('status', ['ativo'])
         .eq('tipo_contrato', 'clt')
         .order('nome')

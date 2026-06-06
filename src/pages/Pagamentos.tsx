@@ -179,7 +179,7 @@ export default function Pagamentos() {
     setLoadingLancs(true)
     const { data, error } = await supabase
       .from('ponto_lancamentos')
-      .select('id, colaborador_id, obra_id, mes_referencia, data_inicio, data_fim, status, motivo_recusa, data_pagamento, obs_pagamento, snap_liquido, snap_valor_total, snap_horas, snap_dsr, snap_producao, snap_premio, snap_inss, snap_ir, snap_desconto_vt, snap_desconto_adiant, colaboradores(nome, chapa, tipo_contrato, funcao_id, cpf, pix_chave, pix_tipo, funcoes(nome)), obras(nome)')
+      .select('id, colaborador_id, obra_id, mes_referencia, data_inicio, data_fim, status, motivo_recusa, data_pagamento, obs_pagamento, snap_liquido, snap_valor_total, snap_horas, snap_dsr, snap_producao, snap_premio, snap_inss, snap_ir, snap_desconto_vt, snap_desconto_adiant, colaboradores(nome, chapa, tipo_contrato, funcao_id, cpf, pix_chave, pix_tipo), obras(nome)')
       .in('status', ['liberado', 'pago'])
       .order('mes_referencia', { ascending: false })
     if (error) {

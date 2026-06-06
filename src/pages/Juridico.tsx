@@ -73,7 +73,7 @@ export default function Juridico() {
         colabRes, ocRes, atestRes, acidRes, advRes, docRes, docAvRes,
         epiRes, pontRes, regPontRes, adRes, premRes, vtRes, provRes, _pagRes, histChRes, histContRes,
       ] = await Promise.all([
-        supabase.from('colaboradores').select('*, funcoes(id,nome,sigla), obras(id,nome,codigo)').eq('id', c.id).single(),
+        supabase.from('colaboradores').select('*, obras(id,nome,codigo)').eq('id', c.id).single(),
         supabase.from('ocorrencias').select('*').eq('colaborador_id', c.id).order('data', { ascending: false }),
         supabase.from('atestados').select('*').eq('colaborador_id', c.id).order('data', { ascending: false }),
         supabase.from('acidentes').select('*, obras(nome)').eq('colaborador_id', c.id).order('data_ocorrencia', { ascending: false }),

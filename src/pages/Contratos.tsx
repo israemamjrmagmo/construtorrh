@@ -633,7 +633,7 @@ export default function Contratos() {
     const [modRes, colRes, fnRes] = await Promise.all([
       supabase.from('contratos_modelos').select('*').eq('ativo', true).order('ordem'),
       supabase.from('colaboradores')
-        .select('id,nome,chapa,cpf,rg,pis_nit,ctps_numero,ctps_serie,genero,estado_civil,funcao_id,obra_id,salario,tipo_contrato,data_admissao,data_nascimento,data_exame_admissional,endereco,cidade,estado,cep,telefone,email,banco,agencia,conta,tipo_conta,pix_chave,pix_tipo,funcoes(nome,sigla,descricao,cbo,valor_hora_clt,valor_hora_autonomo),obras(nome,codigo,endereco,cidade,estado)')
+        .select('id,nome,chapa,cpf,rg,pis_nit,ctps_numero,ctps_serie,genero,estado_civil,funcao_id,obra_id,salario,tipo_contrato,data_admissao,data_nascimento,data_exame_admissional,endereco,cidade,estado,cep,telefone,email,banco,agencia,conta,tipo_conta,pix_chave,pix_tipo,obras(nome,codigo,endereco,cidade,estado)')
         .eq('status', 'ativo').order('nome'),
       supabase.from('funcoes').select('id,nome,sigla,descricao,cbo').eq('ativo', true).order('nome'),
     ])

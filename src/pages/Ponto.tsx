@@ -737,14 +737,14 @@ export default function Ponto() {
   useEffect(()=>{
     const load=async()=>{
       const [{data:colsRaw},{data:obsRaw}]=await Promise.all([
-        supabase.from('colaboradores').select('id,nome,chapa,funcao_id,obra_id,tipo_contrato,data_admissao,status,data_status,funcoes(id,nome)').in('status',['ativo','afastado','ferias']).order('nome'),
+        supabase.from('colaboradores').select('id,nome,chapa,funcao_id,obra_id,tipo_contrato,data_admissao,status,data_status').in('status',['ativo','afastado','ferias']).order('nome'),
         supabase.from('obras').select('id,nome').order('nome'),
       ])
       setColaboradores((colsRaw??[]).map((c:any)=>({
         id:c.id,nome:c.nome,chapa:c.chapa??null,
-        funcao_id:c.funcao_id??c.funcoes?.id??null,
+        funcao_id:c.funcao_id??null,
         obra_id:c.obra_id??null,tipo_contrato:c.tipo_contrato??'clt',
-        funcao_nome:c.funcoes?.nome??'Sem função',
+        funcao_nome:'Sem função',
         data_admissao:c.data_admissao??null,
         status:c.status??'ativo',
         data_status:c.data_status??null,
