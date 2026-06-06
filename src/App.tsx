@@ -522,9 +522,7 @@ export default function App() {
                 path="/saas-admin"
                 element={
                   <SaasRoute>
-                    <Layout>
-                      <SaasPainel />
-                    </Layout>
+                    <SaasPainel />
                   </SaasRoute>
                 }
               />
