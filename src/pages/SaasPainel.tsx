@@ -210,12 +210,19 @@ function MigracaoEmpresa({ empresaId, empresaNome }: { empresaId: string; empres
             cidade: c.cidade ?? null, estado: c.estado ?? null, cep: c.cep ?? null,
           }
           let pessoaId: string | null = null
-          // Tenta upsert por CPF se tiver CPF, senão insert direto
+          // Tenta upsert por CPF; se falhar (RLS ou CPF duplicado), insere sem CPF
           if (c.cpf) {
             const { data: p, error: pe } = await supabaseV2
               .from('pessoas').upsert(pessoaPayload, { onConflict: 'cpf' }).select('id').single()
-            if (pe || !p) { err++; errMsg = pe?.message ?? 'sem retorno'; continue }
-            pessoaId = p.id
+            if (!pe && p) {
+              pessoaId = p.id
+            } else {
+              // Fallback: insere sem CPF (evita conflito — CPF pode ser corrigido depois)
+              const { data: p2, error: pe2 } = await supabaseV2
+                .from('pessoas').insert({ ...pessoaPayload, cpf: null }).select('id').single()
+              if (pe2 || !p2) { err++; errMsg = pe2?.message ?? 'sem retorno'; continue }
+              pessoaId = p2.id
+            }
           } else {
             const { data: p, error: pe } = await supabaseV2
               .from('pessoas').insert(pessoaPayload).select('id').single()
