@@ -1,7 +1,11 @@
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseV2Url     = import.meta.env.VITE_SUPABASE_V2_URL     as string
-const supabaseV2AnonKey = import.meta.env.VITE_SUPABASE_V2_ANON_KEY as string
+// Credenciais públicas (anon key) — seguro para frontend
+// GitHub Pages não lê .env, por isso estão embutidas aqui
+const supabaseV2Url     = import.meta.env.VITE_SUPABASE_V2_URL      as string
+                       || 'https://mxntcjgzeaxlbxiawsdh.supabase.co'
+const supabaseV2AnonKey = import.meta.env.VITE_SUPABASE_V2_ANON_KEY  as string
+                       || 'sb_publishable_hgWoK3potvPigssZD6w4zw_W1104kkh'
 
 export const supabaseV2 = createClient(supabaseV2Url, supabaseV2AnonKey, {
   auth: {

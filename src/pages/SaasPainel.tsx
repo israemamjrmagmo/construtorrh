@@ -247,7 +247,7 @@ export default function SaasPainel() {
     setFormEmp(f => ({ ...f, [k]: ev.target.value }))
 
   return (
-    <div className="flex h-[calc(100vh-64px)] overflow-hidden">
+    <div className="flex h-screen overflow-hidden -m-6">
 
       {/* ══ COLUNA ESQUERDA — Lista de empresas ══════════════════════════════ */}
       <div className="w-80 border-r bg-gray-50 flex flex-col shrink-0">
