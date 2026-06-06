@@ -505,9 +505,11 @@ export default function Ponto() {
   // Cria lançamento se não existir e insere registro_ponto
   async function criarLancamentoSeNecessario(obraId: string, inicio: string, fim: string): Promise<string | null> {
     // verifica se já existe lançamento que cobre o período
-    const existing = lancamentos.find(l =>
-      l.obra_id === obraId && l.data_inicio <= inicio && fim <= l.data_fim
-    )
+    const existing = lancamentos.find(l => {
+      const dI = l.data_inicio || `${l.mes_referencia}-01`
+      const dF = l.data_fim    || `${l.mes_referencia}-${getUltimoDia(l.mes_referencia)}`
+      return l.obra_id === obraId && dI <= inicio && fim <= dF
+    })
     if (existing) return existing.id
 
     // verifica se colaborador selecionado pertence à obra
@@ -816,7 +818,7 @@ export default function Ponto() {
     const{data}=await supabase.from('ponto_lancamentos')
       .select('*,obras(nome)')
       .eq('colaborador_id',colabId).eq('mes_referencia',mr)
-      .order('data_inicio')
+      .order('mes_referencia')
     const list:Lancamento[]=(data??[]).map((l:any)=>({
       id:l.id,obra_id:l.obra_id,obra_nome:l.obras?.nome??'Obra',
       mes_referencia:l.mes_referencia,data_inicio:l.data_inicio,data_fim:l.data_fim,
@@ -1183,7 +1185,9 @@ export default function Ponto() {
         // calcDia retorna MINUTOS → converter para horas antes de multiplicar pelo valor/hora
         return s + calcValorMin(cl.normais,cl.extras50,cl.extras100,vhLanc,heCoef50,heCoef100)
       },0)
-      const res = calcDSRComFaltas(vHorasLanc, lanc.data_inicio, lanc.data_fim, datasComFalta, feriados)
+      const lDInicio = lanc.data_inicio || `${lanc.mes_referencia}-01`
+      const lDFim    = lanc.data_fim    || `${lanc.mes_referencia}-${getUltimoDia(lanc.mes_referencia)}`
+      const res = calcDSRComFaltas(vHorasLanc, lDInicio, lDFim, datasComFalta, feriados)
       dsrTotal += res.dsr
       totalDiasUteis += res.diasUteis
       totalDomingosPagos += res.domingosPagos
@@ -1380,7 +1384,10 @@ export default function Ponto() {
     // Conflito BLOQUEANTE apenas quando a obra for a mesma
     const conflitoMesmaObra=lancamentos
       .filter(l=>l.obra_id===novoLancObraId)
-      .flatMap(l=>expandRange(l.data_inicio,l.data_fim))
+      .flatMap(l=>expandRange(
+        l.data_inicio||`${l.mes_referencia}-01`,
+        l.data_fim||`${l.mes_referencia}-${getUltimoDia(l.mes_referencia)}`
+      ))
       .filter(d=>diasNovos.has(d))
     if(conflitoMesmaObra.length>0){toast.error(`Esta obra já tem ${conflitoMesmaObra.length} dia(s) nesse período`);return}
     // Obras diferentes: apenas aviso informativo (não bloqueia)
