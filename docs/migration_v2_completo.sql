@@ -1,28 +1,75 @@
 -- ============================================================
--- CONSTRUTORRH V2 – TABELAS COMPLEMENTARES
--- Executar no banco V2 APÓS migration_v2_schema.sql
+-- CONSTRUTORRH V2 – SETUP COMPLETO
+-- Execute este script no banco V2 (https://mxntcjgzeaxlbxiawsdh.supabase.co)
+-- ANTES de rodar a migração em /migracao-v2
+--
+-- Passos:
+--   1. Cria a empresa Magmo Soluções Construtivas
+--   2. Cria as 10 tabelas complementares do V2
+-- ============================================================
+
+
+-- ============================================================
+-- PASSO 1 — CRIAR EMPRESA MAGMO SOLUÇÕES CONSTRUTIVAS
+-- ============================================================
+-- Insere somente se ainda não existir (seguro rodar mais de uma vez)
+INSERT INTO empresas (
+  nome,
+  cnpj,
+  email,
+  telefone,
+  plano,
+  ativo,
+  created_at
+)
+SELECT
+  'Magmo Soluções Construtivas',
+  '52711905000173',
+  'magmodrive@gmail.com',
+  NULL,
+  'pro',
+  true,
+  now()
+WHERE NOT EXISTS (
+  SELECT 1 FROM empresas WHERE cnpj = '52711905000173'
+);
+
+-- Confirma o ID gerado (útil para copiar e usar na migração manual se necessário)
+SELECT
+  id,
+  nome,
+  cnpj,
+  plano,
+  ativo,
+  created_at
+FROM empresas
+WHERE cnpj = '52711905000173';
+
+
+-- ============================================================
+-- PASSO 2 — TABELAS COMPLEMENTARES V2
 -- ============================================================
 
 -- OBRAS
 CREATE TABLE IF NOT EXISTS obras_v2 (
-  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  created_at      timestamptz NOT NULL DEFAULT now(),
-  empresa_id      uuid NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
-  id_legado       uuid, -- id original do V1 para mapeamento
-  nome            text NOT NULL,
-  codigo          text,
-  endereco        text,
-  cidade          text,
-  estado          text,
-  cliente         text,
-  responsavel     text,
-  data_inicio     date,
-  data_previsao_fim date,
-  status          text DEFAULT 'em_andamento',
+  id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at            timestamptz NOT NULL DEFAULT now(),
+  empresa_id            uuid NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
+  id_legado             uuid,            -- id original V1 para mapeamento
+  nome                  text NOT NULL,
+  codigo                text,
+  endereco              text,
+  cidade                text,
+  estado                text,
+  cliente               text,
+  responsavel           text,
+  data_inicio           date,
+  data_previsao_fim     date,
+  status                text DEFAULT 'em_andamento',
   considera_sabado_util boolean DEFAULT false,
-  desconta_vt     boolean DEFAULT true,
-  observacoes     text,
-  ativo           boolean DEFAULT true
+  desconta_vt           boolean DEFAULT true,
+  observacoes           text,
+  ativo                 boolean DEFAULT true
 );
 CREATE INDEX IF NOT EXISTS idx_obras_v2_empresa ON obras_v2(empresa_id);
 CREATE INDEX IF NOT EXISTS idx_obras_v2_legado  ON obras_v2(id_legado);
@@ -86,27 +133,27 @@ CREATE INDEX IF NOT EXISTS idx_adiant_v2_legado  ON adiantamentos_v2(id_legado);
 
 -- VALE TRANSPORTE
 CREATE TABLE IF NOT EXISTS vale_transporte_v2 (
-  id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  created_at          timestamptz NOT NULL DEFAULT now(),
-  empresa_id          uuid NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
-  vinculo_id          uuid REFERENCES vinculos_empregaticos(id),
-  colaborador_id      uuid NOT NULL,
-  id_legado           uuid,
-  competencia         text,
-  tipo                text,
-  valor               numeric(12,2),
-  dias_trabalhados    integer DEFAULT 0,
+  id                   uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at           timestamptz NOT NULL DEFAULT now(),
+  empresa_id           uuid NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
+  vinculo_id           uuid REFERENCES vinculos_empregaticos(id),
+  colaborador_id       uuid NOT NULL,
+  id_legado            uuid,
+  competencia          text,
+  tipo                 text,
+  valor                numeric(12,2),
+  dias_trabalhados     integer DEFAULT 0,
   desconto_colaborador numeric(12,2),
-  valor_empresa       numeric(12,2),
-  descontar_6pct      boolean DEFAULT true,
-  status              text DEFAULT 'pendente',
-  data_pagamento      date,
-  observacoes         text
+  valor_empresa        numeric(12,2),
+  descontar_6pct       boolean DEFAULT true,
+  status               text DEFAULT 'pendente',
+  data_pagamento       date,
+  observacoes          text
 );
 CREATE INDEX IF NOT EXISTS idx_vt_v2_empresa ON vale_transporte_v2(empresa_id);
 CREATE INDEX IF NOT EXISTS idx_vt_v2_legado  ON vale_transporte_v2(id_legado);
 
--- REGISTROS DE PONTO (diários)
+-- REGISTROS DE PONTO (batidas diárias)
 CREATE TABLE IF NOT EXISTS ponto_registros_v2 (
   id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   created_at        timestamptz NOT NULL DEFAULT now(),
@@ -209,7 +256,7 @@ CREATE TABLE IF NOT EXISTS ocorrencias_v2 (
   vinculo_id      uuid REFERENCES vinculos_empregaticos(id),
   colaborador_id  uuid NOT NULL,
   id_legado       uuid,
-  tipo            text, -- advertencia | atestado | acidente | ocorrencia
+  tipo            text,   -- advertencia | atestado | acidente | ocorrencia
   subtipo         text,
   data_ocorrencia date,
   descricao       text,
@@ -220,4 +267,11 @@ CREATE TABLE IF NOT EXISTS ocorrencias_v2 (
 CREATE INDEX IF NOT EXISTS idx_ocorr_v2_empresa ON ocorrencias_v2(empresa_id);
 CREATE INDEX IF NOT EXISTS idx_ocorr_v2_legado  ON ocorrencias_v2(id_legado);
 
-SELECT 'Tabelas complementares V2 criadas com sucesso!' as resultado;
+
+-- ============================================================
+-- RESULTADO FINAL
+-- ============================================================
+SELECT
+  'Setup V2 concluído!' AS status,
+  (SELECT id   FROM empresas WHERE cnpj = '52711905000173') AS empresa_id,
+  (SELECT nome FROM empresas WHERE cnpj = '52711905000173') AS empresa_nome;
