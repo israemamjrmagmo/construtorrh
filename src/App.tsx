@@ -150,6 +150,8 @@ export default function App() {
               {/* Public */}
               <Route path="/login" element={<Login />} />
 
+              <Route path="/saas-login" element={<SaasLogin />} />
+
               {/* ── Portal Externo (público, sem Layout) ── */}
               <Route path="/portal"            element={<PortalLogin />} />
               <Route path="/portal/home"       element={<PortalHome />} />
@@ -516,7 +518,6 @@ export default function App() {
                   </MasterRoute>
                 }
               />
-              <Route path="/saas-login" element={<SaasLogin />} />
               <Route
                 path="/saas-admin"
                 element={
