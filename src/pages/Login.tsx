@@ -43,17 +43,24 @@ export default function Login() {
     // ── 1. Tentar empresa_usuarios (usuários criados pelo SaaS admin) ──────────
     try {
       const hash = await sha256(data.password.trim())
-      const { data: eu } = await supabaseV2
+      const { data: eu, error: euError } = await supabaseV2
         .from('empresa_usuarios')
         .select('id, nome, email, role, empresa_id, ativo, senha_hash, primeiro_acesso')
         .eq('email', emailLower)
         .eq('ativo', true)
         .single()
 
+      // Checar erro explícito (PGRST116 = sem resultado = não é empresa_usuario)
+      if (euError && euError.code !== 'PGRST116') {
+        toast.error('Erro de conexão. Tente novamente.')
+        setSubmitting(false)
+        return
+      }
+
       if (eu) {
         // Usuário encontrado em empresa_usuarios — NÃO cai no Supabase Auth
         if (!eu.senha_hash) {
-          toast.error('Conta ainda não configurada. Contate o administrador.')
+          toast.error('Conta não configurada. Contate o administrador SaaS.')
           setSubmitting(false)
           return
         }
@@ -77,7 +84,7 @@ export default function Login() {
         return
       }
     } catch {
-      // usuário não encontrado em empresa_usuarios → tenta Supabase Auth
+      // erro inesperado → tenta Supabase Auth
     }
 
     // ── 2. Fallback: Supabase Auth (admin master da empresa) ──────────────────
