@@ -169,7 +169,14 @@ export default function Login() {
             </Button>
           </form>
 
-          <p className="text-xs text-muted-foreground text-center mt-8">
+          <p className="text-xs text-center mt-6">
+            <span className="text-muted-foreground">Usuário de empresa? </span>
+            <a href="#/empresa-login" className="text-primary font-semibold hover:underline">
+              Acesse aqui →
+            </a>
+          </p>
+
+          <p className="text-xs text-muted-foreground text-center mt-4">
             © {new Date().getFullYear()} ConstrutorRH · Todos os direitos reservados
           </p>
         </div>
