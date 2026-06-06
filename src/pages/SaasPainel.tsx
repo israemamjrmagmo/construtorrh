@@ -110,20 +110,29 @@ function MigracaoEmpresa({ empresaId, empresaNome }: { empresaId: string; empres
     setLog([...logRef.current])
   }
 
-  // ── Lê tabela do V1 com diagnóstico explícito ───────────────────────────────
+  // ── Lê tabela do V1 com paginação (Supabase limita 1000 rows/query) ────────
   async function lerV1<T = any>(tabela: string): Promise<T[]> {
-    const { data, error } = await supabaseV1.from(tabela).select('*')
-    if (error) {
-      addLog(`  ⚠️ V1.${tabela} erro: ${error.message} (code: ${error.code})`)
-      return []
+    const PAGE = 1000
+    let all: T[] = []
+    let from = 0
+    while (true) {
+      const { data, error } = await supabaseV1.from(tabela).select('*').range(from, from + PAGE - 1)
+      if (error) {
+        addLog(`  ⚠️ V1.${tabela} erro: ${error.message} (code: ${error.code})`)
+        break
+      }
+      if (!data || data.length === 0) break
+      all = [...all, ...(data as T[])]
+      if (data.length < PAGE) break   // última página
+      from += PAGE
+      addLog(`  📥 V1.${tabela}: ${all.length} carregados, buscando mais...`)
     }
-    const count = data?.length ?? 0
-    if (count === 0) {
+    if (all.length === 0) {
       addLog(`  ⚠️ V1.${tabela} retornou 0 registros — verifique se o RLS está desabilitado no V1`)
     } else {
-      addLog(`  📥 V1.${tabela}: ${count} registros encontrados`)
+      addLog(`  📥 V1.${tabela}: ${all.length} registros no total`)
     }
-    return (data ?? []) as T[]
+    return all
   }
 
   // ── Diagnóstico rápido (sem inserir) ────────────────────────────────────────
