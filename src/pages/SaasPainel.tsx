@@ -324,16 +324,19 @@ function MigracaoEmpresa({ empresaId, empresaNome }: { empresaId: string; empres
             .map((r: any) => ({
               empresa_id: empresaId,
               id_legado: String(r.id),
+              // vinculo_id e colaborador_id = vinculos_empregaticos.id
+              vinculo_id: vMap2[String(r.colaborador_id)],
               colaborador_id: vMap2[String(r.colaborador_id)],
-              // lancamento_id não existe em ponto_registros_v2 — será corrigido após receber schema
+              obra_id: r.obra_id ?? null,
               data: r.data ?? null,
-              presente: r.presente ?? null,
-              falta: r.falta ?? null,
               hora_entrada: r.hora_entrada ?? null,
+              saida_almoco: r.saida_almoco ?? null,
+              retorno_almoco: r.retorno_almoco ?? null,
               hora_saida: r.hora_saida ?? null,
               horas_trabalhadas: r.horas_trabalhadas ?? null,
               horas_extras: r.horas_extras ?? null,
-              status: r.status ?? 'pendente',
+              falta: r.falta ?? null,
+              justificativa: r.justificativa ?? null,
             }))
           if (batch.length) {
             const { error } = await supabaseV2.from('ponto_registros_v2').insert(batch)
