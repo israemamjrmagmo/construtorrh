@@ -2011,7 +2011,7 @@ export default function Ponto() {
                           <div style={{flex:1,minWidth:0}}>
                             <div style={{fontWeight:700,fontSize:13}}>{lanc.obra_nome}</div>
                             <div style={{fontSize:10,color:'var(--muted-foreground)',fontFamily:'monospace'}}>
-                              {lanc.data_inicio.slice(8)}/{lanc.data_inicio.slice(5,7)} → {lanc.data_fim.slice(8)}/{lanc.data_fim.slice(5,7)}
+                              {lanc.data_inicio ? `${lanc.data_inicio.slice(8)}/${lanc.data_inicio.slice(5,7)} → ${(lanc.data_fim ?? '').slice(8)}/${(lanc.data_fim ?? '').slice(5,7)}` : lanc.mes_referencia ?? ''}
                               <span style={{marginLeft:8}}>· {tot.presentes} dias · {fmtHHMM(horasTotCard)}h</span>
                               {tot.atestados>0&&<span style={{color:'#1d4ed8',marginLeft:6}}>🩺 {tot.atestados}</span>}
                               {tot.suspensoes>0&&<span style={{color:'#dc2626',marginLeft:6}}>⛔ {tot.suspensoes}</span>}
@@ -2194,7 +2194,7 @@ export default function Ponto() {
                                   {eFeriado&&(d.presente?<span title='Feriado trabalhado' style={{fontSize:9,marginLeft:2}}>🎌</span>:d.feriado_remunerado?<span title='Feriado remunerado' style={{fontSize:9,marginLeft:2}}>✓🎌</span>:<span style={{fontSize:9,marginLeft:2,color:'#d1d5db'}}>🎌</span>)}
                                 </td>
                                 {/* Data */}
-                                <td style={{...TDc,textAlign:'center',fontFamily:'monospace',fontWeight:600,color:'#111827',fontSize:11}}>{d.data.slice(8)}/{d.data.slice(5,7)}</td>
+                                <td style={{...TDc,textAlign:'center',fontFamily:'monospace',fontWeight:600,color:'#111827',fontSize:11}}>{d.data ? `${d.data.slice(8)}/${d.data.slice(5,7)}` : '—'}</td>
                                 {/* ✓ Presente */}
                                 <td style={{...TDc,textAlign:'center'}}>
                                   {d.evento==='atestado'?<span title="Afastamento">🩺</span>
@@ -2527,7 +2527,7 @@ export default function Ponto() {
                   {diasDisp.map(d=>{
                     const sel=diasSelProd.has(d.data)
                     return<button key={d.data} onClick={()=>setDiasSelProd(p=>{const n=new Set(p);sel?n.delete(d.data):n.add(d.data);return n})} style={{padding:'4px 9px',borderRadius:5,fontSize:12,fontWeight:600,cursor:'pointer',border:'2px solid',borderColor:sel?'#b45309':'var(--border)',background:sel?'#fef3c7':'transparent',color:sel?'#92400e':'var(--foreground)'}}>
-                      {d.data.slice(8)}/{d.data.slice(5,7)} {diaSemana(d.data)}
+                      {d.data ? `${d.data.slice(8)}/${d.data.slice(5,7)}` : '—'} {d.data ? diaSemana(d.data) : ''}
                     </button>
                   })}
                 </div>
