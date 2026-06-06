@@ -1402,10 +1402,7 @@ export default function Ponto() {
 
     const{data:lancInserido,error}=await supabase.from('ponto_lancamentos').insert({
       colaborador_id:colabSel.id,obra_id:novoLancObraId,mes_referencia:mesRef,
-      data_inicio:novoLancInicioFinal,data_fim:novoLancFimFinal,
       status:'rascunho',
-      tipo_contrato_lanc: tcNovo,
-      valor_hora_snapshot: vhNovo > 0 ? vhNovo : null,
     }).select('id').single()
     setSavingLanc(false)
     if(error){toast.error('Erro: '+error.message);return}
