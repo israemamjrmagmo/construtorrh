@@ -401,7 +401,7 @@ export default function SaasPainel() {
                       <div>
                         <h1 className="text-xl font-bold text-gray-900">{empresaSel.nome}</h1>
                         <div className="flex items-center gap-2 mt-0.5">
-                          {(() => { const pl = PLANO[empresaSel.plano]; const I = pl.icon; return (
+                          {(() => { const pl = PLANO[empresaSel.plano] ?? PLANO.basico; const I = pl.icon; return (
                             <span className="text-xs font-semibold px-2 py-0.5 rounded-full flex items-center gap-1"
                               style={{ color: pl.cor, background: pl.bg }}>
                               <I className="w-3 h-3" /> {pl.label}

@@ -6,7 +6,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useProfile, ROLE_PERMISSIONS } from '@/hooks/useProfile'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { supabase } from '@/lib/supabase'
-import { isSaasAuthenticated } from '@/utils/saasAuth'
+
 import {
   LayoutDashboard, Users, Building2, Shield,
   AlertTriangle, FileText, Clock, DollarSign, Award,
@@ -253,7 +253,7 @@ export function Layout({ children }: LayoutProps) {
   const notifRef    = useRef<HTMLDivElement>(null)
 
   const { user, signOut } = useAuth()
-  const { profile, isSaasAdmin } = useProfile()
+  const { profile} = useProfile()
   const navigate          = useNavigate()
   const location          = useLocation()
 
@@ -407,7 +407,7 @@ export function Layout({ children }: LayoutProps) {
             const groupBadge = getGroupBadge(group.id)
 
             const visibleItems = group.items.filter((item: any) => {
-              if (item.adminOnly && !isSaasAdmin && !isSaasAuthenticated()) return false
+              if (item.adminOnly) return false
               const isFinanceiro = ['/ponto','/vt','/adiantamentos','/premios','/fechamento-ponto','/pagamentos','/encargos','/provisoes'].includes(item.to)
               if (isFinanceiro && !roleMeta.canViewFinanceiro) return false
               return true
