@@ -130,7 +130,7 @@ export default function SaasPainel() {
   const fetchEmpresas = useCallback(async () => {
     setLoading(true)
     const { data, error } = await supabaseV2.from('empresas').select('*').order('created_at', { ascending: false })
-    if (error) { toast.error('Erro: ' + error.message); setLoading(false); return }
+    if (error) { toast.error('Erro: ' + error.message); setLoading(false); return [] }
 
     const enriched = await Promise.all((data ?? []).map(async (e: Empresa) => {
       const [vRes, uRes, mRes] = await Promise.all([
@@ -148,6 +148,7 @@ export default function SaasPainel() {
     }))
     setEmpresas(enriched)
     setLoading(false)
+    return enriched
   }, [])
 
   useEffect(() => { fetchEmpresas() }, [fetchEmpresas])
@@ -182,9 +183,13 @@ export default function SaasPainel() {
     setSavingEmp(false)
     if (error) { toast.error('Erro: ' + error.message); return }
     toast.success(editEmp ? '✅ Empresa atualizada!' : '🏢 Empresa cadastrada!')
+    const reselectId = editEmp?.id ?? null
     setModalEmp(false)
-    if (editEmp && empresaSel?.id === editEmp.id) setEmpresaSel(null)
-    fetchEmpresas()
+    const enriched = await fetchEmpresas()
+    if (reselectId && enriched) {
+      const updated = enriched.find((e: Empresa) => e.id === reselectId)
+      if (updated) setEmpresaSel(updated)
+    }
   }
 
   // ── Toggle ativo empresa ──────────────────────────────────────────────────
