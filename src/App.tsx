@@ -516,6 +516,13 @@ export default function App() {
               />
               <Route
                 path="/saas-admin"
+                element={
+                  <MasterRoute>
+                    <Layout>
+                      <SaasPainel />
+                    </Layout>
+                  </MasterRoute>
+                }
               />
               <Route
                 path="/gestao-empresas"
