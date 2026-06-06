@@ -109,7 +109,7 @@ export default function EmpresaTrocarSenha() {
           }}>
             <KeyRound size={14} style={{ marginTop: 1, flexShrink: 0 }} />
             <span>
-              Sua senha padrão foram os <strong>5 primeiros dígitos do CNPJ</strong> da empresa.
+              Sua senha padrão foram os <strong>6 primeiros dígitos do CNPJ</strong> da empresa.
               Agora crie uma senha pessoal e segura.
             </span>
           </div>

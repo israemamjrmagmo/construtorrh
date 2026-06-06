@@ -226,7 +226,7 @@ export default function SaasPainel() {
     setSavingUsr(true)
     // Senha padrão = primeiros 5 dígitos do CNPJ da empresa
     const cnpjDigits = (empresaSel.cnpj ?? '').replace(/\D/g, '')
-    const senhaDefault = cnpjDigits.substring(0, 5) || '12345'
+    const senhaDefault = cnpjDigits.substring(0, 6) || '123456'
     const senhaHash = await sha256(senhaDefault)
 
     const payload = {
