@@ -1,3 +1,11 @@
+// ============================================================
+// ARQUIVO MANTIDO POR COMPATIBILIDADE
+// O cliente principal (supabase.ts) já aponta para V2.
+// Este arquivo existe apenas para a página de migração e
+// para módulos que ainda referenciam `supabaseV2` diretamente.
+// Não remover enquanto houver imports de supabase-v2.ts no projeto.
+// ============================================================
+
 import { createClient } from '@supabase/supabase-js'
 
 // Credenciais públicas (anon key) — seguro para frontend
