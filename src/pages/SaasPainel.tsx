@@ -32,7 +32,7 @@ import {
   Crown, Package, Loader2, RefreshCw, UserPlus, Trash2, CheckCircle2,
   XCircle, LayoutDashboard, Settings, ChevronRight, Globe, Mail,
   Phone, MapPin, Calendar, BarChart3, Star, Key, LogOut,
-, Database} from 'lucide-react'
+} from 'lucide-react'
 import { toast } from 'sonner'
 
 async function sha256(msg: string) {
