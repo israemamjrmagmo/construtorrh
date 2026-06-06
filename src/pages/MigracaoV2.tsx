@@ -54,8 +54,8 @@ export default function MigracaoV2() {
   const [running,      setRunning]      = useState(false)
   const [done,         setDone]         = useState(false)
   const [empresaId,    setEmpresaId]    = useState<string | null>(null)
-  const [nomeEmpresa,  setNomeEmpresa]  = useState('Magmo Construções')
-  const [cnpjEmpresa,  setCnpjEmpresa]  = useState('')
+  const [nomeEmpresa,  setNomeEmpresa]  = useState('Magmo Solucoes Construtivas')
+  const [cnpjEmpresa,  setCnpjEmpresa]  = useState('52711905000173')
   const [logs,         setLogs]         = useState<string[]>([])
 
   const log = (msg: string) => {
@@ -65,28 +65,56 @@ export default function MigracaoV2() {
   const upd = (id: string, patch: Partial<MigStep>) =>
     setSteps(s => s.map(x => x.id === id ? { ...x, ...patch } : x))
 
-  // ── STEP 1: Criar empresa ─────────────────────────────────────────────────
+  // ── STEP 1: Criar / reutilizar empresa ───────────────────────────────────
   const migrarEmpresa = useCallback(async (): Promise<string | null> => {
     upd('empresa', { status: 'running' })
-    log('Criando empresa no banco V2…')
+    log('Verificando empresa no banco V2…')
+
+    // 1) Buscar pelo CNPJ (empresa já foi criada pelo SQL de setup)
+    if (cnpjEmpresa) {
+      const cnpjLimpo = cnpjEmpresa.replace(/\D/g, '')
+      const { data: porCnpj } = await supabaseV2
+        .from('empresas')
+        .select('id, nome, cnpj')
+        .eq('cnpj', cnpjLimpo)
+        .single()
+      if (porCnpj) {
+        log(`✅ Empresa encontrada pelo CNPJ — id: ${porCnpj.id}`)
+        upd('empresa', { status: 'done', migrated: 1, total: 1 })
+        setEmpresaId(porCnpj.id)
+        return porCnpj.id
+      }
+    }
+
+    // 2) Buscar pelo nome
+    const { data: porNome } = await supabaseV2
+      .from('empresas')
+      .select('id, nome')
+      .eq('nome', nomeEmpresa)
+      .single()
+    if (porNome) {
+      log(`⚠️ Empresa encontrada pelo nome — reutilizando id: ${porNome.id}`)
+      upd('empresa', { status: 'done', migrated: 1, total: 1 })
+      setEmpresaId(porNome.id)
+      return porNome.id
+    }
+
+    // 3) Criar nova (caso não exista)
+    log('Empresa não encontrada — criando…')
+    const cnpjLimpo = cnpjEmpresa ? cnpjEmpresa.replace(/\D/g, '') : null
     const { data, error } = await supabaseV2
       .from('empresas')
-      .insert({ nome: nomeEmpresa, cnpj: cnpjEmpresa || null, plano: 'profissional', ativo: true })
+      .insert({ nome: nomeEmpresa, cnpj: cnpjLimpo, plano: 'pro', ativo: true })
       .select('id')
       .single()
     if (error) {
-      const { data: existing } = await supabaseV2.from('empresas').select('id').eq('nome', nomeEmpresa).single()
-      if (existing) {
-        log(`⚠️ Empresa já existe — reutilizando id: ${existing.id}`)
-        upd('empresa', { status: 'done', migrated: 1, total: 1 })
-        return existing.id
-      }
       upd('empresa', { status: 'error', error: error.message })
       log(`❌ Erro ao criar empresa: ${error.message}`)
       return null
     }
     log(`✅ Empresa criada: ${data.id}`)
     upd('empresa', { status: 'done', migrated: 1, total: 1 })
+    setEmpresaId(data.id)
     return data.id
   }, [nomeEmpresa, cnpjEmpresa])
 
