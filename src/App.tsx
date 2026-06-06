@@ -63,6 +63,7 @@ const CentralAprovacoes  = React.lazy(() => import('@/pages/CentralAprovacoes'))
 const DossieColaborador  = React.lazy(() => import('@/pages/DossieColaborador'))
 const MigracaoV2         = React.lazy(() => import('@/pages/MigracaoV2'))
 const GestaoEmpresas     = React.lazy(() => import('@/pages/GestaoEmpresas'))
+const SaasPainel         = React.lazy(() => import('@/pages/SaasPainel'))
 
 // Portal do Gestor
 const GestorDashboard    = React.lazy(() => import('@/pages/gestor/GestorDashboard'))
@@ -512,6 +513,9 @@ export default function App() {
                     </Layout>
                   </MasterRoute>
                 }
+              />
+              <Route
+                path="/saas-admin"
               />
               <Route
                 path="/gestao-empresas"
