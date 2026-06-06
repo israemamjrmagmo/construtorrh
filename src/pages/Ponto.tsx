@@ -736,19 +736,22 @@ export default function Ponto() {
   // ── Carregar colaboradores + obras ──────────────────────────────────────
   useEffect(()=>{
     const load=async()=>{
-      const [{data:colsRaw, error:colsErr},{data:obsRaw}]=await Promise.all([
+      const [{data:colsRaw, error:colsErr},{data:obsRaw},{data:fnsRaw}]=await Promise.all([
         supabase.from('colaboradores').select('id,nome,chapa,funcao_id,obra_id,tipo_contrato,data_admissao,status').order('nome'),
         supabase.from('obras').select('id,nome').order('nome'),
+        supabase.from('funcoes').select('id,nome').eq('ativo',true),
       ])
       if(colsErr) { console.error('PONTO colaboradores error:', colsErr); toast.error('Erro ao carregar colaboradores: '+colsErr.message) }
+      // Mapa funcao_id → nome
+      const funcaoMap:Record<string,string>={}
+      ;(fnsRaw??[]).forEach((f:any)=>{ if(f.id) funcaoMap[f.id]=f.nome })
       setColaboradores((colsRaw??[]).map((c:any)=>({
         id:c.id,nome:c.nome,chapa:c.chapa??null,
         funcao_id:c.funcao_id??null,
         obra_id:c.obra_id??null,tipo_contrato:c.tipo_contrato??'clt',
-        funcao_nome:'Sem função',
+        funcao_nome:c.funcao_id ? (funcaoMap[c.funcao_id]??'Sem função') : 'Sem função',
         data_admissao:c.data_admissao??null,
         status:c.status??'ativo',
-        
       })))
       setObras((obsRaw??[]) as ObraSimples[])
       setLoadingColabs(false)
