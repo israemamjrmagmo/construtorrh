@@ -420,12 +420,13 @@ export default function Ponto() {
     if (reg.sincronizado_em) return
     setImportandoPortalProd(prev => new Set([...prev, reg.id]))
     // Encontra ou cria lançamento para o colaborador/obra/mês
-    const mr = reg.data.slice(0,7)
+    const mr = (reg.data ?? '').slice(0,7)
+    if (!mr) { setImportandoPortalProd(prev => { const s = new Set(prev); s.delete(reg.id); return s }); return }
     let lancId = reg.lancamento_id
     if (!lancId) {
       const { data: existentes } = await supabase.from('ponto_lancamentos')
         .select('id').eq('colaborador_id', reg.colaborador_id).eq('obra_id', reg.obra_id)
-        .lte('data_inicio', reg.data).gte('data_fim', reg.data).limit(1)
+        .eq('mes_referencia', mr).limit(1)
       if (existentes && existentes.length > 0) {
         lancId = existentes[0].id
       } else {

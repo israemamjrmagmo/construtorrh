@@ -205,22 +205,19 @@ export default function FechamentoPonto() {
     setLoading(true)
 
     // ── ROUND-TRIP 1: lançamentos (base) ───────────────────────────────────
-    // Fazemos isso separado pois precisamos dos IDs para as queries dependentes
+    // colaboradores() removido do nested join (V2 tem 2 FKs p/ vinculos → ambiguidade)
     const { data: lancsRaw, error: lancsErr } = await supabase
       .from('ponto_lancamentos')
       .select(`
-        id, colaborador_id, obra_id, mes_referencia, data_inicio, data_fim, status, tipo_pagamento,
-        valor_hora_snapshot,
-        snap_valor_hora, snap_horas_normais, snap_horas_extras, snap_valor_horas,
-        snap_valor_producao, snap_valor_dsr, snap_valor_premio, snap_valor_total,
-        snap_faltas, snap_vt_diario, snap_desconto_vt, snap_desconto_adiant,
-        snap_inss, snap_ir, snap_liquido, snap_fechado_em,
-        colaboradores(nome, chapa, tipo_contrato, funcao_id, vale_transporte, vt_dados, data_admissao),
+        id, colaborador_id, obra_id, mes_referencia, status,
+        horas_normais, horas_extras, valor_horas, faltas, dias_trabalhados,
+        snap_valor_total, snap_valor_horas, snap_valor_dsr, snap_valor_premio,
+        snap_liquido, snap_inss, snap_ir, snap_desconto_vt, snap_faltas,
         obras(nome, considera_sabado_util, desconta_vt)
       `)
       .in('status', ['em_fechamento', 'aguardando_aprovacao', 'pendente_fechamento', 'aprovado', 'liberado', 'pago', 'rascunho', 'recusado'])
       .eq('mes_referencia', mr)
-      .order('data_inicio')
+      .order('mes_referencia')
 
     if (lancsErr) {
       console.error('[FechamentoPonto] erro ao buscar lançamentos:', lancsErr)
@@ -232,7 +229,22 @@ export default function FechamentoPonto() {
 
     const ids      = lancsRaw.map((l: any) => l.id)
     const colabIds = [...new Set(lancsRaw.map((l: any) => l.colaborador_id).filter(Boolean))] as string[]
-    const funcaoIds = [...new Set(lancsRaw.map((l: any) => l.colaboradores?.funcao_id).filter(Boolean))] as string[]
+
+    // ── Busca colaboradores separado (V2: ponto_lancamentos tem 2 FKs → sem nested join) ──
+    const { data: colabsData } = colabIds.length
+      ? await supabase.from('colaboradores')
+          .select('id, nome, chapa, tipo_contrato, funcao_id, data_admissao, status, data_status')
+          .in('id', colabIds)
+      : { data: [] as any[] }
+    const colabMap: Record<string, any> = {}
+    ;(colabsData ?? []).forEach((c: any) => { colabMap[c.id] = c })
+    // Injeta colaboradores em cada lançamento
+    const lancsComColab = (lancsRaw ?? []).map((l: any) => ({
+      ...l,
+      colaboradores: colabMap[l.colaborador_id] ?? null,
+    }))
+
+    const funcaoIds = [...new Set((colabsData ?? []).map((c: any) => c.funcao_id).filter(Boolean))] as string[]
 
     // ── ROUND-TRIP 2: todas as queries dependentes em paralelo ─────────────
     // funcao_valores e funcoes usam cache (não mudam com o mês)
@@ -437,7 +449,7 @@ export default function FechamentoPonto() {
       return doms + ferDiasUteis
     }
 
-    const lista: LancItem[] = lancsRaw.map((l: any) => {
+    const lista: LancItem[] = lancsComColab.map((l: any) => {
       const colab = l.colaboradores
       const tipo  = colab?.tipo_contrato ?? 'clt'
       const horasAgg = mapaHoras[l.id] ?? { norm: 0, extra: 0, dias: 0, faltas: 0, diasDatas: new Set(), datasComFalta: new Set(), sabsDomTrab: 0 }
