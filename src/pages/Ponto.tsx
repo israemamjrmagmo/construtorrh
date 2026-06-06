@@ -737,7 +737,7 @@ export default function Ponto() {
   useEffect(()=>{
     const load=async()=>{
       const [{data:colsRaw, error:colsErr},{data:obsRaw}]=await Promise.all([
-        supabase.from('colaboradores').select('id,nome,chapa,funcao_id,obra_id,tipo_contrato,data_admissao,status,data_status').order('nome'),
+        supabase.from('colaboradores').select('id,nome,chapa,funcao_id,obra_id,tipo_contrato,data_admissao,status').order('nome'),
         supabase.from('obras').select('id,nome').order('nome'),
       ])
       if(colsErr) { console.error('PONTO colaboradores error:', colsErr); toast.error('Erro ao carregar colaboradores: '+colsErr.message) }
@@ -748,7 +748,7 @@ export default function Ponto() {
         funcao_nome:'Sem função',
         data_admissao:c.data_admissao??null,
         status:c.status??'ativo',
-        data_status:c.data_status??null,
+        
       })))
       setObras((obsRaw??[]) as ObraSimples[])
       setLoadingColabs(false)
