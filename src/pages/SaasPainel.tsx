@@ -135,7 +135,7 @@ function MigracaoEmpresa({ empresaId, empresaNome }: { empresaId: string; empres
     await lerV1('obras')
     await lerV1('colaboradores')
     await lerV1('ponto_lancamentos')
-    await lerV1('ponto_registros')
+    await lerV1('registro_ponto')
     addLog('─────────────────────────────')
     addLog('Se todos retornaram 0: desabilite o RLS no V1 e tente novamente.')
     addLog('Se retornaram dados: clique em "Iniciar Migração".')
@@ -292,7 +292,7 @@ function MigracaoEmpresa({ empresaId, empresaNome }: { empresaId: string; empres
 
       // ── 5. Registros de Ponto ───────────────────────────────────────────────
       addLog('⏱️ [5/5] Migrando registros de ponto...')
-      const regs = await lerV1('ponto_registros')
+      const regs = await lerV1('registro_ponto')
       if (regs.length) {
         const { data: vincsV2b } = await supabaseV2.from('vinculos_empregaticos').select('id, id_legado').eq('empresa_id', empresaId)
         const { data: lancsV2 }  = await supabaseV2.from('ponto_lancamentos_v2').select('id, id_legado').eq('empresa_id', empresaId)
@@ -346,7 +346,7 @@ function MigracaoEmpresa({ empresaId, empresaNome }: { empresaId: string; empres
         <p style={{ fontSize: 12, color: '#3b82f6' }}>Empresa: <strong>{empresaNome}</strong></p>
         <p style={{ fontSize: 11, color: '#6b7280', marginTop: 4 }}>
           Importa funções, obras, colaboradores, lançamentos e registros do banco V1 para esta empresa no V2.<br/>
-          <strong>Pré-requisito:</strong> Execute no V1 → <code>ALTER TABLE funcoes DISABLE ROW LEVEL SECURITY;</code> (e para obras, colaboradores, ponto_lancamentos, ponto_registros).
+          <strong>Pré-requisito:</strong> Execute no V1 → <code>ALTER TABLE funcoes DISABLE ROW LEVEL SECURITY;</code> (e para obras, colaboradores, ponto_lancamentos, <strong>registro_ponto</strong>).
         </p>
       </div>
       <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
