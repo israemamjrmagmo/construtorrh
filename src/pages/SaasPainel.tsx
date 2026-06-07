@@ -371,6 +371,64 @@ function MigracaoEmpresa({ empresaId, empresaNome }: { empresaId: string; empres
     setRunning(false)
   }
 
+  // ── Corrigir colaborador_id/vinculo_id nos lançamentos e registros migrados ──
+  const corrigirIds = async () => {
+    if (!empresaId) return toast.error('Selecione uma empresa primeiro')
+    setRunning(true); logRef.current = []; setLog([])
+    addLog('🔧 Corrigindo IDs de colaborador em lançamentos e registros...')
+    try {
+      // 1. Ler V1 ponto_lancamentos (id → colaborador_id V1 int)
+      addLog('  📥 Lendo V1 ponto_lancamentos...')
+      const lancsV1 = await lerV1('ponto_lancamentos')
+      const v1ColabPorLanc: Record<string, string> = {}
+      lancsV1.forEach((l: any) => { v1ColabPorLanc[String(l.id)] = String(l.colaborador_id) })
+      addLog(`  📥 ${lancsV1.length} lançamentos V1 lidos`)
+
+      // 2. Ler V1 registro_ponto (colaborador_id V1 int por registro)
+      addLog('  📥 Lendo V1 registro_ponto...')
+      const regsV1 = await lerV1('registro_ponto')
+      const v1ColabPorReg: Record<string, string> = {}
+      regsV1.forEach((r: any) => { v1ColabPorReg[String(r.id)] = String(r.colaborador_id) })
+      addLog(`  📥 ${regsV1.length} registros V1 lidos`)
+
+      // 3. Construir mapa V1_colab_id → V2_uuid atual
+      const { data: vincsV2 } = await supabaseV2.from('vinculos_empregaticos').select('id, id_legado').eq('empresa_id', empresaId)
+      const vMap: Record<string, string> = {}
+      ;(vincsV2 ?? []).forEach((v: any) => { if (v.id_legado) vMap[String(v.id_legado)] = v.id })
+      addLog(`  🗺️ ${Object.keys(vMap).length} vinculos V2 mapeados`)
+
+      // 4. Ler lançamentos V2 (id + id_legado)
+      const { data: lancsV2 } = await supabaseV2.from('ponto_lancamentos_v2').select('id, id_legado, colaborador_id').eq('empresa_id', empresaId)
+      let lancOk = 0, lancSkip = 0
+      for (const lanc of (lancsV2 ?? [])) {
+        const v1ColabId = v1ColabPorLanc[String(lanc.id_legado)]
+        const novoUuid  = vMap[v1ColabId ?? '']
+        if (!novoUuid || novoUuid === lanc.colaborador_id) { lancSkip++; continue }
+        await supabaseV2.from('ponto_lancamentos_v2').update({ colaborador_id: novoUuid, vinculo_id: novoUuid }).eq('id', lanc.id)
+        lancOk++
+      }
+      addLog(`  ✅ Lançamentos corrigidos: ${lancOk} | já corretos: ${lancSkip}`)
+
+      // 5. Ler registros V2 (id + id_legado)
+      const { data: regsV2 } = await supabaseV2.from('ponto_registros_v2').select('id, id_legado, colaborador_id').eq('empresa_id', empresaId)
+      let regOk = 0, regSkip = 0
+      for (const reg of (regsV2 ?? [])) {
+        const v1ColabId = v1ColabPorReg[String(reg.id_legado)]
+        const novoUuid  = vMap[v1ColabId ?? '']
+        if (!novoUuid || novoUuid === reg.colaborador_id) { regSkip++; continue }
+        await supabaseV2.from('ponto_registros_v2').update({ colaborador_id: novoUuid, vinculo_id: novoUuid }).eq('id', reg.id)
+        regOk++
+      }
+      addLog(`  ✅ Registros corrigidos: ${regOk} | já corretos: ${regSkip}`)
+
+      addLog('─────────────────────────────')
+      addLog('🎉 Correção de IDs concluída!')
+    } catch (e: any) {
+      addLog(`❌ Erro: ${e.message}`)
+    }
+    setRunning(false)
+  }
+
   return (
     <div style={{ padding: 16 }}>
       <div style={{ marginBottom: 12, padding: '10px 14px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8 }}>
@@ -388,6 +446,12 @@ function MigracaoEmpresa({ empresaId, empresaNome }: { empresaId: string; empres
         </Button>
         <Button onClick={iniciar} disabled={running || !empresaId} size="sm" style={{ flex: 2 }}>
           {running ? <><Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />Migrando...</> : done ? '✅ Migrar Novamente' : '🚀 Iniciar Migração'}
+        </Button>
+      </div>
+      <div style={{ marginBottom: 12 }}>
+        <Button onClick={corrigirIds} disabled={running || !empresaId} variant="outline" size="sm" style={{ width: '100%', borderColor: '#f59e0b', color: '#b45309' }}>
+          {running ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : null}
+          🔧 Corrigir IDs de Colaborador (pós-migração)
         </Button>
       </div>
       {log.length > 0 && (

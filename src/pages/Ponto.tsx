@@ -6,6 +6,7 @@ import {
   Factory, X, Plus, Trash2, ChevronDown, Building2, Clock, AlertCircle
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { useEmpresaId } from '@/hooks/useEmpresaId'
 import { formatCurrency } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -296,6 +297,7 @@ function emptyDia(colabId:string,lancId:string,obraId:string,data:string):DiaReg
 // ─── Componente ───────────────────────────────────────────────────────────────
 export default function Ponto() {
   const nav = useNavigate()
+  const { empresaId } = useEmpresaId()
   const hoje = new Date()
   const [ano, setAno]   = useState(hoje.getFullYear())
   const [mes, setMes]   = useState(hoje.getMonth()+1)
@@ -1401,7 +1403,9 @@ export default function Ponto() {
     const vhNovo = valorHoraPorTipo[tcNovo] ?? valorHora
 
     const{data:lancInserido,error}=await supabase.from('ponto_lancamentos').insert({
-      colaborador_id:colabSel.id,obra_id:novoLancObraId,mes_referencia:mesRef,
+      empresa_id: empresaId,
+      colaborador_id:colabSel.id, vinculo_id:colabSel.id,
+      obra_id:novoLancObraId, mes_referencia:mesRef,
       status:'rascunho',
     }).select('id').single()
     setSavingLanc(false)
