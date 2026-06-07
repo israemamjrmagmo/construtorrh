@@ -875,20 +875,26 @@ export default function Ponto() {
     const dInicio = lanc.data_inicio || `${lanc.mes_referencia}-01`
     const dFim    = lanc.data_fim    || `${lanc.mes_referencia}-${getUltimoDia(lanc.mes_referencia)}`
 
-    // Busca por lancamento_id primeiro; se retornar vazio, fallback por colaborador+obra+período
+    // Busca 1: pela tabela direta via lancamento_id (mais confiável)
     let pontosRaw: any[] | null = null
-    const { data: byLanc } = await supabase.from('registro_ponto').select('*')
+    const { data: byLancDirect } = await supabase.from('ponto_registros_v2').select('*')
       .eq('lancamento_id', lanc.id)
-    if (byLanc && byLanc.length > 0) {
-      pontosRaw = byLanc
+    if (byLancDirect && byLancDirect.length > 0) {
+      pontosRaw = byLancDirect
     } else {
-      // Fallback: busca direta por colaborador_id + obra_id + intervalo de datas
-      const { data: byColab } = await supabase.from('registro_ponto').select('*')
-        .eq('colaborador_id', colab.id)
-        .eq('obra_id', lanc.obra_id)
-        .gte('data', dInicio)
-        .lte('data', dFim)
-      pontosRaw = byColab
+      // Busca 2: VIEW por lancamento_id
+      const { data: byLanc } = await supabase.from('registro_ponto').select('*')
+        .eq('lancamento_id', lanc.id)
+      if (byLanc && byLanc.length > 0) {
+        pontosRaw = byLanc
+      } else {
+        // Busca 3: tabela direta por obra_id + data (ignora colaborador_id que pode estar errado)
+        const { data: byObra } = await supabase.from('ponto_registros_v2').select('*')
+          .eq('obra_id', lanc.obra_id)
+          .gte('data', dInicio)
+          .lte('data', dFim)
+        pontosRaw = byObra
+      }
     }
 
     const mapaP:Record<string,any>={}
