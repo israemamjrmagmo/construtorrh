@@ -409,27 +409,55 @@ export default function Relatorios() {
           .gte('competencia', mesRefIni).lte('competencia', mesRefFim).in('status', ['aprovado', 'pago'])
         const { data: pr } = await prQ
 
-        // Estrutura: obra → { totais + por_funcao: { funcaoNome → { categoria, folha, colaboradores } } }
+        // Estrutura: obra → { totais + por_funcao: { funcaoNome → { encargos, provisões, colaboradores } } }
         const map: Record<string, {
-          obra: string; folha_bruto: number; folha_liquido: number;
-          adiantamentos: number; vt: number; premios: number; total: number;
-          por_funcao: Record<string, { funcao: string; categoria: string; folha: number; colaboradores: Set<string> }>;
+          obra: string; obra_id: string;
+          folha_bruto: number; folha_liquido: number;
+          adiantamentos: number; vt: number; premios: number;
+          encargos: number;   // FGTS + INSS Patronal + RAT + Terceiros
+          provisoes: number;  // Férias (1/9×4/3) + 13º (1/12) + FGTS sobre ambos
+          total: number;
+          por_funcao: Record<string, {
+            funcao: string; categoria: string;
+            folha_bruto: number; folha_liquido: number;
+            encargos: number; provisoes: number;
+            colaboradores: Set<string>;
+          }>;
         }> = {}
 
         const getObra = (oId: string, nome: string) => {
-          if (!map[oId]) map[oId] = { obra: nome, folha_bruto: 0, folha_liquido: 0, adiantamentos: 0, vt: 0, premios: 0, total: 0, por_funcao: {} }
+          if (!map[oId]) map[oId] = {
+            obra: nome, obra_id: oId,
+            folha_bruto: 0, folha_liquido: 0, adiantamentos: 0, vt: 0, premios: 0,
+            encargos: 0, provisoes: 0, total: 0, por_funcao: {},
+          }
           return map[oId]
         }
 
         for (const l of linhasFolha) {
           const obraId = l.obra_id ?? 'sem'
           const row = getObra(obraId, l.obra_nome)
-          row.folha_bruto  += l.salarioBruto
+          row.folha_bruto   += l.salarioBruto
           row.folha_liquido += l.liquido
+          // Encargos já calculados pelo hook
+          const encargos = l.fgts + l.inssPatronal + l.rat + l.terceiros
+          row.encargos += encargos
+          // Provisões mensais: férias (1/9 × 4/3) + 13º (1/12) + FGTS sobre ambos
+          const provFerias  = (l.salarioBruto / 9) * (4 / 3)  // 1/12 mês × 1/3 adicional
+          const prov13      = l.salarioBruto / 12
+          const provisoes   = provFerias + prov13 + (provFerias + prov13) * 0.08  // + FGTS
+          row.provisoes += provisoes
           // Detalhe por função
           const funcNome = l.funcao_nome ?? '(Sem Função)'
-          if (!row.por_funcao[funcNome]) row.por_funcao[funcNome] = { funcao: funcNome, categoria: '—', folha: 0, colaboradores: new Set() }
-          row.por_funcao[funcNome].folha += l.salarioBruto
+          if (!row.por_funcao[funcNome]) row.por_funcao[funcNome] = {
+            funcao: funcNome, categoria: '—',
+            folha_bruto: 0, folha_liquido: 0, encargos: 0, provisoes: 0,
+            colaboradores: new Set(),
+          }
+          row.por_funcao[funcNome].folha_bruto   += l.salarioBruto
+          row.por_funcao[funcNome].folha_liquido += l.liquido
+          row.por_funcao[funcNome].encargos      += encargos
+          row.por_funcao[funcNome].provisoes     += provisoes
           row.por_funcao[funcNome].colaboradores.add(l.colaborador_id)
         }
         for (const a of ad ?? []) {
@@ -450,11 +478,17 @@ export default function Relatorios() {
 
         resultado = Object.values(map).map(r => ({
           ...r,
-          total: r.folha_bruto + r.adiantamentos + r.vt + r.premios,
-          // Serializar por_funcao para renderização
+          total: r.folha_bruto + r.vt + r.premios + r.encargos + r.provisoes,
+          custo_total_real: r.folha_bruto + r.vt + r.premios + r.encargos + r.provisoes,
           funcoes_detalhes: Object.values(r.por_funcao)
-            .map(f => ({ funcao: f.funcao, categoria: f.categoria, folha: f.folha, colaboradores: f.colaboradores.size }))
-            .sort((a, b) => b.folha - a.folha),
+            .map(f => ({
+              funcao: f.funcao, categoria: f.categoria,
+              folha_bruto: f.folha_bruto, folha_liquido: f.folha_liquido,
+              encargos: f.encargos, provisoes: f.provisoes,
+              total_funcao: f.folha_bruto + f.encargos + f.provisoes,
+              colaboradores: f.colaboradores.size,
+            }))
+            .sort((a, b) => b.total_funcao - a.total_funcao),
         })).sort((a, b) => (b.total as number) - (a.total as number))
       }
 
@@ -1325,23 +1359,88 @@ export default function Relatorios() {
         ['TOTAL', String(totalAtivos), '—', '—', `<strong>${totalGeral}</strong>`]
       )
     } else if (relatAtivo === 'custo-obra') {
-      const totalGeral = dados.reduce((s, r) => s + (r.total as number), 0)
+      const totalGeral     = dados.reduce((s, r) => s + (r.total as number), 0)
+      const totalFolha     = dados.reduce((s, r) => s + (r.folha_bruto as number), 0)
+      const totalLiquido   = dados.reduce((s, r) => s + (r.folha_liquido as number), 0)
+      const totalAdiant    = dados.reduce((s, r) => s + (r.adiantamentos as number), 0)
+      const totalVT        = dados.reduce((s, r) => s + (r.vt as number), 0)
+      const totalPremios   = dados.reduce((s, r) => s + (r.premios as number), 0)
+      const totalEncargos  = dados.reduce((s, r) => s + (r.encargos as number), 0)
+      const totalProvisoes = dados.reduce((s, r) => s + (r.provisoes as number), 0)
+
       const detalheObras = dados.map((r: any) => {
         const funcoes: any[] = r.funcoes_detalhes ?? []
-        const catMap: Record<string, any[]> = {}
-        funcoes.forEach((f: any) => { const c = f.categoria ?? '—'; if (!catMap[c]) catMap[c] = []; catMap[c].push(f) })
-        const linhasFunc = Object.entries(catMap).map(([cat, itens]) =>
-          `<tr><td colspan="5" style="background:#f1f5f9;font-size:10px;font-weight:700;color:#475569;padding:4px 10px;text-transform:uppercase;letter-spacing:.5px">${cat}</td></tr>` +
-          (itens as any[]).map(f => `<tr><td style="padding:4px 10px 4px 22px;color:#475569">↳ ${f.funcao}</td><td style="text-align:center">${f.colaboradores}</td><td style="text-align:right">${fmtCur(f.folha)}</td><td></td><td></td></tr>`).join('')
+        const linhasFunc = funcoes.map((f: any) =>
+          `<tr style="border-bottom:1px solid #f1f5f9">
+            <td style="padding:5px 10px 5px 20px;color:#374151;font-weight:600">↳ ${f.funcao}</td>
+            <td style="text-align:center;padding:5px 6px;color:#64748b">${f.colaboradores}</td>
+            <td style="text-align:right;padding:5px 6px;color:#1e3a5f;font-weight:700">${fmtCur(f.folha_bruto)}</td>
+            <td style="text-align:right;padding:5px 6px;color:#15803d">${fmtCur(f.folha_liquido)}</td>
+            <td style="text-align:right;padding:5px 6px;color:#dc2626">${fmtCur(f.encargos)}</td>
+            <td style="text-align:right;padding:5px 6px;color:#7c3aed">${fmtCur(f.provisoes)}</td>
+            <td style="text-align:right;padding:5px 6px;font-weight:800;color:#1e3a5f">${fmtCur(f.total_funcao)}</td>
+            <td style="text-align:right;padding:5px 6px;color:#94a3b8">${(r.total as number) > 0 ? ((f.total_funcao / (r.total as number)) * 100).toFixed(1) : '0.0'}%</td>
+          </tr>`
         ).join('')
-        return `<tr style="background:#1e3a5f;color:#fff"><td colspan="2" style="padding:8px 10px;font-weight:700">${String(r.obra)}</td><td style="text-align:right;padding:8px 10px">${fmtCur(r.folha_bruto as number)}</td><td style="text-align:right;padding:8px 10px">${fmtCur(r.adiantamentos as number)} / ${fmtCur(r.vt as number)}</td><td style="text-align:right;padding:8px 10px;font-weight:800">${fmtCur(r.total as number)}</td></tr>` + linhasFunc
+        return `
+          <tr style="background:#1e3a5f;color:#fff">
+            <td colspan="2" style="padding:8px 10px;font-weight:800;font-size:13px">${String(r.obra)}</td>
+            <td style="text-align:right;padding:8px 6px">${fmtCur(r.folha_bruto as number)}</td>
+            <td style="text-align:right;padding:8px 6px">${fmtCur(r.folha_liquido as number)}</td>
+            <td style="text-align:right;padding:8px 6px;color:#fca5a5">${fmtCur(r.encargos as number)}</td>
+            <td style="text-align:right;padding:8px 6px;color:#c4b5fd">${fmtCur(r.provisoes as number)}</td>
+            <td style="text-align:right;padding:8px 6px;font-weight:900;font-size:13px">${fmtCur(r.total as number)}</td>
+            <td style="text-align:right;padding:8px 6px">100%</td>
+          </tr>` + linhasFunc
       }).join('')
+
       htmlBody = kpiHTML([
-        { val: fmtCur(totalGeral), lbl: 'Custo Total' },
-        { val: fmtCur(dados.reduce((s, r) => s + (r.folha_bruto as number), 0)), lbl: 'Folha Bruta' },
-        { val: fmtCur(dados.reduce((s, r) => s + (r.adiantamentos as number), 0)), lbl: 'Adiantamentos' },
-        { val: fmtCur(dados.reduce((s, r) => s + (r.vt as number), 0)), lbl: 'Vale Transporte' },
-      ]) + `<table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:#334155;color:#fff"><th style="padding:7px 10px;text-align:left">Obra / Função</th><th style="padding:7px 10px;text-align:center">Colabs</th><th style="padding:7px 10px;text-align:right">Folha Bruta</th><th style="padding:7px 10px;text-align:right">Adiant / VT</th><th style="padding:7px 10px;text-align:right">Total</th></tr></thead><tbody>${detalheObras}</tbody><tfoot><tr style="background:#e8f0fe;font-weight:800;color:#1e3a5f"><td colspan="4" style="padding:7px 10px">TOTAL GERAL</td><td style="text-align:right;padding:7px 10px">${fmtCur(totalGeral)}</td></tr></tfoot></table>`
+        { val: fmtCur(totalGeral),     lbl: 'Custo Total Real'  },
+        { val: fmtCur(totalFolha),     lbl: 'Folha Bruta'       },
+        { val: fmtCur(totalLiquido),   lbl: 'Folha Líquida'     },
+        { val: fmtCur(totalAdiant),    lbl: 'Adiantamentos'     },
+        { val: fmtCur(totalVT),        lbl: 'Vale Transporte'   },
+        { val: fmtCur(totalPremios),   lbl: 'Prêmios'           },
+        { val: fmtCur(totalEncargos),  lbl: 'Encargos Patronais'},
+        { val: fmtCur(totalProvisoes), lbl: 'Provisões'         },
+      ]) +
+      `<table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:14px">
+        <thead>
+          <tr style="background:#334155;color:#fff">
+            <th style="padding:7px 10px;text-align:left">Obra / Função</th>
+            <th style="padding:7px 6px;text-align:center">Colabs</th>
+            <th style="padding:7px 6px;text-align:right">Folha Bruta</th>
+            <th style="padding:7px 6px;text-align:right">Folha Líquida</th>
+            <th style="padding:7px 6px;text-align:right;color:#fca5a5">Encargos</th>
+            <th style="padding:7px 6px;text-align:right;color:#c4b5fd">Provisões</th>
+            <th style="padding:7px 6px;text-align:right;color:#fde68a;font-weight:900">Total Função</th>
+            <th style="padding:7px 6px;text-align:right">% Total</th>
+          </tr>
+        </thead>
+        <tbody>${detalheObras}</tbody>
+        <tfoot>
+          <tr style="background:#e8f0fe;font-weight:800;color:#1e3a5f;border-top:2px solid #1e3a5f">
+            <td colspan="2" style="padding:8px 10px">TOTAL GERAL — ${dados.length} obra(s)</td>
+            <td style="text-align:right;padding:8px 6px">${fmtCur(totalFolha)}</td>
+            <td style="text-align:right;padding:8px 6px;color:#15803d">${fmtCur(totalLiquido)}</td>
+            <td style="text-align:right;padding:8px 6px;color:#dc2626">${fmtCur(totalEncargos)}</td>
+            <td style="text-align:right;padding:8px 6px;color:#7c3aed">${fmtCur(totalProvisoes)}</td>
+            <td style="text-align:right;padding:8px 6px;font-size:13px">${fmtCur(totalGeral)}</td>
+            <td style="text-align:right;padding:8px 6px">100%</td>
+          </tr>
+        </tfoot>
+      </table>
+      <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;font-size:10px;color:#92400e;margin-top:8px">
+        <strong>📖 Legenda:</strong>
+        <b>Folha Bruta</b> = salário base + DSR (antes dos descontos) &nbsp;·&nbsp;
+        <b>Folha Líquida</b> = valor recebido pelo colaborador (após INSS, IR, VT, AD) &nbsp;·&nbsp;
+        <b>Adiantamentos</b> = pagamentos antecipados do salário (movimentação, não custo adicional) &nbsp;·&nbsp;
+        <b>Vale Transporte</b> = benefício de transporte custeado pela empresa &nbsp;·&nbsp;
+        <b>Prêmios</b> = bônus e bonificações aprovadas &nbsp;·&nbsp;
+        <b>Encargos</b> = FGTS 8% + INSS Patronal 20% + RAT + Terceiros (obrigações legais) &nbsp;·&nbsp;
+        <b>Provisões</b> = reserva mensal de Férias (1/9 × 4/3) + 13º Salário (1/12) + FGTS sobre ambos &nbsp;·&nbsp;
+        <b>Custo Total Real</b> = Folha Bruta + VT + Prêmios + Encargos + Provisões
+      </div>`
     } else if (relatAtivo === 'ficha-financeira') {
       const colabNome = colaboradores.find(c => c.id === filtroColaborador)?.nome ?? '—'
       htmlBody = `<h2>Colaborador: ${colabNome}</h2>` + tabelaHTML(
@@ -1910,74 +2009,101 @@ export default function Relatorios() {
               {/* ── Tabela: Custo por Obra (detalhado por função) ── */}
               {relatAtivo === 'custo-obra' && (
                 <div className="space-y-6">
-                  {dados.map((r, i) => {
-                    const funcoes = (r.funcoes_detalhes as any[]) ?? []
-                    // Agrupar funções por categoria
-                    const catMap: Record<string, { total: number; itens: any[] }> = {}
-                    funcoes.forEach(f => {
-                      const cat = String(f.categoria ?? '—')
-                      if (!catMap[cat]) catMap[cat] = { total: 0, itens: [] }
-                      catMap[cat].itens.push(f)
-                      catMap[cat].total += f.folha
-                    })
+                  {/* Legenda explicativa */}
+                  <div style={{ background:'#fffbeb', border:'1px solid #fde68a', borderRadius:10, padding:'12px 16px', fontSize:11, color:'#92400e' }}>
+                    <strong>📖 Legenda:</strong>
+                    {' '}
+                    <b>Folha Bruta</b> = salário base + DSR (antes dos descontos) &nbsp;·&nbsp;
+                    <b>Folha Líquida</b> = valor recebido pelo colaborador (após INSS, IR, VT, AD) &nbsp;·&nbsp;
+                    <b>Adiantamentos</b> = pagamentos antecipados do salário &nbsp;·&nbsp;
+                    <b>Vale Transporte</b> = benefício de transporte (custo empresa) &nbsp;·&nbsp;
+                    <b>Prêmios</b> = bônus e bonificações aprovadas &nbsp;·&nbsp;
+                    <b>Encargos</b> = FGTS 8% + INSS Patronal 20% + RAT + Terceiros (obrigações legais da empresa) &nbsp;·&nbsp;
+                    <b>Provisões</b> = reserva mensal de Férias + 13º Salário + FGTS sobre ambos
+                  </div>
+
+                  {dados.map((r: any, i: number) => {
+                    const funcoes: any[] = r.funcoes_detalhes ?? []
                     return (
                       <div key={i} className="border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-                        {/* Cabeçalho da obra */}
-                        <div className="bg-[#1e3a5f] text-white px-5 py-3 flex items-center justify-between">
-                          <span className="font-bold text-base">{String(r.obra)}</span>
-                          <span className="text-lg font-extrabold">{fmtCur(r.total as number)}</span>
+                        {/* Cabeçalho obra */}
+                        <div style={{ background:'#1e3a5f', color:'#fff', padding:'10px 16px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                          <span style={{ fontWeight:800, fontSize:15 }}>{String(r.obra)}</span>
+                          <div style={{ textAlign:'right' }}>
+                            <div style={{ fontSize:11, opacity:.7 }}>Custo Total Real</div>
+                            <div style={{ fontSize:18, fontWeight:900 }}>{fmtCur(r.total as number)}</div>
+                          </div>
                         </div>
-                        {/* KPIs da obra */}
-                        <div className="grid grid-cols-5 divide-x divide-slate-100 bg-slate-50 text-xs">
+
+                        {/* KPIs grid 7 colunas */}
+                        <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', borderBottom:'1px solid #e2e8f0', background:'#f8fafc' }}>
                           {[
-                            { lbl: 'Folha Bruta', val: r.folha_bruto as number, cor: '#1e3a5f' },
-                            { lbl: 'Folha Líquida', val: r.folha_liquido as number, cor: '#15803d' },
-                            { lbl: 'Adiantamentos', val: r.adiantamentos as number, cor: '#7c3aed' },
-                            { lbl: 'Vale Transp.', val: r.vt as number, cor: '#0369a1' },
-                            { lbl: 'Prêmios', val: r.premios as number, cor: '#b45309' },
-                          ].map(({ lbl, val, cor }) => (
-                            <div key={lbl} className="px-3 py-2 text-center">
-                              <div style={{ color: cor, fontWeight: 700, fontSize: 13 }}>{fmtCur(val)}</div>
-                              <div className="text-slate-500 mt-0.5">{lbl}</div>
+                            { lbl:'Folha Bruta',   val:r.folha_bruto   as number, cor:'#1e3a5f', desc:'Salário+DSR' },
+                            { lbl:'Folha Líquida', val:r.folha_liquido as number, cor:'#15803d', desc:'Recebido pelo colaborador' },
+                            { lbl:'Adiantamentos', val:r.adiantamentos as number, cor:'#7c3aed', desc:'Pagamentos antecipados' },
+                            { lbl:'Vale Transp.',  val:r.vt            as number, cor:'#0369a1', desc:'Custo empresa' },
+                            { lbl:'Prêmios',       val:r.premios       as number, cor:'#b45309', desc:'Bônus aprovados' },
+                            { lbl:'Encargos',      val:r.encargos      as number, cor:'#dc2626', desc:'FGTS+INSS Pat+RAT' },
+                            { lbl:'Provisões',     val:r.provisoes     as number, cor:'#6b21a8', desc:'Férias+13º+FGTS' },
+                          ].map(({ lbl, val, cor, desc }) => (
+                            <div key={lbl} style={{ padding:'10px 8px', textAlign:'center', borderRight:'1px solid #e2e8f0' }}>
+                              <div style={{ color:cor, fontWeight:800, fontSize:13 }}>{fmtCur(val)}</div>
+                              <div style={{ fontSize:11, fontWeight:700, color:'#374151', marginTop:2 }}>{lbl}</div>
+                              <div style={{ fontSize:9, color:'#9ca3af', marginTop:1 }}>{desc}</div>
                             </div>
                           ))}
                         </div>
-                        {/* Detalhamento por categoria / função */}
-                        {Object.entries(catMap).map(([cat, { itens, total: catTotal }]) => (
-                          <div key={cat}>
-                            <div className="bg-slate-100 px-4 py-1.5 flex justify-between items-center border-t border-slate-200">
-                              <span className="text-xs font-bold text-slate-600 uppercase tracking-wide">{cat}</span>
-                              <span className="text-xs font-bold text-slate-700">{fmtCur(catTotal)}</span>
-                            </div>
-                            <table className="w-full text-xs">
-                              <thead><tr className="bg-slate-50 text-slate-500 text-[11px]">
-                                <th className="px-4 py-1.5 text-left font-semibold">Função</th>
-                                <th className="px-4 py-1.5 text-center font-semibold">Colaboradores</th>
-                                <th className="px-4 py-1.5 text-right font-semibold">Custo Folha</th>
-                                <th className="px-4 py-1.5 text-right font-semibold">% do Total</th>
-                              </tr></thead>
-                              <tbody>
-                                {itens.map((f: any, fi: number) => (
-                                  <tr key={fi} className={fi % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
-                                    <td className="px-4 py-2 font-medium text-slate-700">{f.funcao}</td>
-                                    <td className="px-4 py-2 text-center text-slate-500">{f.colaboradores}</td>
-                                    <td className="px-4 py-2 text-right font-semibold text-[#1e3a5f]">{fmtCur(f.folha)}</td>
-                                    <td className="px-4 py-2 text-right">
-                                      <span className="text-slate-500">{(r.folha_bruto as number) > 0 ? ((f.folha / (r.folha_bruto as number)) * 100).toFixed(1) : '0.0'}%</span>
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        ))}
+
+                        {/* Tabela por função */}
+                        <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+                          <thead>
+                            <tr style={{ background:'#334155', color:'#fff' }}>
+                              <th style={{ padding:'8px 12px', textAlign:'left' }}>Função</th>
+                              <th style={{ padding:'8px 6px', textAlign:'center' }}>Colabs</th>
+                              <th style={{ padding:'8px 6px', textAlign:'right' }}>Folha Bruta</th>
+                              <th style={{ padding:'8px 6px', textAlign:'right' }}>Folha Líquida</th>
+                              <th style={{ padding:'8px 6px', textAlign:'right', color:'#fca5a5' }}>Encargos</th>
+                              <th style={{ padding:'8px 6px', textAlign:'right', color:'#c4b5fd' }}>Provisões</th>
+                              <th style={{ padding:'8px 6px', textAlign:'right', color:'#fde68a', fontWeight:900 }}>Total Função</th>
+                              <th style={{ padding:'8px 6px', textAlign:'right' }}>% Total</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {funcoes.map((f: any, fi: number) => (
+                              <tr key={fi} style={{ background: fi%2===0 ? '#fff' : '#f8fafc', borderBottom:'1px solid #f1f5f9' }}>
+                                <td style={{ padding:'9px 12px', fontWeight:600, color:'#1e293b' }}>{f.funcao}</td>
+                                <td style={{ padding:'9px 6px', textAlign:'center', color:'#64748b' }}>{f.colaboradores}</td>
+                                <td style={{ padding:'9px 6px', textAlign:'right', color:'#1e3a5f', fontWeight:700 }}>{fmtCur(f.folha_bruto)}</td>
+                                <td style={{ padding:'9px 6px', textAlign:'right', color:'#15803d' }}>{fmtCur(f.folha_liquido)}</td>
+                                <td style={{ padding:'9px 6px', textAlign:'right', color:'#dc2626' }}>{fmtCur(f.encargos)}</td>
+                                <td style={{ padding:'9px 6px', textAlign:'right', color:'#7c3aed' }}>{fmtCur(f.provisoes)}</td>
+                                <td style={{ padding:'9px 6px', textAlign:'right', fontWeight:800, color:'#1e3a5f', fontSize:13 }}>{fmtCur(f.total_funcao)}</td>
+                                <td style={{ padding:'9px 6px', textAlign:'right', color:'#94a3b8' }}>
+                                  {(r.total as number) > 0 ? ((f.total_funcao / (r.total as number)) * 100).toFixed(1) : '0.0'}%
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                          <tfoot>
+                            <tr style={{ background:'#e8f0fe', fontWeight:800, color:'#1e3a5f', borderTop:'2px solid #1e3a5f' }}>
+                              <td style={{ padding:'9px 12px' }} colSpan={2}>Total da Obra</td>
+                              <td style={{ padding:'9px 6px', textAlign:'right' }}>{fmtCur(r.folha_bruto as number)}</td>
+                              <td style={{ padding:'9px 6px', textAlign:'right', color:'#15803d' }}>{fmtCur(r.folha_liquido as number)}</td>
+                              <td style={{ padding:'9px 6px', textAlign:'right', color:'#dc2626' }}>{fmtCur(r.encargos as number)}</td>
+                              <td style={{ padding:'9px 6px', textAlign:'right', color:'#7c3aed' }}>{fmtCur(r.provisoes as number)}</td>
+                              <td style={{ padding:'9px 6px', textAlign:'right', fontSize:14 }}>{fmtCur(r.total as number)}</td>
+                              <td style={{ padding:'9px 6px', textAlign:'right' }}>100%</td>
+                            </tr>
+                          </tfoot>
+                        </table>
                       </div>
                     )
                   })}
-                  {/* Rodapé totalizador */}
-                  <div className="bg-[#e8f0fe] rounded-xl px-5 py-3 flex justify-between items-center font-bold text-[#1e3a5f]">
+
+                  {/* Total geral */}
+                  <div style={{ background:'#1e3a5f', borderRadius:12, padding:'14px 20px', display:'flex', justifyContent:'space-between', color:'#fff', fontWeight:800 }}>
                     <span>TOTAL GERAL — {dados.length} obra(s)</span>
-                    <span className="text-lg">{fmtCur(dados.reduce((s, r) => s + (r.total as number), 0))}</span>
+                    <span style={{ fontSize:20 }}>{fmtCur(dados.reduce((s, r) => s + (r.total as number), 0))}</span>
                   </div>
                 </div>
               )}
