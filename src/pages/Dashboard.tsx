@@ -268,7 +268,7 @@ export default function Dashboard() {
           addEmpresa(supabase.from('colaboradores').select('tipo_contrato, obras(nome)').eq('status', 'ativo')),
 
           // 8. Atividade recente
-          addEmpresa(supabase.from('ponto_lancamentos').select('id, mes_referencia, snap_liquido, pessoas!colaborador_id(nome)').in('status', ['liberado', 'pago'])).order('created_at', { ascending: false }).limit(5),
+          addEmpresa(supabase.from('ponto_lancamentos').select('id, mes_referencia, snap_liquido, colaboradores(nome)').in('status', ['liberado', 'pago'])).order('created_at', { ascending: false }).limit(5),
 
           // 9. Atestados do mês
           addEmpresa(supabase.from('atestados').select('id', { count: 'exact', head: true })).gte('data', mesStart).lte('data', mesEnd),
@@ -357,7 +357,7 @@ export default function Dashboard() {
         // ── Atividade recente ─────────────────────────────────────────────────
         const atividadeRecente: AtividadeRecente[] = ((atividadeRes.data ?? []) as any[]).map((r: any) => ({
           id: r.id,
-          colaborador_nome: (Array.isArray(r.pessoas) ? r.pessoas[0]?.nome : r.pessoas?.nome) ?? (Array.isArray(r.colaboradores) ? r.colaboradores[0]?.nome : r.colaboradores?.nome) ?? '—',
+          colaborador_nome: (Array.isArray(r.colaboradores) ? r.colaboradores[0]?.nome : r.colaboradores?.nome) ?? '—',
           mes_referencia: r.mes_referencia ?? '',
           snap_liquido: r.snap_liquido ?? 0,
         }))

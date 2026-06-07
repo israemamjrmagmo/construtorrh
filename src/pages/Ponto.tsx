@@ -6,7 +6,6 @@ import {
   Factory, X, Plus, Trash2, ChevronDown, Building2, Clock, AlertCircle
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
-import { useEmpresaId } from '@/hooks/useEmpresaId'
 import { formatCurrency } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -297,7 +296,6 @@ function emptyDia(colabId:string,lancId:string,obraId:string,data:string):DiaReg
 // ─── Componente ───────────────────────────────────────────────────────────────
 export default function Ponto() {
   const nav = useNavigate()
-  const { empresaId } = useEmpresaId()
   const hoje = new Date()
   const [ano, setAno]   = useState(hoje.getFullYear())
   const [mes, setMes]   = useState(hoje.getMonth()+1)
@@ -422,13 +420,12 @@ export default function Ponto() {
     if (reg.sincronizado_em) return
     setImportandoPortalProd(prev => new Set([...prev, reg.id]))
     // Encontra ou cria lançamento para o colaborador/obra/mês
-    const mr = (reg.data ?? '').slice(0,7)
-    if (!mr) { setImportandoPortalProd(prev => { const s = new Set(prev); s.delete(reg.id); return s }); return }
+    const mr = reg.data.slice(0,7)
     let lancId = reg.lancamento_id
     if (!lancId) {
       const { data: existentes } = await supabase.from('ponto_lancamentos')
         .select('id').eq('colaborador_id', reg.colaborador_id).eq('obra_id', reg.obra_id)
-        .eq('mes_referencia', mr).limit(1)
+        .lte('data_inicio', reg.data).gte('data_fim', reg.data).limit(1)
       if (existentes && existentes.length > 0) {
         lancId = existentes[0].id
       } else {
@@ -507,11 +504,9 @@ export default function Ponto() {
   // Cria lançamento se não existir e insere registro_ponto
   async function criarLancamentoSeNecessario(obraId: string, inicio: string, fim: string): Promise<string | null> {
     // verifica se já existe lançamento que cobre o período
-    const existing = lancamentos.find(l => {
-      const dI = l.data_inicio || `${l.mes_referencia}-01`
-      const dF = l.data_fim    || `${l.mes_referencia}-${getUltimoDia(l.mes_referencia)}`
-      return l.obra_id === obraId && dI <= inicio && fim <= dF
-    })
+    const existing = lancamentos.find(l =>
+      l.obra_id === obraId && l.data_inicio <= inicio && fim <= l.data_fim
+    )
     if (existing) return existing.id
 
     // verifica se colaborador selecionado pertence à obra
@@ -740,12 +735,11 @@ export default function Ponto() {
 
   // ── Carregar colaboradores + obras ──────────────────────────────────────
   useEffect(()=>{
-    if(!empresaId) return
     const load=async()=>{
       const [{data:colsRaw, error:colsErr},{data:obsRaw},{data:fnsRaw}]=await Promise.all([
-        supabase.from('colaboradores').select('id,nome,chapa,funcao_id,obra_id,tipo_contrato,data_admissao,status').eq('empresa_id',empresaId).order('nome'),
-        supabase.from('obras').select('id,nome').eq('empresa_id',empresaId).order('nome'),
-        supabase.from('funcoes').select('id,nome').eq('empresa_id',empresaId).eq('ativo',true),
+        supabase.from('colaboradores').select('id,nome,chapa,funcao_id,obra_id,tipo_contrato,data_admissao,status').order('nome'),
+        supabase.from('obras').select('id,nome').order('nome'),
+        supabase.from('funcoes').select('id,nome').eq('ativo',true),
       ])
       if(colsErr) { console.error('PONTO colaboradores error:', colsErr); toast.error('Erro ao carregar colaboradores: '+colsErr.message) }
       // Mapa funcao_id → nome
@@ -821,8 +815,7 @@ export default function Ponto() {
     const{data}=await supabase.from('ponto_lancamentos')
       .select('*,obras(nome)')
       .eq('colaborador_id',colabId).eq('mes_referencia',mr)
-      .eq('empresa_id',empresaId??'')
-      .order('mes_referencia')
+      .order('data_inicio')
     const list:Lancamento[]=(data??[]).map((l:any)=>({
       id:l.id,obra_id:l.obra_id,obra_nome:l.obras?.nome??'Obra',
       mes_referencia:l.mes_referencia,data_inicio:l.data_inicio,data_fim:l.data_fim,
@@ -873,37 +866,13 @@ export default function Ponto() {
     diasAtestado:Set<string>,diasSuspensao:Set<string>,
     diasUsados:Map<string,string>   // data → nomeObra
   ):Promise<DiaRegistro[]>=>{
-    // V2 não tem data_inicio/data_fim → derivar do mes_referencia
-    const dInicio = lanc.data_inicio || `${lanc.mes_referencia}-01`
-    const dFim    = lanc.data_fim    || `${lanc.mes_referencia}-${getUltimoDia(lanc.mes_referencia)}`
-
-    // Busca 1: pela tabela direta via lancamento_id (mais confiável)
-    let pontosRaw: any[] | null = null
-    const { data: byLancDirect } = await supabase.from('ponto_registros_v2').select('*')
-      .eq('lancamento_id', lanc.id)
-    if (byLancDirect && byLancDirect.length > 0) {
-      pontosRaw = byLancDirect
-    } else {
-      // Busca 2: VIEW por lancamento_id
-      const { data: byLanc } = await supabase.from('registro_ponto').select('*')
-        .eq('lancamento_id', lanc.id)
-      if (byLanc && byLanc.length > 0) {
-        pontosRaw = byLanc
-      } else {
-        // Busca 3: tabela direta por obra_id + data (ignora colaborador_id que pode estar errado)
-        const { data: byObra } = await supabase.from('ponto_registros_v2').select('*')
-          .eq('obra_id', lanc.obra_id)
-          .gte('data', dInicio)
-          .lte('data', dFim)
-        pontosRaw = byObra
-      }
-    }
-
+    const{data:pontosRaw}=await supabase.from('registro_ponto').select('*')
+      .eq('lancamento_id',lanc.id)
     const mapaP:Record<string,any>={}
     ;(pontosRaw??[]).forEach((r:any)=>{mapaP[r.data]=r})
     const horObra=horMapa[lanc.obra_id]??{}
 
-    return expandRange(dInicio, dFim).map(d=>{
+    return expandRange(lanc.data_inicio,lanc.data_fim).map(d=>{
       const r=mapaP[d]
       const isAtestado=diasAtestado.has(d)
       const isSuspensao=diasSuspensao.has(d)
@@ -1209,9 +1178,7 @@ export default function Ponto() {
         // calcDia retorna MINUTOS → converter para horas antes de multiplicar pelo valor/hora
         return s + calcValorMin(cl.normais,cl.extras50,cl.extras100,vhLanc,heCoef50,heCoef100)
       },0)
-      const lDInicio = lanc.data_inicio || `${lanc.mes_referencia}-01`
-      const lDFim    = lanc.data_fim    || `${lanc.mes_referencia}-${getUltimoDia(lanc.mes_referencia)}`
-      const res = calcDSRComFaltas(vHorasLanc, lDInicio, lDFim, datasComFalta, feriados)
+      const res = calcDSRComFaltas(vHorasLanc, lanc.data_inicio, lanc.data_fim, datasComFalta, feriados)
       dsrTotal += res.dsr
       totalDiasUteis += res.diasUteis
       totalDomingosPagos += res.domingosPagos
@@ -1408,10 +1375,7 @@ export default function Ponto() {
     // Conflito BLOQUEANTE apenas quando a obra for a mesma
     const conflitoMesmaObra=lancamentos
       .filter(l=>l.obra_id===novoLancObraId)
-      .flatMap(l=>expandRange(
-        l.data_inicio||`${l.mes_referencia}-01`,
-        l.data_fim||`${l.mes_referencia}-${getUltimoDia(l.mes_referencia)}`
-      ))
+      .flatMap(l=>expandRange(l.data_inicio,l.data_fim))
       .filter(d=>diasNovos.has(d))
     if(conflitoMesmaObra.length>0){toast.error(`Esta obra já tem ${conflitoMesmaObra.length} dia(s) nesse período`);return}
     // Obras diferentes: apenas aviso informativo (não bloqueia)
@@ -1425,12 +1389,11 @@ export default function Ponto() {
     const vhNovo = valorHoraPorTipo[tcNovo] ?? valorHora
 
     const{data:lancInserido,error}=await supabase.from('ponto_lancamentos').insert({
-      empresa_id: empresaId,
-      colaborador_id:colabSel.id, vinculo_id:colabSel.id,
-      obra_id:novoLancObraId, mes_referencia:mesRef,
-      data_inicio: novoLancInicioFinal || null,
-      data_fim:    novoLancFimFinal    || null,
+      colaborador_id:colabSel.id,obra_id:novoLancObraId,mes_referencia:mesRef,
+      data_inicio:novoLancInicioFinal,data_fim:novoLancFimFinal,
       status:'rascunho',
+      tipo_contrato_lanc: tcNovo,
+      valor_hora_snapshot: vhNovo > 0 ? vhNovo : null,
     }).select('id').single()
     setSavingLanc(false)
     if(error){toast.error('Erro: '+error.message);return}
@@ -2047,7 +2010,7 @@ export default function Ponto() {
                           <div style={{flex:1,minWidth:0}}>
                             <div style={{fontWeight:700,fontSize:13}}>{lanc.obra_nome}</div>
                             <div style={{fontSize:10,color:'var(--muted-foreground)',fontFamily:'monospace'}}>
-                              {lanc.data_inicio ? `${lanc.data_inicio.slice(8)}/${lanc.data_inicio.slice(5,7)} → ${(lanc.data_fim ?? '').slice(8)}/${(lanc.data_fim ?? '').slice(5,7)}` : lanc.mes_referencia ?? ''}
+                              {lanc.data_inicio.slice(8)}/{lanc.data_inicio.slice(5,7)} → {lanc.data_fim.slice(8)}/{lanc.data_fim.slice(5,7)}
                               <span style={{marginLeft:8}}>· {tot.presentes} dias · {fmtHHMM(horasTotCard)}h</span>
                               {tot.atestados>0&&<span style={{color:'#1d4ed8',marginLeft:6}}>🩺 {tot.atestados}</span>}
                               {tot.suspensoes>0&&<span style={{color:'#dc2626',marginLeft:6}}>⛔ {tot.suspensoes}</span>}
@@ -2230,7 +2193,7 @@ export default function Ponto() {
                                   {eFeriado&&(d.presente?<span title='Feriado trabalhado' style={{fontSize:9,marginLeft:2}}>🎌</span>:d.feriado_remunerado?<span title='Feriado remunerado' style={{fontSize:9,marginLeft:2}}>✓🎌</span>:<span style={{fontSize:9,marginLeft:2,color:'#d1d5db'}}>🎌</span>)}
                                 </td>
                                 {/* Data */}
-                                <td style={{...TDc,textAlign:'center',fontFamily:'monospace',fontWeight:600,color:'#111827',fontSize:11}}>{d.data ? `${d.data.slice(8)}/${d.data.slice(5,7)}` : '—'}</td>
+                                <td style={{...TDc,textAlign:'center',fontFamily:'monospace',fontWeight:600,color:'#111827',fontSize:11}}>{d.data.slice(8)}/{d.data.slice(5,7)}</td>
                                 {/* ✓ Presente */}
                                 <td style={{...TDc,textAlign:'center'}}>
                                   {d.evento==='atestado'?<span title="Afastamento">🩺</span>
@@ -2563,7 +2526,7 @@ export default function Ponto() {
                   {diasDisp.map(d=>{
                     const sel=diasSelProd.has(d.data)
                     return<button key={d.data} onClick={()=>setDiasSelProd(p=>{const n=new Set(p);sel?n.delete(d.data):n.add(d.data);return n})} style={{padding:'4px 9px',borderRadius:5,fontSize:12,fontWeight:600,cursor:'pointer',border:'2px solid',borderColor:sel?'#b45309':'var(--border)',background:sel?'#fef3c7':'transparent',color:sel?'#92400e':'var(--foreground)'}}>
-                      {d.data ? `${d.data.slice(8)}/${d.data.slice(5,7)}` : '—'} {d.data ? diaSemana(d.data) : ''}
+                      {d.data.slice(8)}/{d.data.slice(5,7)} {diaSemana(d.data)}
                     </button>
                   })}
                 </div>

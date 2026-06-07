@@ -168,10 +168,8 @@ async function gerarPdfHolerite(h: Contracheque, colab: Colaborador | null, acei
 // ─── Utilitário: sincronizar registros de ponto para portal_ponto_diario ──────
 async function syncPontoPortal(colaboradorId: string, lancamentoId: string): Promise<{ ok: boolean; count: number; error?: string }> {
   try {
-    const { data: lanc } = await supabase.from('ponto_lancamentos').select('mes_referencia').eq('id', lancamentoId).single()
+    const { data: lanc } = await supabase.from('ponto_lancamentos').select('data_inicio,data_fim').eq('id', lancamentoId).single()
     if (!lanc) return { ok: false, count: 0, error: 'Lançamento não encontrado' }
-    const dataIni = (lanc as any).mes_referencia + '-01'
-    const dataFim = (lanc as any).mes_referencia + '-31'
     const { data: rps } = await supabase.from('registro_ponto').select('*').eq('lancamento_id', lancamentoId).order('data')
     const rows = (rps ?? []).map((r: any) => ({
       colaborador_id:    colaboradorId,
@@ -1109,7 +1107,7 @@ export default function Contracheques() {
     try {
       const lancId = h.lancamento_id
       if (!lancId) { toast.error('Holerite sem lançamento vinculado.'); return }
-      const { data: lanc } = await supabase.from('ponto_lancamentos').select('mes_referencia').eq('id', lancId).single()
+      const { data: lanc } = await supabase.from('ponto_lancamentos').select('data_inicio,data_fim').eq('id', lancId).single()
       if (!lanc) { toast.error('Lançamento não encontrado.'); return }
       const { data: rps } = await supabase.from('registro_ponto').select('*').eq('lancamento_id', lancId).order('data')
       const rows2 = (rps||[]).map((r: any) => ({
@@ -1192,7 +1190,7 @@ export default function Contracheques() {
       // 2. Buscar todos os lançamentos aprovados para a competência
       const { data: lancsAll } = await supabase
         .from('ponto_lancamentos')
-        .select('id,colaborador_id,mes_referencia,tipo_pagamento,snap_valor_horas,snap_horas_normais,snap_horas_extras,snap_valor_producao,snap_valor_dsr,snap_valor_premio,snap_valor_total,snap_faltas,snap_desconto_vt,snap_desconto_adiant,snap_inss,snap_ir,snap_liquido,snap_valor_hora,obras(nome)')
+        .select('id,colaborador_id,mes_referencia,tipo_pagamento,snap_valor_horas,snap_horas_normais,snap_horas_extras,snap_valor_producao,snap_valor_dsr,snap_valor_premio,snap_valor_total,snap_faltas,snap_desconto_vt,snap_desconto_adiant,snap_inss,snap_ir,snap_liquido,snap_valor_hora,obras(nome),data_inicio,data_fim')
         .eq('mes_referencia', loteComp)
         .in('status', ['aprovado', 'liberado', 'pago'])
 
