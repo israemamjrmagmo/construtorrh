@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react'
+import { useFolhaContext } from '@/contexts/FolhaContext'
 import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
@@ -210,6 +211,9 @@ export default function Dashboard() {
   const { user } = useAuth()
   const { profile } = useProfile()
   const navigate   = useNavigate()
+
+  // ── FolhaContext: dados do mês atual ─────────────────────────────────────
+  const { folha, mes: mesFolha, ano: anoFolha } = useFolhaContext()
 
   const [data,    setData]    = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -624,6 +628,45 @@ export default function Dashboard() {
           onClick={() => navigate('/adiantamentos')}
         />
       </div>
+
+      {/* ══ LINHA 1b: KPIs do FolhaContext (custo real da empresa) ════════════ */}
+      {!folha.loading && folha.linhas.length > 0 && (
+        <div style={{ display:'flex', flexWrap:'wrap', gap:12, padding:'14px 0', borderBottom:'1px solid #f3f4f6' }}>
+          <div style={{ fontSize:11, color:'#64748b', fontWeight:700, display:'flex', alignItems:'center', gap:4, marginRight:4 }}>
+            🏗️ Custo CLT — {MES_ABREV[String(mesFolha).padStart(2,'0')] ?? mesFolha}/{anoFolha}:
+          </div>
+          {[
+            { label:'Folha Bruta',   val: folha.totalBruto,           iconBg:'#eff6ff', cor:'#1e3a5f' },
+            { label:'Líquido',       val: folha.totalLiquido,          iconBg:'#f0fdf4', cor:'#15803d' },
+            { label:'Enc. Empresa',  val: folha.totalEncargosEmpresa,  iconBg:'#fff7ed', cor:'#b45309' },
+            { label:'Custo Total',   val: folha.totalFolha,            iconBg:'#fdf4ff', cor:'#7c3aed' },
+          ].map(c => (
+            <div
+              key={c.label}
+              style={{
+                background:'#fff', borderRadius:12,
+                boxShadow:'0 1px 4px rgba(0,0,0,.06)',
+                border:'1px solid #f0f0f0',
+                padding:'10px 16px',
+                display:'flex', alignItems:'center', gap:10,
+              }}
+            >
+              <div style={{ background:c.iconBg, borderRadius:8, width:32, height:32, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                <DollarSign size={15} style={{ color:c.cor }} />
+              </div>
+              <div>
+                <div style={{ fontSize:10, color:'#9ca3af', fontWeight:600, textTransform:'uppercase', letterSpacing:'.04em' }}>{c.label}</div>
+                <div style={{ fontSize:15, fontWeight:800, color:c.cor, whiteSpace:'nowrap' }}>
+                  {c.val.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}
+                </div>
+              </div>
+            </div>
+          ))}
+          <div style={{ display:'flex', alignItems:'center', fontSize:11, color:'#9ca3af' }}>
+            {folha.linhas.length} colaboradores CLT
+          </div>
+        </div>
+      )}
 
       {/* ══ LINHA 2: Gráfico + Headcount + Atividade ═══════════════════════ */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">

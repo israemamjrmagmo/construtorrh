@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react'
+import { useFolhaContext } from '@/contexts/FolhaContext'
 import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus'
 import { supabase } from '@/lib/supabase'
 import type { Pagamento, Colaborador, Obra } from '@/lib/supabase'
@@ -95,6 +96,9 @@ function calcLiquido(form: FormData): number {
 // ─── componente ──────────────────────────────────────────────────────────────
 export default function Pagamentos() {
   const [rows, setRows] = useState<PagamentoRow[]>([])
+
+  // ── FolhaContext: custo real da empresa ──────────────────────────────────
+  const { folha } = useFolhaContext()
   const [colaboradores, setColaboradores] = useState<Pick<Colaborador, 'id' | 'nome' | 'chapa'>[]>([])
   const [obras,    setObras]    = useState<Pick<Obra, 'id' | 'nome'>[]>([])
   const [funcoes,  setFuncoes]  = useState<{ id: string; nome: string }[]>([])
@@ -922,7 +926,7 @@ export default function Pagamentos() {
         const qtdPagoGeral      = qtdFolhaPagaTotal + qtdAvPagoTotal
 
         return (
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:16, marginBottom:24 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr auto', gap:16, marginBottom:24, alignItems:'stretch' }}>
           {/* EM ABERTO */}
           <div style={{ background:'#fff7ed', border:'2px solid #fed7aa', borderRadius:14, padding:'20px 20px 18px' }}>
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
@@ -978,6 +982,34 @@ export default function Pagamentos() {
               </div>
             </div>
           </div>
+          {/* ── CUSTO REAL EMPRESA (FolhaContext) ── */}
+          {!folha.loading && folha.totalFolha > 0 && (
+            <div style={{ background:'linear-gradient(135deg,#7c3aed,#5b21b6)', borderRadius:14, padding:'20px 20px 18px', color:'#fff', minWidth:180 }}>
+              <div style={{ fontSize:10, opacity:.8, fontWeight:700, textTransform:'uppercase', letterSpacing:'.05em', marginBottom:4 }}>
+                🏗️ Custo Real Empresa
+              </div>
+              <div style={{ fontSize:24, fontWeight:900, lineHeight:1.1, marginBottom:6 }}>
+                {folha.totalFolha.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}
+              </div>
+              <div style={{ fontSize:10, opacity:.7, marginBottom:10 }}>
+                Folha + encargos patronais
+              </div>
+              <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
+                <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, opacity:.85 }}>
+                  <span>Folha bruta</span>
+                  <strong>{folha.totalBruto.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</strong>
+                </div>
+                <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, opacity:.85 }}>
+                  <span>Enc. empresa</span>
+                  <strong>{folha.totalEncargosEmpresa.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</strong>
+                </div>
+                <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, opacity:.85 }}>
+                  <span>Colaboradores</span>
+                  <strong>{folha.linhas.length} CLT</strong>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
         )
       })()}

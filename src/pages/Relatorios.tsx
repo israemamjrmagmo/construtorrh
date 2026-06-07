@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { SearchableSelect } from '@/components/ui/searchable-select'
 import { supabase } from '@/lib/supabase'
+import { useFolhaMensal } from '@/hooks/useFolhaMensal'
 import { fetchEmpresaData, gerarCabecalhoHTML, CABECALHO_CSS } from '@/lib/relatorioHeader'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -345,12 +346,21 @@ export default function Relatorios() {
   const mesRefFim = filtroDataFim.substring(0, 7)
   const mesRef = mesRefIni   // relatórios de mês único usam o mês inicial
 
+  // Hook de folha mensal — dados cacheados para relatórios de custo
+  const folha = useFolhaMensal(parseInt(mesRef.slice(5, 7)), parseInt(mesRef.slice(0, 4)))
+
   // ── Gerar relatório ──────────────────────────────────────────────────────────
 
   const gerarRelatorio = useCallback(async () => {
     setLoading(true)
     setGerado(false)
     try {
+      // Aguarda o hook de folha se ainda estiver carregando
+      if (folha.loading) {
+        toast.info('Aguarde, carregando dados da folha...')
+        setLoading(false)
+        return
+      }
       let resultado: Record<string, unknown>[] = []
 
       // ── 1. Headcount por Obra ──────────────────────────────────────────────
@@ -381,13 +391,10 @@ export default function Relatorios() {
 
       // ── 2. Custo Total por Obra ────────────────────────────────────────────
       else if (relatAtivo === 'custo-obra') {
-        // Busca lançamentos com função para detalhar por categoria
-        const plQ = supabase.from('ponto_lancamentos')
-          .select(`obra_id, snap_valor_total, snap_liquido, colaborador_id, obras(nome), colaboradores(funcao_id, funcoes(nome, categoria))`)
-          .gte('mes_referencia', mesRefIni)
-          .lte('mes_referencia', mesRefFim)
-        if (filtroObra !== 'todos') plQ.eq('obra_id', filtroObra)
-        const { data: pl } = await plQ
+        // Usar dados do hook — já calculados e cacheados
+        const linhasFolha = folha.linhas.filter(l =>
+          filtroObra === 'todos' || l.obra_id === filtroObra
+        )
 
         const adQ = supabase.from('adiantamentos')
           .select(`colaborador_id, valor, colaboradores(obra_id)`)
@@ -414,22 +421,16 @@ export default function Relatorios() {
           return map[oId]
         }
 
-        for (const p of pl ?? []) {
-          const o = (p as any).obras as any
-          const obraId = String((p as any).obra_id ?? 'sem')
-          const row = getObra(obraId, o ? String(o.nome) : '(Sem Obra)')
-          const val = Number((p as any).snap_valor_total ?? 0)
-          const liq = Number((p as any).snap_liquido ?? 0)
-          row.folha_bruto += val
-          row.folha_liquido += liq
+        for (const l of linhasFolha) {
+          const obraId = l.obra_id ?? 'sem'
+          const row = getObra(obraId, l.obra_nome)
+          row.folha_bruto  += l.salarioBruto
+          row.folha_liquido += l.liquido
           // Detalhe por função
-          const col = (p as any).colaboradores as any
-          const func = col?.funcoes as any
-          const funcNome = func?.nome ?? '(Sem Função)'
-          const funcCat = func?.categoria ?? '—'
-          if (!row.por_funcao[funcNome]) row.por_funcao[funcNome] = { funcao: funcNome, categoria: funcCat, folha: 0, colaboradores: new Set() }
-          row.por_funcao[funcNome].folha += val
-          row.por_funcao[funcNome].colaboradores.add(String((p as any).colaborador_id))
+          const funcNome = l.funcao_nome ?? '(Sem Função)'
+          if (!row.por_funcao[funcNome]) row.por_funcao[funcNome] = { funcao: funcNome, categoria: '—', folha: 0, colaboradores: new Set() }
+          row.por_funcao[funcNome].folha += l.salarioBruto
+          row.por_funcao[funcNome].colaboradores.add(l.colaborador_id)
         }
         for (const a of ad ?? []) {
           const c = (a as any).colaboradores as any
@@ -681,16 +682,16 @@ export default function Relatorios() {
       else if (relatAtivo === 'custo-colab') {
         if (filtroColaborador === 'todos') { toast.warning('Selecione um colaborador.'); setLoading(false); return }
         const cid = filtroColaborador
-        // snap_bruto→snap_valor_total
-        const [pl, ad, vt, pr] = await Promise.all([
-          supabase.from('ponto_lancamentos').select('mes_referencia,snap_valor_total').eq('colaborador_id', cid).gte('mes_referencia', mesRefIni).lte('mes_referencia', mesRefFim),
+        // Usar dados do hook filtrados pelo colaborador
+        const linhasColab = folha.linhas.filter(l => l.colaborador_id === cid)
+        const [ad, vt, pr] = await Promise.all([
           supabase.from('adiantamentos').select('competencia,valor').eq('colaborador_id', cid).gte('competencia', mesRefIni).lte('competencia', mesRefFim),
           supabase.from('vale_transporte').select('competencia,valor_empresa').eq('colaborador_id', cid).gte('competencia', mesRefIni).lte('competencia', mesRefFim),
           supabase.from('premios').select('competencia,valor').eq('colaborador_id', cid).gte('competencia', mesRefIni).lte('competencia', mesRefFim),
         ])
         const map: Record<string, Record<string, unknown>> = {}
         const mk = (m: string) => { if (!map[m]) map[m] = { mes: m, folha_bruta: 0, adiantamentos: 0, vt_empresa: 0, premios: 0, total: 0 }; return map[m] }
-        for (const p of pl.data ?? []) { const r = mk(p.mes_referencia); r.folha_bruta = Number(p.snap_valor_total ?? 0) }
+        for (const l of linhasColab) { const r = mk(l.mesRef); r.folha_bruta = (r.folha_bruta as number) + l.salarioBruto }
         for (const a of ad.data ?? []) { const r = mk(a.competencia); r.adiantamentos = (r.adiantamentos as number) + Number(a.valor ?? 0) }
         for (const v of vt.data ?? []) { const r = mk(v.competencia); r.vt_empresa = (r.vt_empresa as number) + Number(v.valor_empresa ?? 0) }
         for (const p of pr.data ?? []) { const r = mk(p.competencia); r.premios = (r.premios as number) + Number(p.valor ?? 0) }
@@ -721,23 +722,27 @@ export default function Relatorios() {
 
       // ── 12. Custo por Função ──────────────────────────────────────────────
       else if (relatAtivo === 'custo-funcao') {
-        // contar colabs_ids únicos por função (um colab em 2 obras = 2 lançamentos, mas 1 colab)
-        const { data } = await supabase.from('ponto_lancamentos')
-          .select('colaborador_id, snap_valor_total, snap_liquido, colaboradores(funcao_id, funcoes(nome))')
-          .gte('mes_referencia', mesRefIni)
-          .lte('mes_referencia', mesRefFim)
+        // Usar dados do hook — já calculados e cacheados, agrupados por função
         const map: Record<string, Record<string, unknown>> = {}
         const mapColabs: Record<string, Set<string>> = {}
-        for (const d of data ?? []) {
-          const colab = (d as Record<string, unknown>).colaboradores as Record<string, unknown> | null
-          const func = colab ? (colab.funcoes as Record<string, unknown> | null) : null
-          const nome = func ? String(func.nome) : '(Sem Função)'
-          if (!map[nome]) { map[nome] = { funcao: nome, bruto: 0, liquido: 0, colaboradores: 0 }; mapColabs[nome] = new Set() }
-          map[nome].bruto = (map[nome].bruto as number) + Number((d as Record<string, unknown>).snap_valor_total ?? 0)
-          map[nome].liquido = (map[nome].liquido as number) + Number((d as Record<string, unknown>).snap_liquido ?? 0)
-          mapColabs[nome].add(String((d as Record<string, unknown>).colaborador_id))
+        const mapObras: Record<string, Set<string>> = {}
+        for (const l of folha.linhas) {
+          const nome = l.funcao_nome ?? '(Sem Função)'
+          if (!map[nome]) {
+            map[nome] = { funcao: nome, bruto: 0, liquido: 0, colaboradores: 0 }
+            mapColabs[nome] = new Set()
+            mapObras[nome] = new Set()
+          }
+          map[nome].bruto  = (map[nome].bruto  as number) + l.salarioBruto
+          map[nome].liquido = (map[nome].liquido as number) + l.liquido
+          mapColabs[nome].add(l.colaborador_id)
+          if (l.obra_id) mapObras[nome].add(l.obra_id)
         }
-        resultado = Object.values(map).map(r => ({ ...r, colaboradores: mapColabs[String(r.funcao)]?.size ?? 0 })).sort((a, b) => (b.bruto as number) - (a.bruto as number))
+        resultado = Object.values(map).map(r => ({
+          ...r,
+          colaboradores: mapColabs[String(r.funcao)]?.size ?? 0,
+          obras: mapObras[String(r.funcao)]?.size ?? 0,
+        })).sort((a, b) => (b.bruto as number) - (a.bruto as number))
       }
 
       // ── 13. Produtividade por Função ──────────────────────────────────────
@@ -1036,27 +1041,22 @@ export default function Relatorios() {
 
       // ── 21. Resumo de Folha ───────────────────────────────────────────────
       else if (relatAtivo === 'resumo-folha') {
-        // colaboradores = IDs únicos por mês (colab em 2 obras = 2 lançamentos, mas 1 colab)
-        const q = supabase.from('ponto_lancamentos')
-          .select('colaborador_id, snap_valor_total, snap_liquido, snap_inss, snap_ir, snap_desconto_vt, snap_desconto_adiant, snap_horas_normais, snap_horas_extras, snap_faltas, mes_referencia')
-          .gte('mes_referencia', mesRefIni).lte('mes_referencia', mesRefFim)
-        if (filtroObra !== 'todos') q.eq('obra_id', filtroObra)
-        const { data } = await q
+        // Usar dados do hook — colaboradores únicos por mês, agrupados por mesRef
+        const linhasFiltradas = folha.linhas.filter(l =>
+          filtroObra === 'todos' || l.obra_id === filtroObra
+        )
         const map: Record<string, Record<string, unknown>> = {}
         const mapColabs: Record<string, Set<string>> = {}
-        for (const d of data ?? []) {
-          const m = String((d as Record<string, unknown>).mes_referencia)
+        for (const l of linhasFiltradas) {
+          const m = l.mesRef
           if (!map[m]) { map[m] = { mes: m, bruto: 0, liquido: 0, inss: 0, ir: 0, vt: 0, ad: 0, horas: 0, horas_extras: 0, faltas: 0, colaboradores: 0 }; mapColabs[m] = new Set() }
-          map[m].bruto = (map[m].bruto as number) + Number((d as Record<string, unknown>).snap_valor_total ?? 0)
-          map[m].liquido = (map[m].liquido as number) + Number((d as Record<string, unknown>).snap_liquido ?? 0)
-          map[m].inss = (map[m].inss as number) + Number((d as Record<string, unknown>).snap_inss ?? 0)
-          map[m].ir = (map[m].ir as number) + Number((d as Record<string, unknown>).snap_ir ?? 0)
-          map[m].vt = (map[m].vt as number) + Number((d as Record<string, unknown>).snap_desconto_vt ?? 0)
-          map[m].ad = (map[m].ad as number) + Number((d as Record<string, unknown>).snap_desconto_adiant ?? 0)
-          map[m].horas = (map[m].horas as number) + Number((d as Record<string, unknown>).snap_horas_normais ?? 0)
-          map[m].horas_extras = (map[m].horas_extras as number) + Number((d as Record<string, unknown>).snap_horas_extras ?? 0)
-          map[m].faltas = (map[m].faltas as number) + Number((d as Record<string, unknown>).snap_faltas ?? 0)
-          mapColabs[m].add(String((d as Record<string, unknown>).colaborador_id))
+          map[m].bruto  = (map[m].bruto  as number) + l.salarioBruto
+          map[m].liquido = (map[m].liquido as number) + l.liquido
+          map[m].inss   = (map[m].inss   as number) + l.inss
+          map[m].ir     = (map[m].ir     as number) + l.ir
+          map[m].vt     = (map[m].vt     as number) + l.descontoVT
+          map[m].ad     = (map[m].ad     as number) + l.descontoAD
+          mapColabs[m].add(l.colaborador_id)
         }
         resultado = Object.values(map).map(r => ({ ...r, colaboradores: mapColabs[String(r.mes)]?.size ?? 0, horas_total: (r.horas as number) + (r.horas_extras as number) })).sort((a, b) => String(a.mes).localeCompare(String(b.mes)))
       }
@@ -1283,7 +1283,7 @@ export default function Relatorios() {
     } finally {
       setLoading(false)
     }
-  }, [relatAtivo, filtroObra, filtroColaborador, filtroFuncao, filtroDataIni, filtroDataFim, mesRef, mesRefIni, mesRefFim, diasVencimento])
+  }, [relatAtivo, filtroObra, filtroColaborador, filtroFuncao, filtroDataIni, filtroDataFim, mesRef, mesRefIni, mesRefFim, diasVencimento, folha])
 
   // ── Imprimir PDF ────────────────────────────────────────────────────────────
 

@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react'
+import { useFolhaContext } from '@/contexts/FolhaContext'
 import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus'
 import { toast } from 'sonner'
 import {
@@ -154,6 +155,13 @@ export default function FechamentoPonto() {
   const [progressoAT, setProgressoAT]             = useState('')
 
   const mesRef = `${ano}-${String(mes).padStart(2, '0')}`
+
+  // ── FolhaContext: sincroniza mês/ano e exibe resumo de encargos ──────────
+  const { folha, setMes: setMesFolha, setAno: setAnoFolha } = useFolhaContext()
+  useEffect(() => {
+    setMesFolha(mes)
+    setAnoFolha(ano)
+  }, [mes, ano, setMesFolha, setAnoFolha])
 
   const TIPOS_PAGAMENTO: Record<string,string> = {
     mensal:'Mensal', adiantamento:'Adiantamento Salarial',
@@ -1171,7 +1179,28 @@ export default function FechamentoPonto() {
         subtitle="Aprovação e liberação de lançamentos para pagamento"
       />
 
-      {/* ── Filtros ── */}
+      {/* ── Banner de resumo: Encargos do Mês (FolhaContext) ── */}
+      {!folha.loading && folha.linhas.length > 0 && (
+        <div style={{ display:'flex', gap:12, padding:'10px 20px', background:'#f8fafc', borderBottom:'1px solid #e2e8f0', flexWrap:'wrap', marginBottom:4, borderRadius:10, border:'1px solid #e2e8f0' }}>
+          <div style={{ fontSize:11, color:'#64748b', fontWeight:700, display:'flex', alignItems:'center', gap:4, marginRight:4 }}>
+            📊 Encargos {MESES[mes-1]}/{ano}:
+          </div>
+          {[
+            { label:'Folha Bruta',  val: folha.totalBruto,           cor:'#1e3a5f' },
+            { label:'Líquido',      val: folha.totalLiquido,          cor:'#15803d' },
+            { label:'Enc. Empresa', val: folha.totalEncargosEmpresa,  cor:'#b45309' },
+            { label:'Custo Total',  val: folha.totalFolha,            cor:'#7c3aed' },
+          ].map(c => (
+            <div key={c.label} style={{ display:'flex', alignItems:'center', gap:5, background:'#fff', border:'1px solid #e2e8f0', borderRadius:8, padding:'5px 12px' }}>
+              <span style={{ fontSize:10, color:'#94a3b8' }}>{c.label}</span>
+              <span style={{ fontSize:13, fontWeight:800, color:c.cor }}>{c.val.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</span>
+            </div>
+          ))}
+          <div style={{ fontSize:10, color:'#cbd5e1', display:'flex', alignItems:'center' }}>
+            {folha.linhas.length} colaboradores CLT
+          </div>
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-3 mb-5">
         <Select value={String(mes)} onValueChange={v => setMes(Number(v))}>
           <SelectTrigger className="w-32 h-9"><SelectValue /></SelectTrigger>
