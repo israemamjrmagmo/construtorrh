@@ -12,7 +12,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
 import {
-  User, Briefcase, Clock, DollarSign, Shield, FileText,
+  User, Briefcase, Clock, DollarSign, FileText,
   AlertTriangle, Trophy, Truck, Calendar, TrendingUp, Building2,
   ChevronRight, History, Search
 } from 'lucide-react'
@@ -233,7 +233,6 @@ export default function DossieColaborador() {
               <TabsTrigger value="timeline"><History className="w-4 h-4 mr-1" /> Linha do Tempo</TabsTrigger>
               <TabsTrigger value="pagamentos"><DollarSign className="w-4 h-4 mr-1" /> Pagamentos</TabsTrigger>
               <TabsTrigger value="premios"><Trophy className="w-4 h-4 mr-1" /> Prêmios</TabsTrigger>
-              <TabsTrigger value="epis"><Shield className="w-4 h-4 mr-1" /> EPIs</TabsTrigger>
               <TabsTrigger value="advertencias"><AlertTriangle className="w-4 h-4 mr-1" /> Advertências</TabsTrigger>
             </TabsList>
 
@@ -364,40 +363,6 @@ export default function DossieColaborador() {
                             <TableCell className="text-right font-semibold text-green-700">
                               {formatCurrency(p.valor || 0)}
                             </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  )}
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            {/* EPIs */}
-            <TabsContent value="epis">
-              <Card>
-                <CardContent className="pt-6">
-                  {epis.length === 0 ? (
-                    <p className="text-center text-muted-foreground py-8">Nenhum EPI registrado</p>
-                  ) : (
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Data Entrega</TableHead>
-                          <TableHead>EPI</TableHead>
-                          <TableHead>Categoria</TableHead>
-                          <TableHead>Qtd</TableHead>
-                          <TableHead>Status</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {epis.map((e: any) => (
-                          <TableRow key={e.id}>
-                            <TableCell>{fmtData(e.data_entrega)}</TableCell>
-                            <TableCell className="font-medium">{e.epi_catalogo?.nome || '—'}</TableCell>
-                            <TableCell>{e.epi_catalogo?.categoria || '—'}</TableCell>
-                            <TableCell>{e.quantidade}</TableCell>
-                            <TableCell><Badge variant="outline">{e.status}</Badge></TableCell>
                           </TableRow>
                         ))}
                       </TableBody>

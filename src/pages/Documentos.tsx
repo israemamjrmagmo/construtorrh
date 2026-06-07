@@ -1269,7 +1269,7 @@ export default function Documentos() {
     toast.success('Documento excluído!'); fetchAll()
   }
 
-  const isAdmin = profile?.role === 'admin' || profile?.role === 'rh'
+  const isAdmin = profile?.role === 'admin'
 
   // ── Tabs config ────────────────────────────────────────────────────────────
   const tabs: { id: Aba; label: string; icon: React.ReactNode }[] = [
@@ -1431,8 +1431,11 @@ export default function Documentos() {
                               </span>
                             </div>
 
-                            {/* Coluna 2: NOME / ARQUIVO */}
-                            <div style={{ minWidth:0, paddingRight:10 }}>
+                            {/* Coluna 2: TIPO + NOME / ARQUIVO */}
+                            <div style={{ minWidth:0, paddingRight:10, display:'flex', flexDirection:'column', gap:3 }}>
+                              {/* Tipo em cima */}
+                              <TipoBadge tipo={doc.tipo || 'Outros'} />
+                              {/* Nome / arquivo embaixo */}
                               {doc.descricao && (
                                 <div style={{ fontSize:13, fontWeight:600, color:'var(--foreground)',
                                   overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', lineHeight:1.3 }}
@@ -1442,7 +1445,7 @@ export default function Documentos() {
                               )}
                               {doc.documento_nome && (
                                 <div style={{ fontSize:11, color:'#64748b', overflow:'hidden', textOverflow:'ellipsis',
-                                  whiteSpace:'nowrap', marginTop:2 }} title={doc.documento_nome}>
+                                  whiteSpace:'nowrap' }} title={doc.documento_nome}>
                                   📎 {doc.documento_nome}
                                 </div>
                               )}

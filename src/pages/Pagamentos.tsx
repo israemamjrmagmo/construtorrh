@@ -1093,7 +1093,7 @@ export default function Pagamentos() {
         loadingLancs ? <LoadingSkeleton /> : (() => {
           const pendentes = rows.filter(r =>
             r.status === 'pendente' &&
-            (filtroMesLanc ? r.competencia === filtroMesLanc : true) &&
+            (filtroMesLanc ? r.competencia === filtroMesLanc : filtroCompetencia ? r.competencia === filtroCompetencia : true) &&
             (filtroNomeLanc ? (r.colaboradores?.nome?.toLowerCase().includes(filtroNomeLanc.toLowerCase()) || (r.colaboradores?.chapa??'').toLowerCase().includes(filtroNomeLanc.toLowerCase())) : true) &&
             (filtroObraLanc !== 'todos' ? (r as any).obra_id === filtroObraLanc : true) &&
             (filtroFuncaoLanc !== 'todos' ? (r as any).colaboradores?.funcao_id === filtroFuncaoLanc : true)
@@ -1345,7 +1345,7 @@ export default function Pagamentos() {
         const avulsosPagos = rows.filter(r => {
           if (r.status !== 'pago') return false
           const matchNome  = filtroNomeLanc ? r.colaboradores?.nome?.toLowerCase().includes(filtroNomeLanc.toLowerCase()) : true
-          const matchMes   = filtroMesLanc  ? r.competencia === filtroMesLanc : true
+          const matchMes   = filtroMesLanc  ? r.competencia === filtroMesLanc : filtroCompetencia ? r.competencia === filtroCompetencia : true
           const matchDtIni = filtroDataIni  ? (r.data_pagamento ?? '') >= filtroDataIni : true
           const matchDtFim = filtroDataFim  ? (r.data_pagamento ?? '') <= filtroDataFim : true
           return matchNome && matchMes && matchDtIni && matchDtFim

@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react'
 import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus'
+import { useProfile } from '@/hooks/useProfile'
 import { supabase } from '@/lib/supabase'
 import { formatCurrency } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -74,6 +75,7 @@ const EMPTY_FORM: FormData = {
 
 // ─── componente ──────────────────────────────────────────────────────────────
 export default function Premios() {
+  const { profile } = useProfile()
   const [rows,         setRows]         = useState<PremioRow[]>([])
   const [colaboradores,setColaboradores]= useState<{id:string;nome:string;chapa:string|null}[]>([])
   const [obras,        setObras]        = useState<{id:string;nome:string}[]>([])
@@ -242,6 +244,7 @@ export default function Premios() {
   // NÃO cria pagamento avulso — o fechamento lê os prêmios aprovados e os soma ao salário.
   async function confirmarAprovar() {
     if (!aprovarRow) return
+    if (profile?.role !== 'admin') { toast.error('❌ Somente o gestor pode aprovar prêmios.'); return }
     const { error } = await supabase.from('premios')
       .update({ status: 'aprovado', pagamento_id: null })
       .eq('id', aprovarRow.id)
@@ -496,6 +499,15 @@ export default function Premios() {
 
           {/* ── Conteúdo: tabela de prêmios ── */}
           <div style={{flex:1, overflowY:'auto', padding:'0 0 16px'}}>
+            {/* Banner de aviso para não-admin na aba pendente */}
+            {abaStatus === 'pendente' && profile?.role !== 'admin' && (
+              <div style={{margin:'12px 16px 0', padding:'10px 16px', borderRadius:8,
+                background:'#fffbeb', border:'1.5px solid #fde68a',
+                fontSize:13, color:'#92400e', display:'flex', alignItems:'center', gap:8}}>
+                <span style={{fontSize:16}}>⚠️</span>
+                <span>Somente o gestor pode aprovar prêmios. Aguardando aprovação.</span>
+              </div>
+            )}
             {premiosDoColab.length === 0 ? (
               <div style={{padding:60, textAlign:'center', color:'var(--muted-foreground)'}}>
                 <Gift size={40} style={{opacity:.2, display:'block', margin:'0 auto 12px'}}/>
@@ -550,8 +562,17 @@ export default function Premios() {
                           <td style={{padding:'10px 12px', textAlign:'right'}}>
                             <div style={{display:'flex', gap:4, justifyContent:'flex-end'}}>
                               {st === 'pendente' && (
-                                <button onClick={()=>setAprovarRow(row)} title="Aprovar"
-                                  style={{height:28, padding:'0 10px', borderRadius:6, border:'1px solid #bbf7d0', background:'#f0fdf4', color:'#15803d', cursor:'pointer', fontSize:11, fontWeight:700, display:'flex', alignItems:'center', gap:4}}>
+                                <button
+                                  onClick={() => profile?.role === 'admin' ? setAprovarRow(row) : toast.error('❌ Somente o gestor pode aprovar prêmios.')}
+                                  title={profile?.role === 'admin' ? 'Aprovar' : 'Somente o gestor pode aprovar'}
+                                  disabled={profile?.role !== 'admin'}
+                                  style={{height:28, padding:'0 10px', borderRadius:6,
+                                    border: profile?.role === 'admin' ? '1px solid #bbf7d0' : '1px solid #e2e8f0',
+                                    background: profile?.role === 'admin' ? '#f0fdf4' : '#f3f4f6',
+                                    color: profile?.role === 'admin' ? '#15803d' : '#9ca3af',
+                                    cursor: profile?.role === 'admin' ? 'pointer' : 'not-allowed',
+                                    fontSize:11, fontWeight:700, display:'flex', alignItems:'center', gap:4,
+                                    opacity: profile?.role === 'admin' ? 1 : 0.6}}>
                                   <CheckCircle2 size={12}/> Aprovar
                                 </button>
                               )}

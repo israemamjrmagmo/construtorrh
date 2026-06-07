@@ -628,92 +628,215 @@ export default function Epis() {
     totaisPorCategoria[cat] = (totaisPorCategoria[cat] ?? 0) + (item.quantidade ?? 1)
   })
 
-  // ── gerarRecebimento: doc individual de recebimento de EPI por colaborador ──
-  const gerarRecebimento = () => {
+  // ── gerarDocumentoCompleto: Listagem de Solicitação + Termo de Recebimento de EPI ──
+  const gerarDocumentoCompleto = () => {
     if (itensEpi.length === 0) { toast.error('Gere a solicitação primeiro'); return }
     const hoje = new Date().toLocaleDateString('pt-BR')
 
-    // Agrupar itens por colaborador
+    // ── Página 1: Listagem de Solicitação (para almoxarifado) ────────────────
+    const tituloSolicitacao = modoSolicitacao === 'colaborador'
+      ? `Solicitação de EPI — Colaborador`
+      : `Solicitação de EPI — Obra`
+    const subtituloSolicitacao = modoSolicitacao === 'colaborador'
+      ? (() => { const col = colaboradores.find(x => x.id === colaboradorSelecionado); return col ? `${col.nome}${col.chapa ? ' — Chapa: ' + col.chapa : ''}` : '' })()
+      : (() => { const obra = obras.find(x => x.id === obraSelecionada); return obra ? obra.nome : '' })()
+
+    const linhasSolicitacao = resumoEpi.map((r, idx) => `
+      <tr style="background:${idx % 2 === 0 ? '#fff' : '#f9fafb'}">
+        <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-weight:600">${r.epi_nome}</td>
+        <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;text-align:center;color:#1d4ed8;font-size:11px">${r.epi_categoria ?? '—'}</td>
+        <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;text-align:center">${r.tamanho ?? '—'}</td>
+        <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;text-align:center">${r.numero ?? '—'}</td>
+        <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;text-align:center;font-weight:800;font-size:15px">${r.quantidade}</td>
+        ${modoSolicitacao === 'obra' ? `<td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:11px;color:#6b7280">${r.colaboradores.join(', ') || '—'}</td>` : ''}
+      </tr>`).join('')
+
+    const totalGeral = resumoEpi.reduce((s, r) => s + r.quantidade, 0)
+
+    const paginaSolicitacao = `
+      <div style="page-break-after:always;font-family:Arial,sans-serif;font-size:12px;color:#111;padding:32px 40px;max-width:190mm;box-sizing:border-box">
+        <!-- Cabeçalho -->
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;padding-bottom:16px;border-bottom:2px solid #1e3a5f">
+          <div>
+            <div style="font-size:22px;font-weight:900;color:#1e3a5f;letter-spacing:-0.5px">ConstrutorRH</div>
+            <div style="font-size:14px;font-weight:700;color:#374151;margin-top:4px">${tituloSolicitacao}</div>
+            ${subtituloSolicitacao ? `<div style="font-size:13px;color:#6b7280;margin-top:2px">${subtituloSolicitacao}</div>` : ''}
+          </div>
+          <div style="text-align:right;font-size:11px;color:#6b7280">
+            <div>Emitido em: <strong>${hoje}</strong></div>
+            <div style="margin-top:4px;padding:4px 10px;background:#f1f5f9;border-radius:6px;font-size:11px;color:#475569">
+              ${resumoEpi.length} tipo${resumoEpi.length !== 1 ? 's' : ''} · ${totalGeral} unidade${totalGeral !== 1 ? 's' : ''}
+            </div>
+          </div>
+        </div>
+
+        <!-- Tabela de EPIs -->
+        <table style="width:100%;border-collapse:collapse;margin-bottom:20px">
+          <thead>
+            <tr style="background:#1e3a5f;color:#fff;font-size:11px;text-transform:uppercase;letter-spacing:0.05em">
+              <th style="padding:9px 10px;text-align:left;border-radius:4px 0 0 0">Equipamento (EPI)</th>
+              <th style="padding:9px 10px;text-align:center">Categoria</th>
+              <th style="padding:9px 10px;text-align:center">Tamanho</th>
+              <th style="padding:9px 10px;text-align:center">Nº Calçado</th>
+              <th style="padding:9px 10px;text-align:center;border-radius:0 ${modoSolicitacao === 'obra' ? '0 0 0' : '4px 0 0'}">Qtd Total</th>
+              ${modoSolicitacao === 'obra' ? `<th style="padding:9px 10px;text-align:left;border-radius:0 4px 0 0">Colaboradores</th>` : ''}
+            </tr>
+          </thead>
+          <tbody>${linhasSolicitacao}</tbody>
+        </table>
+
+        <!-- Resumo por categoria -->
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px 16px;margin-bottom:24px">
+          <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px">Resumo por Categoria</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px">
+            ${Array.from(resumoEpi.reduce((m, r) => {
+              const cat = r.epi_categoria ?? 'Outros'
+              m.set(cat, (m.get(cat) ?? 0) + r.quantidade)
+              return m
+            }, new Map<string, number>()).entries()).map(([cat, total]) =>
+              `<span style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:6px;background:#fff;border:1px solid #e2e8f0;font-size:12px">
+                <span style="font-weight:500;color:#374151">${cat}</span>
+                <span style="background:#2563eb;color:#fff;border-radius:999px;font-size:10px;font-weight:700;padding:1px 6px">${total}</span>
+              </span>`
+            ).join('')}
+            <span style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:6px;background:#1e40af;font-size:12px;margin-left:4px">
+              <span style="font-weight:600;color:#bfdbfe">Total geral</span>
+              <span style="background:#fff;color:#1e40af;border-radius:999px;font-size:10px;font-weight:700;padding:1px 6px">${totalGeral}</span>
+            </span>
+          </div>
+        </div>
+
+        <!-- Rodapé da solicitação -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:40px">
+          <div style="text-align:center">
+            <div style="height:40px"></div>
+            <div style="border-top:1px solid #374151;padding-top:8px;font-size:11px;color:#374151">Solicitante / Encarregado</div>
+          </div>
+          <div style="text-align:center">
+            <div style="height:40px"></div>
+            <div style="border-top:1px solid #374151;padding-top:8px;font-size:11px;color:#374151">Almoxarife / Responsável pelo EPI</div>
+          </div>
+        </div>
+      </div>`
+
+    // ── Páginas 2+: Termo de Recebimento de EPI (um por colaborador) ─────────
     const colabMap: Record<string, { nome: string; chapa: string; itens: typeof itensEpi }> = {}
     itensEpi.forEach(item => {
-      const colId  = item.colaborador_id ?? 'sem'
+      const colId  = (item as any).colaborador_id ?? 'sem'
       const colObj = colaboradores.find(c => c.id === colId)
       if (!colabMap[colId]) colabMap[colId] = { nome: colObj?.nome ?? '—', chapa: colObj?.chapa ?? '—', itens: [] }
       colabMap[colId].itens.push(item)
     })
 
-    // Se modo colaborador: apenas 1 colaborador
+    // Modo colaborador: apenas o selecionado; modo obra: todos
     const colabsParaGerar = modoSolicitacao === 'colaborador'
-      ? Object.values(colabMap).filter(c => colaboradores.find(x => x.id === colaboradorSelecionado && x.nome === c.nome))
+      ? Object.entries(colabMap)
+          .filter(([colId]) => colId === colaboradorSelecionado)
+          .map(([, v]) => v)
       : Object.values(colabMap)
 
-    const htmlPages = colabsParaGerar.map(c => {
+    const paginasRecebimento = colabsParaGerar.map((c, pageIdx) => {
       const linhas = c.itens.map((item, idx) => `
-        <tr>
-          <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb">${idx + 1}</td>
-          <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;font-weight:600">${item.epi_catalogo?.nome ?? '—'}</td>
-          <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;text-align:center">${item.epi_catalogo?.categoria ?? '—'}</td>
-          <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;text-align:center">${item.quantidade ?? 1}</td>
-          <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;text-align:center">${(item as any).data_entrega ? new Date((item as any).data_entrega).toLocaleDateString('pt-BR') : '___/___/______'}</td>
-          <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;width:120px">&nbsp;</td>
+        <tr style="background:${idx % 2 === 0 ? '#fff' : '#f9fafb'}">
+          <td style="padding:7px 8px;border-bottom:1px solid #e5e7eb;text-align:center;color:#6b7280">${idx + 1}</td>
+          <td style="padding:7px 8px;border-bottom:1px solid #e5e7eb;font-weight:600">${item.epi_catalogo?.nome ?? '—'}</td>
+          <td style="padding:7px 8px;border-bottom:1px solid #e5e7eb;text-align:center;font-size:11px;color:#1d4ed8">${item.epi_catalogo?.categoria ?? '—'}</td>
+          <td style="padding:7px 8px;border-bottom:1px solid #e5e7eb;text-align:center">${(item as any).tamanho ?? '—'}</td>
+          <td style="padding:7px 8px;border-bottom:1px solid #e5e7eb;text-align:center">${(item as any).numero ?? '—'}</td>
+          <td style="padding:7px 8px;border-bottom:1px solid #e5e7eb;text-align:center;font-weight:700">${item.quantidade ?? 1}</td>
+          <td style="padding:7px 8px;border-bottom:1px solid #e5e7eb;text-align:center;font-size:11px;color:#6b7280">${(item as any).data_entrega ? new Date((item as any).data_entrega).toLocaleDateString('pt-BR') : '___/___/______'}</td>
+          <td style="padding:7px 8px;border-bottom:1px solid #e5e7eb;width:100px">&nbsp;</td>
         </tr>`).join('')
+
+      // Última página não precisa de page-break
+      const isLast = pageIdx === colabsParaGerar.length - 1
       return `
-        <div style="page-break-after:always;font-family:Arial,sans-serif;font-size:12px;color:#111;padding:32px 40px;max-width:190mm">
+        <div style="page-break-after:${isLast ? 'auto' : 'always'};font-family:Arial,sans-serif;font-size:12px;color:#111;padding:32px 40px;max-width:190mm;box-sizing:border-box">
+          <!-- Cabeçalho do termo -->
           <div style="background:#1e3a5f;color:#fff;padding:16px 20px;border-radius:8px 8px 0 0;display:flex;justify-content:space-between;align-items:center">
             <div>
-              <div style="font-size:18px;font-weight:800">Recibo de Entrega de EPI</div>
-              <div style="font-size:11px;opacity:.75;margin-top:2px">Equipamento de Proteção Individual — Comprovante de Recebimento</div>
+              <div style="font-size:10px;opacity:.7;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px">ConstrutorRH</div>
+              <div style="font-size:17px;font-weight:800">Termo de Recebimento de EPI</div>
+              <div style="font-size:10px;opacity:.7;margin-top:3px">Equipamento de Proteção Individual — NR-6</div>
             </div>
-            <div style="font-size:11px;opacity:.75">Emitido em: ${hoje}</div>
+            <div style="text-align:right;font-size:11px;opacity:.8">
+              <div>Emitido em: <strong>${hoje}</strong></div>
+            </div>
           </div>
-          <div style="border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;padding:16px 20px;margin-bottom:16px">
+
+          <!-- Dados do colaborador -->
+          <div style="border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;padding:14px 20px;margin-bottom:16px;background:#fafafa">
             <table style="width:100%;border-collapse:collapse">
               <tr>
-                <td style="padding:4px 0;font-weight:700;color:#374151;width:120px">Colaborador:</td>
-                <td style="padding:4px 0;font-size:14px;font-weight:800">${c.nome}</td>
-                <td style="padding:4px 0;font-weight:700;color:#374151;width:80px">Chapa:</td>
-                <td style="padding:4px 0">${c.chapa}</td>
+                <td style="padding:4px 0;font-weight:700;color:#374151;width:130px;font-size:12px">Colaborador:</td>
+                <td style="padding:4px 0;font-size:14px;font-weight:800;color:#111827">${c.nome}</td>
+                <td style="padding:4px 0;font-weight:700;color:#374151;width:60px;font-size:12px">Chapa:</td>
+                <td style="padding:4px 0;font-size:13px;font-weight:600">${c.chapa}</td>
               </tr>
             </table>
           </div>
-          <table style="width:100%;border-collapse:collapse;margin-bottom:20px">
+
+          <!-- Tabela de EPIs -->
+          <table style="width:100%;border-collapse:collapse;margin-bottom:18px">
             <thead>
-              <tr style="background:#f1f5f9;color:#374151;font-size:11px">
-                <th style="padding:8px;text-align:center;border-bottom:2px solid #cbd5e1">#</th>
-                <th style="padding:8px;text-align:left;border-bottom:2px solid #cbd5e1">Equipamento</th>
-                <th style="padding:8px;text-align:center;border-bottom:2px solid #cbd5e1">Categoria</th>
-                <th style="padding:8px;text-align:center;border-bottom:2px solid #cbd5e1">Qtd</th>
-                <th style="padding:8px;text-align:center;border-bottom:2px solid #cbd5e1">Data Entrega</th>
-                <th style="padding:8px;text-align:center;border-bottom:2px solid #cbd5e1">Rubrica</th>
+              <tr style="background:#f1f5f9;color:#374151;font-size:10px;text-transform:uppercase;letter-spacing:0.05em">
+                <th style="padding:8px;text-align:center;border-bottom:2px solid #cbd5e1;width:30px">#</th>
+                <th style="padding:8px;text-align:left;border-bottom:2px solid #cbd5e1">Equipamento (EPI)</th>
+                <th style="padding:8px;text-align:center;border-bottom:2px solid #cbd5e1;width:90px">Categoria</th>
+                <th style="padding:8px;text-align:center;border-bottom:2px solid #cbd5e1;width:70px">Tam.</th>
+                <th style="padding:8px;text-align:center;border-bottom:2px solid #cbd5e1;width:70px">Nº</th>
+                <th style="padding:8px;text-align:center;border-bottom:2px solid #cbd5e1;width:50px">Qtd</th>
+                <th style="padding:8px;text-align:center;border-bottom:2px solid #cbd5e1;width:100px">Data Entrega</th>
+                <th style="padding:8px;text-align:center;border-bottom:2px solid #cbd5e1;width:100px">Rubrica</th>
               </tr>
             </thead>
             <tbody>${linhas}</tbody>
           </table>
-          <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:10px 14px;font-size:11px;color:#92400e;margin-bottom:24px">
-            <strong>Declaração:</strong> Declaro que recebi os equipamentos de proteção individual (EPIs) listados acima,
-            estando ciente da obrigatoriedade do uso durante a execução das atividades laborais, conforme NR-6.
+
+          <!-- Declaração NR-6 -->
+          <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:10px 14px;font-size:11px;color:#92400e;margin-bottom:24px;line-height:1.6">
+            <strong>Declaração:</strong> Declaro que recebi, em perfeito estado, os equipamentos de proteção individual (EPIs)
+            listados acima, estando ciente da obrigatoriedade do uso correto durante a execução de todas as atividades laborais,
+            bem como da responsabilidade pela conservação e devolução quando solicitado, conforme <strong>NR-6</strong>.
           </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:16px">
+
+          <!-- Assinaturas -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:48px;margin-top:16px">
             <div style="text-align:center">
-              <div style="border-top:1px solid #374151;padding-top:8px;font-size:11px">${c.nome} — Colaborador</div>
+              <div style="height:48px"></div>
+              <div style="border-top:1px solid #374151;padding-top:8px;font-size:11px;color:#374151">
+                ${c.nome}<br/>
+                <span style="color:#6b7280">Colaborador</span>
+              </div>
             </div>
             <div style="text-align:center">
-              <div style="border-top:1px solid #374151;padding-top:8px;font-size:11px">Responsável / Almoxarifado</div>
+              <div style="height:48px"></div>
+              <div style="border-top:1px solid #374151;padding-top:8px;font-size:11px;color:#374151">
+                <br/>
+                <span style="color:#6b7280">Responsável / Almoxarifado</span>
+              </div>
             </div>
           </div>
         </div>`
     }).join('')
 
     const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
-      <style>@media print{body{margin:0}@page{size:A4;margin:0}}</style>
-    </head><body>${htmlPages}</body></html>`
+      <style>
+        * { box-sizing: border-box; }
+        body { margin: 0; font-family: Arial, sans-serif; }
+        @media print {
+          body { margin: 0; }
+          @page { size: A4; margin: 15mm 10mm; }
+        }
+      </style>
+    </head><body>${paginaSolicitacao}${paginasRecebimento}</body></html>`
 
-    const win = window.open('', '_blank', 'width=900,height=700')
-    if (!win) { toast.error('Permita pop-ups para gerar o recibo'); return }
+    const win = window.open('', '_blank', 'width=960,height=750')
+    if (!win) { toast.error('Permita pop-ups para gerar os documentos'); return }
     win.document.write(html)
     win.document.close()
-    setTimeout(() => { win.focus(); win.print() }, 600)
-    toast.success(`✅ Recibo(s) de recebimento gerado(s) para ${colabsParaGerar.length} colaborador(es)!`)
+    setTimeout(() => { win.focus(); win.print() }, 700)
+    toast.success(`✅ Documentos gerados: solicitação + ${colabsParaGerar.length} termo(s) de recebimento!`)
   }
 
   // ─── estilos das abas ──────────────────────────────────────────────────────
@@ -952,13 +1075,13 @@ export default function Epis() {
                 onClick={gerarPDF}
                 style={{ display: 'flex', alignItems: 'center', gap: 6 }}
               >
-                <Download size={16} /> Solicitação (Almox.)
+                <Download size={16} /> Baixar PDF (Almox.)
               </Button>
               <Button
-                onClick={gerarRecebimento}
-                style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'linear-gradient(135deg,#15803d,#166534)', color: '#fff' }}
+                onClick={gerarDocumentoCompleto}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'linear-gradient(135deg,#1e3a5f,#1d4ed8)', color: '#fff' }}
               >
-                <FileText size={16} /> Recibo de Entrega
+                <FileText size={16} /> Imprimir Solicitação + Termos
               </Button>
             </div>
           ) : null

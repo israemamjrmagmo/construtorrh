@@ -663,10 +663,10 @@ export default function Relatorios() {
         if (filtroColaborador === 'todos') { toast.warning('Selecione um colaborador.'); setLoading(false); return }
         const cid = filtroColaborador
         const [oRes, adRes, atRes, acRes] = await Promise.all([
-          supabase.from('ocorrencias').select('data,tipo,descricao,gravidade,status').eq('colaborador_id', cid).order('data', { ascending: false }),
-          supabase.from('advertencias').select('data_advertencia,tipo,motivo,dias_suspensao,assinada').eq('colaborador_id', cid).order('data_advertencia', { ascending: false }),
-          supabase.from('atestados').select('data,tipo,dias_afastamento,cid,medico,status').eq('colaborador_id', cid).order('data', { ascending: false }),
-          supabase.from('acidentes').select('data_ocorrencia,tipo,gravidade,cat_emitida,status').eq('colaborador_id', cid).order('data_ocorrencia', { ascending: false }),
+          supabase.from('ocorrencias').select('data,tipo,descricao,gravidade,status').eq('colaborador_id', cid).gte('data', filtroDataIni).lte('data', filtroDataFim).order('data', { ascending: false }),
+          supabase.from('advertencias').select('data_advertencia,tipo,motivo,dias_suspensao,assinada').eq('colaborador_id', cid).gte('data_advertencia', filtroDataIni).lte('data_advertencia', filtroDataFim).order('data_advertencia', { ascending: false }),
+          supabase.from('atestados').select('data,tipo,dias_afastamento,cid,medico,status').eq('colaborador_id', cid).gte('data', filtroDataIni).lte('data', filtroDataFim).order('data', { ascending: false }),
+          supabase.from('acidentes').select('data_ocorrencia,tipo,gravidade,cat_emitida,status').eq('colaborador_id', cid).gte('data_ocorrencia', filtroDataIni).lte('data_ocorrencia', filtroDataFim).order('data_ocorrencia', { ascending: false }),
         ])
         const linha = (tipo: string, data: string | null, desc: string, extra: string, status: string) => ({ tipo, data: data ?? '—', descricao: desc, extra, status })
         resultado = [
@@ -1243,11 +1243,11 @@ export default function Relatorios() {
 
       // ── 29. Holerites dos Colaboradores ──────────────────────────────────────
       else if (relatAtivo === 'holerites-colaboradores') {
-        // A tabela real é contracheques
+        // A tabela real é contracheques; competencia pode ser YYYY-MM ou YYYY-MM-DD — usar mesRefIni/mesRefFim para cobrir ambos
         const q = supabase.from('contracheques')
           .select('competencia, created_at, salario_base, bruto, descontos, liquido, publicado, obra_nome, colaborador_id, funcao, colaboradores(nome, chapa)')
-          .gte('competencia', filtroDataIni)
-          .lte('competencia', filtroDataFim)
+          .gte('competencia', mesRefIni)
+          .lte('competencia', mesRefFim)
           .order('competencia', { ascending: false })
         if (filtroColaborador !== 'todos') q.eq('colaborador_id', filtroColaborador)
         if (filtroObra !== 'todos') {

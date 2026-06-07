@@ -117,7 +117,7 @@ export default function FechamentoPonto() {
   const [modalEstornar, setModalEstornar] = useState<string | null>(null)
   const [motivoEstorno, setMotivoEstorno] = useState('')
   // Aba ativa: 'pendente' | 'aprovado' | 'recusado' | 'fechamento'
-  const [abaFechamento, setAbaFechamento] = useState<'pendente'|'aprovado'|'liberado'|'pago'|'recusado'|'fechamento'>('fechamento')
+  const [abaFechamento, setAbaFechamento] = useState<'pendente'|'aprovado'|'liberado'|'pago'|'recusado'|'fechamento'>('pendente')
 
   // Modal confirmar pagamento
   const [modalLiberar, setModalLiberar] = useState<LancItem | null>(null)
@@ -1155,7 +1155,7 @@ export default function FechamentoPonto() {
   // ── Liberar para pagamento (direto, sem fechamento intermediário) ──────────
     const STATUS_BADGE: Record<string, { bg: string; color: string; label: string }> = {
     em_fechamento:        { bg: '#dbeafe', color: '#1d4ed8', label: '🔒 Em Fechamento' },
-    aguardando_aprovacao: { bg: '#fef3c7', color: '#b45309', label: '⏳ Ag. Aprovação' },
+    aguardando_aprovacao: { bg: '#fef3c7', color: '#b45309', label: '📋 Pendente de Fechamento' },
     aprovado:             { bg: '#dcfce7', color: '#15803d', label: '✅ Aprovado' },
     liberado:             { bg: '#ede9fe', color: '#7c3aed', label: '📜 Liberado p/ Pgto' },
     pago:                 { bg: '#f0fdf4', color: '#166534', label: '💳 Pago' },
@@ -1216,8 +1216,8 @@ export default function FechamentoPonto() {
       {/* ── Abas de status ── */}
       <div style={{ display: 'flex', gap: 0, marginBottom: 20, borderBottom: '2px solid var(--border)', flexWrap: 'wrap' }}>
         {([
+          { key: 'pendente',    label: '📋 Pendente de Fechamento',          cnt: contAbas.pendente,    cor: '#b45309' },
           { key: 'fechamento',  label: '🔒 Em Fechamento',              cnt: contAbas.fechamento,  cor: '#1d4ed8' },
-          { key: 'pendente',    label: '⏳ Ag. Aprovação',               cnt: contAbas.pendente,    cor: '#b45309' },
           { key: 'aprovado',    label: '✅ Aprovado',                cnt: contAbas.aprovado,    cor: '#059669' },
           { key: 'liberado',    label: '💜 Liberado p/ Pagamento',   cnt: contAbas.liberado,    cor: '#7c3aed' },
           { key: 'pago',        label: '💳 Pago',                    cnt: contAbas.pago,        cor: '#1d4ed8' },
@@ -1327,13 +1327,13 @@ export default function FechamentoPonto() {
           icon={<CheckCircle2 size={32} />}
           title={
             abaFechamento === 'fechamento' ? `Nenhum lançamento em fechamento em ${MESES[mes - 1]} / ${ano}` :
-            abaFechamento === 'pendente'   ? `Nenhum lançamento pendente de aprovação em ${MESES[mes - 1]} / ${ano}` :
+            abaFechamento === 'pendente'   ? `Nenhum lançamento pendente de fechamento em ${MESES[mes - 1]} / ${ano}` :
             abaFechamento === 'aprovado'   ? `Nenhum lançamento aprovado/liberado em ${MESES[mes - 1]} / ${ano}` :
                                             `Nenhum lançamento recusado em ${MESES[mes - 1]} / ${ano}`
           }
           description={
             abaFechamento === 'fechamento' ? 'Lançamentos enviados para fechamento aparecerão aqui.' :
-            abaFechamento === 'pendente'   ? 'Lançamentos aguardando aprovação aparecerão aqui.' :
+            abaFechamento === 'pendente'   ? 'Lançamentos pendentes de fechamento aparecerão aqui.' :
             abaFechamento === 'aprovado'   ? 'Lançamentos aprovados e liberados para pagamento aparecerão aqui.' :
                                             'Lançamentos recusados aparecerão aqui.'
           }
