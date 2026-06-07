@@ -127,7 +127,7 @@ export default function Obras() {
     setColabList([])
     const { data, error } = await supabase
       .from('colaboradores')
-      .select('id, nome, chapa, status, tipo_contrato, funcao_id')
+      .select('id, nome, chapa, status, tipo_contrato, funcoes(nome)')
       .eq('obra_id', obra.id)
       .eq('status', 'ativo')
       .order('nome')

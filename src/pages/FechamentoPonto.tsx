@@ -215,10 +215,10 @@ export default function FechamentoPonto() {
         snap_valor_producao, snap_valor_dsr, snap_valor_premio, snap_valor_total,
         snap_faltas, snap_vt_diario, snap_desconto_vt, snap_desconto_adiant,
         snap_inss, snap_ir, snap_liquido, snap_fechado_em,
-        colaboradores(nome, chapa, tipo_contrato, funcao_id, vale_transporte, vt_dados, data_admissao),
+        colaboradores(nome, chapa, tipo_contrato, funcao_id, vale_transporte, vt_dados, data_admissao, funcoes(nome)),
         obras(nome, considera_sabado_util, desconta_vt)
       `)
-      .in('status', ['em_fechamento', 'aguardando_aprovacao', 'pendente_fechamento', 'aprovado', 'liberado', 'pago', 'rascunho', 'recusado'])
+      .in('status', ['em_fechamento', 'aguardando_aprovacao', 'aprovado', 'liberado', 'pago', 'rascunho', 'recusado'])
       .eq('mes_referencia', mr)
       .order('data_inicio')
 
@@ -444,9 +444,9 @@ export default function FechamentoPonto() {
 
       // Segurança: período já deve ter sido gerado corretamente (respeitando admissão e inativação)
       // Se por legado o data_inicio for anterior à admissão, usar admissão como referência de cálculo
-      const dataInicioEfetivo = (colab?.data_admissao && l.data_inicio && l.data_inicio < colab.data_admissao)
+      const dataInicioEfetivo = (colab?.data_admissao && l.data_inicio < colab.data_admissao)
         ? colab.data_admissao
-        : (l.data_inicio ?? '')
+        : l.data_inicio
 
       // ══ TRAVA DE SNAPSHOT ══════════════════════════════════════════════════
       // Lançamentos já aprovados/liberados/pagos usam EXCLUSIVAMENTE os valores
@@ -798,7 +798,7 @@ export default function FechamentoPonto() {
   // ── Contadores para as abas ─────────────────────────────────────────────
   const contAbas = useMemo(() => ({
     fechamento:  lancamentos.filter(l => ['em_fechamento','rascunho'].includes(l.status)).length,
-    pendente:    lancamentos.filter(l => l.status === 'pendente_fechamento' || l.status === 'aguardando_aprovacao').length,
+    pendente:    lancamentos.filter(l => l.status === 'aguardando_aprovacao').length,
     aprovado:    lancamentos.filter(l => l.status === 'aprovado').length,       // aguardando liberação
     liberado:    lancamentos.filter(l => l.status === 'liberado').length,       // liberado p/ pagamento
     pago:        lancamentos.filter(l => l.status === 'pago').length,           // já pago
@@ -812,7 +812,7 @@ export default function FechamentoPonto() {
     const statusAba: string[] = abaFechamento === 'fechamento'
       ? ['em_fechamento', 'rascunho']
       : abaFechamento === 'pendente'
-        ? ['pendente_fechamento', 'aguardando_aprovacao']
+        ? ['aguardando_aprovacao']
         : abaFechamento === 'aprovado'
           ? ['aprovado']
           : abaFechamento === 'liberado'
@@ -846,14 +846,14 @@ export default function FechamentoPonto() {
   }, [lancamentos, busca, abaFechamento, filtroObraFech, filtroFuncaoFech])
 
   const totalGeral  = useMemo(() => lancamentos.reduce((s, l) => s + l.valor_total, 0), [lancamentos])
-  const pendentes    = lancamentos.filter(l => ['em_fechamento','pendente_fechamento','aguardando_aprovacao','aprovado','liberado','rascunho'].includes(l.status))
+  const pendentes    = lancamentos.filter(l => ['em_fechamento','aguardando_aprovacao','aprovado','liberado','rascunho'].includes(l.status))
   const pagos        = lancamentos.filter(l => l.status === 'pago')
   // Totais financeiros separados
   const totalAberto  = useMemo(() => pendentes.reduce((s,l) => s + (l.snap_liquido ?? l.valor_total ?? 0), 0), [pendentes])
   const totalPago    = useMemo(() => pagos.reduce((s,l) => s + (l.snap_liquido ?? l.valor_total ?? 0), 0), [pagos])
   const totalLiberado= useMemo(() => lancamentos.filter(l=>l.status==='liberado').reduce((s,l)=>s+(l.snap_liquido??l.valor_total??0),0), [lancamentos])
   const qtdEmFech    = lancamentos.filter(l=>l.status==='em_fechamento').length
-  const qtdAguard    = lancamentos.filter(l=>l.status==='pendente_fechamento'||l.status==='aguardando_aprovacao').length
+  const qtdAguard    = lancamentos.filter(l=>l.status==='aguardando_aprovacao').length
   const qtdAprov     = lancamentos.filter(l=>l.status==='aprovado').length
   const qtdLib       = lancamentos.filter(l=>l.status==='liberado').length
 
@@ -1154,13 +1154,12 @@ export default function FechamentoPonto() {
 
   // ── Liberar para pagamento (direto, sem fechamento intermediário) ──────────
     const STATUS_BADGE: Record<string, { bg: string; color: string; label: string }> = {
-    em_fechamento:        { bg: '#dbeafe', color: '#1d4ed8', label: '📋 Em Fechamento' },
-    pendente_fechamento:  { bg: '#fef3c7', color: '#b45309', label: '⏳ Pendente de Fechamento' },
-    aguardando_aprovacao: { bg: '#fef3c7', color: '#b45309', label: '⏳ Pendente de Fechamento' },
+    em_fechamento:        { bg: '#dbeafe', color: '#1d4ed8', label: '🔒 Em Fechamento' },
+    aguardando_aprovacao: { bg: '#fef3c7', color: '#b45309', label: '⏳ Ag. Aprovação' },
     aprovado:             { bg: '#dcfce7', color: '#15803d', label: '✅ Aprovado' },
-    liberado:             { bg: '#ede9fe', color: '#7c3aed', label: '💰 Liberado p/ Pagamento' },
+    liberado:             { bg: '#ede9fe', color: '#7c3aed', label: '📜 Liberado p/ Pgto' },
     pago:                 { bg: '#f0fdf4', color: '#166534', label: '💳 Pago' },
-    rascunho:             { bg: '#f1f5f9', color: '#475569', label: '📝 Rascunho' },
+    rascunho:             { bg: '#f1f5f9', color: '#475569', label: '↩ Devolvido p/ Edição' },
     recusado:             { bg: '#fee2e2', color: '#dc2626', label: '❌ Recusado' },
   }
 
@@ -1218,7 +1217,7 @@ export default function FechamentoPonto() {
       <div style={{ display: 'flex', gap: 0, marginBottom: 20, borderBottom: '2px solid var(--border)', flexWrap: 'wrap' }}>
         {([
           { key: 'fechamento',  label: '🔒 Em Fechamento',              cnt: contAbas.fechamento,  cor: '#1d4ed8' },
-          { key: 'pendente',    label: '⏳ Pendente de Fechamento',          cnt: contAbas.pendente,    cor: '#b45309' },
+          { key: 'pendente',    label: '⏳ Ag. Aprovação',               cnt: contAbas.pendente,    cor: '#b45309' },
           { key: 'aprovado',    label: '✅ Aprovado',                cnt: contAbas.aprovado,    cor: '#059669' },
           { key: 'liberado',    label: '💜 Liberado p/ Pagamento',   cnt: contAbas.liberado,    cor: '#7c3aed' },
           { key: 'pago',        label: '💳 Pago',                    cnt: contAbas.pago,        cor: '#1d4ed8' },
@@ -1277,7 +1276,7 @@ export default function FechamentoPonto() {
               <span>🔒 Em Fechamento</span><strong>{qtdEmFech}</strong>
             </div>
             <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, color:'#92400e' }}>
-              <span>⏳ Pendente de Fechamento</span><strong>{qtdAguard}</strong>
+              <span>⏱ Ag. Aprovação</span><strong>{qtdAguard}</strong>
             </div>
             <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, color:'#92400e' }}>
               <span>✅ Aprovados</span><strong>{qtdAprov}</strong>
@@ -1401,10 +1400,10 @@ export default function FechamentoPonto() {
                               </div>
                             </TableCell>
                             <TableCell style={{ fontFamily: 'monospace', fontSize: 11, whiteSpace: 'nowrap' }}>
-                              <div>{(lanc.data_inicio ?? '').slice(8)}/{(lanc.data_inicio ?? '').slice(5,7)} → {(lanc.data_fim ?? '').slice(8)}/{(lanc.data_fim ?? '').slice(5,7)}</div>
+                              <div>{lanc.data_inicio.slice(8)}/{lanc.data_inicio.slice(5,7)} → {lanc.data_fim.slice(8)}/{lanc.data_fim.slice(5,7)}</div>
                               <div style={{ marginTop:3, display:'flex', gap:4, flexWrap:'wrap' }}>
                                 <span style={{ fontSize:9, fontWeight:700, background:'#eff6ff', color:'#1d4ed8', border:'1px solid #bfdbfe', borderRadius:5, padding:'1px 6px', textTransform:'uppercase', letterSpacing:'.03em', fontFamily:'sans-serif' }}>
-                                  📅 {MESES_ABR[parseInt((lanc.mes_referencia ?? '').slice(5,7))-1]}/{(lanc.mes_referencia ?? '').slice(2,4)}
+                                  📅 {MESES_ABR[parseInt(lanc.mes_referencia.slice(5,7))-1]}/{lanc.mes_referencia.slice(2,4)}
                                 </span>
                                 {lanc.tipo_pagamento && (
                                   <span style={{ fontSize:9, fontWeight:700, background:'#f3e8ff', color:'#7c3aed', border:'1px solid #ddd6fe', borderRadius:5, padding:'1px 6px', fontFamily:'sans-serif' }}>
@@ -1549,7 +1548,7 @@ export default function FechamentoPonto() {
                                   onClick={() => abrirEspelho(lanc)}>
                                   <Eye size={11} /> Ver Ponto
                                 </Button>
-                                {(lanc.status === 'em_fechamento' || lanc.status === 'aguardando_aprovacao' || lanc.status === 'pendente_fechamento') && (
+                                {(lanc.status === 'em_fechamento' || lanc.status === 'aguardando_aprovacao') && (
                                   <>
                                     <Button size="sm" style={{ height: 26, fontSize: 11, background: '#15803d', color: '#fff' }}
                                       disabled={saving}
@@ -1811,10 +1810,10 @@ export default function FechamentoPonto() {
                 </div>
                 <div style={{ display:'flex', gap:6, marginTop:5, flexWrap:'wrap' }}>
                   <span style={{ fontSize:10, fontWeight:700, background:'#eff6ff', color:'#1d4ed8', padding:'2px 8px', borderRadius:6, border:'1px solid #bfdbfe' }}>
-                    📅 Competência: {MESES[parseInt((modalLiberar.mes_referencia ?? '').slice(5,7))-1]}/{(modalLiberar.mes_referencia ?? '').slice(0,4)}
+                    📅 Competência: {MESES[parseInt(modalLiberar.mes_referencia.slice(5,7))-1]}/{modalLiberar.mes_referencia.slice(0,4)}
                   </span>
                   <span style={{ fontSize:10, fontWeight:600, color:'#6b7280', padding:'2px 8px', background:'#f3f4f6', borderRadius:6 }}>
-                    {(modalLiberar.data_inicio ?? '').slice(8)}/{(modalLiberar.data_inicio ?? '').slice(5,7)} → {(modalLiberar.data_fim ?? '').slice(8)}/{(modalLiberar.data_fim ?? '').slice(5,7)}
+                    {modalLiberar.data_inicio.slice(8)}/{modalLiberar.data_inicio.slice(5,7)} → {modalLiberar.data_fim.slice(8)}/{modalLiberar.data_fim.slice(5,7)}
                   </span>
                 </div>
               </div>
@@ -2053,10 +2052,10 @@ export default function FechamentoPonto() {
                           </td>
                           <td style={{ padding:'10px 10px' }}>
                             <div style={{ fontWeight:700, color:'#1e293b' }}>{lanc.colaborador_nome}</div>
-                            <div style={{ fontSize:10, color:'#94a3b8', marginTop:1 }}>{lanc.colaborador_chapa&&<span style={{ fontWeight:600, color:'#1d4ed8', marginRight:4 }}>#{lanc.colaborador_chapa}</span>}{lanc.funcao_nome} · {(lanc.tipo_contrato ?? '').toUpperCase()}</div>
+                            <div style={{ fontSize:10, color:'#94a3b8', marginTop:1 }}>{lanc.colaborador_chapa&&<span style={{ fontWeight:600, color:'#1d4ed8', marginRight:4 }}>#{lanc.colaborador_chapa}</span>}{lanc.funcao_nome} · {lanc.tipo_contrato.toUpperCase()}</div>
                           </td>
                           <td style={{ padding:'10px 10px', color:'#374151', fontSize:12 }}>{lanc.obra_nome}</td>
-                          <td style={{ padding:'10px 10px', textAlign:'right', color:'#374151', fontSize:11, whiteSpace:'nowrap' }}>{(lanc.data_inicio ?? '').slice(8)}/{(lanc.data_inicio ?? '').slice(5,7)}→{(lanc.data_fim ?? '').slice(8)}/{(lanc.data_fim ?? '').slice(5,7)}</td>
+                          <td style={{ padding:'10px 10px', textAlign:'right', color:'#374151', fontSize:11, whiteSpace:'nowrap' }}>{lanc.data_inicio.slice(8)}/{lanc.data_inicio.slice(5,7)}→{lanc.data_fim.slice(8)}/{lanc.data_fim.slice(5,7)}</td>
                           <td style={{ padding:'10px 10px', textAlign:'right', fontWeight:700, color:'#374151' }}>{Math.ceil((new Date(lanc.data_fim).getTime()-new Date(lanc.data_inicio).getTime())/86400000)+1}</td>
                           <td style={{ padding:'10px 10px', textAlign:'right', color:'#1d4ed8', fontWeight:600, fontSize:12 }}>{fmtHHMM(lanc.horas_normais)}</td>
                           <td style={{ padding:'10px 10px', textAlign:'right', color:'#7c3aed', fontWeight:600, fontSize:12 }}>{lanc.horas_extras>0?fmtHHMM(lanc.horas_extras):'—'}</td>
@@ -2124,7 +2123,7 @@ export default function FechamentoPonto() {
                   <div style={{ background:'#eff6ff', border:'1px solid #bfdbfe', borderRadius:8, padding:'8px 12px' }}>
                     <div style={{ fontSize:10, color:'#6b7280', marginBottom:2 }}>Colaborador</div>
                     <div style={{ fontWeight:700, fontSize:13 }}>{lanc.colaborador_nome}</div>
-                    <div style={{ fontSize:11, color:'#6b7280' }}>{lanc.colaborador_chapa} · {(lanc.tipo_contrato ?? '').toUpperCase()}</div>
+                    <div style={{ fontSize:11, color:'#6b7280' }}>{lanc.colaborador_chapa} · {lanc.tipo_contrato.toUpperCase()}</div>
                   </div>
                   <div style={{ background:'#eff6ff', border:'1px solid #bfdbfe', borderRadius:8, padding:'8px 12px' }}>
                     <div style={{ fontSize:10, color:'#6b7280', marginBottom:2 }}>Período</div>
@@ -2136,7 +2135,7 @@ export default function FechamentoPonto() {
                   <div style={{ background:'#eff6ff', border:'1px solid #bfdbfe', borderRadius:8, padding:'8px 12px' }}>
                     <div style={{ fontSize:10, color:'#6b7280', marginBottom:2 }}>Função</div>
                     <div style={{ fontWeight:700, fontSize:13 }}>{lanc.funcao_nome}</div>
-                    <div style={{ fontSize:11, color:'#6b7280' }}>{MESES[(lanc.mes_referencia ?? '').slice(5,7) as any - 1]} / {(lanc.mes_referencia ?? '').slice(0,4)}</div>
+                    <div style={{ fontSize:11, color:'#6b7280' }}>{MESES[lanc.mes_referencia.slice(5,7) as any - 1]} / {lanc.mes_referencia.slice(0,4)}</div>
                   </div>
                 </div>
               )}

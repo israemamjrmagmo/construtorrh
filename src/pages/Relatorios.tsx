@@ -246,14 +246,6 @@ const GRUPOS: RelatGroup[] = [
       { id: 'provisoes', label: 'Provisões Acumuladas', icon: <Calculator size={14}/>, desc: 'FGTS + Férias + 13º provisionados' },
       { id: 'adiantamentos-aberto', label: 'Adiantamentos em Aberto', icon: <DollarSign size={14}/>, desc: 'Adiantamentos sem quitação por colaborador' },
       { id: 'custo-hora', label: 'Custo Hora Médio', icon: <Clock size={14}/>, desc: 'Custo por hora por função, obra e período' },
-      { id: 'custo-total-obra', label: 'Custo Total por Obra', icon: <Building2 size={14}/>, desc: 'Mão de obra + encargos + VT + prêmios consolidado por obra' },
-      { id: 'custos-por-funcao', label: 'Custos por Função', icon: <Users size={14}/>, desc: 'Custo total agrupado por função e obra' },
-    ]
-  },
-  {
-    id: 'rh-ponto', label: 'RH / Ponto', icon: <AlertTriangle size={16}/>, color: '#b91c1c',
-    items: [
-      { id: 'faltas-por-obra', label: 'Faltas por Obra', icon: <AlertTriangle size={14}/>, desc: 'Faltas por função, dias perdidos, custo estimado e ranking' },
     ]
   },
   {
@@ -334,7 +326,7 @@ export default function Relatorios() {
   useEffect(() => {
     Promise.all([
       supabase.from('obras').select('id,nome,codigo,status').order('nome'),
-      supabase.from('colaboradores').select('id,nome,chapa,cpf,funcao_id,obra_id').eq('status', 'ativo').order('nome'),
+      supabase.from('colaboradores').select('id,nome,chapa,cpf,obra_id,funcoes(nome)').eq('status', 'ativo').order('nome'),
       supabase.from('funcoes').select('id,nome,categoria').order('nome'),
     ]).then(([obrasRes, colabRes, funcRes]) => {
       setObras(obrasRes.data ?? [])
@@ -391,7 +383,7 @@ export default function Relatorios() {
       else if (relatAtivo === 'custo-obra') {
         // Busca lançamentos com função para detalhar por categoria
         const plQ = supabase.from('ponto_lancamentos')
-          .select(`obra_id, snap_valor_total, snap_liquido, colaborador_id, obras(nome), colaboradores(funcao_id)`)
+          .select(`obra_id, snap_valor_total, snap_liquido, colaborador_id, obras(nome), colaboradores(funcao_id, funcoes(nome, categoria))`)
           .gte('mes_referencia', mesRefIni)
           .lte('mes_referencia', mesRefFim)
         if (filtroObra !== 'todos') plQ.eq('obra_id', filtroObra)
@@ -495,7 +487,7 @@ export default function Relatorios() {
       // ── 4. Faltas por Obra ───────────────────────────────────────────────
       else if (relatAtivo === 'faltas-obra') {
         const faltasQ = supabase.from('ponto_lancamentos')
-          .select(`colaborador_id, obra_id, snap_faltas, snap_horas_normais, snap_horas_extras, obras(nome), colaboradores(nome, chapa, funcao_id)`)
+          .select(`colaborador_id, obra_id, snap_faltas, snap_horas_normais, snap_horas_extras, obras(nome), colaboradores(nome, chapa, funcao_id, funcoes(nome, categoria))`)
           .gte('mes_referencia', mesRefIni)
           .lte('mes_referencia', mesRefFim)
         if (filtroObra !== 'todos') faltasQ.eq('obra_id', filtroObra)
@@ -620,7 +612,7 @@ export default function Relatorios() {
         if (filtroObra === 'todos') { toast.warning('Selecione uma obra.'); setLoading(false); return }
         // Busca todos os registros de ponto da obra no período
         const { data } = await supabase.from('registro_ponto')
-          .select('data, presente, falta, hora_entrada, saida_almoco, retorno_almoco, hora_saida, horas_trabalhadas, horas_extras, justificativa, status, colaborador_id, colaboradores(nome, chapa, cpf, funcao_id)')
+          .select('data, presente, falta, hora_entrada, saida_almoco, retorno_almoco, hora_saida, horas_trabalhadas, horas_extras, justificativa, status, colaborador_id, colaboradores(nome, chapa, cpf, funcoes(nome))')
           .eq('obra_id', filtroObra)
           .gte('data', filtroDataIni)
           .lte('data', filtroDataFim)
@@ -752,7 +744,7 @@ export default function Relatorios() {
       else if (relatAtivo === 'producao-funcao') {
         // ponto_producao: filtrar por mes_referencia (sem coluna 'data')
         const { data } = await supabase.from('ponto_producao')
-          .select('quantidade, colaboradores(funcao_id)')
+          .select('quantidade, colaboradores(funcao_id, funcoes(nome, categoria))')
           .gte('mes_referencia', mesRefIni)
           .lte('mes_referencia', mesRefFim)
         const map: Record<string, Record<string, unknown>> = {}
@@ -1279,112 +1271,6 @@ export default function Relatorios() {
             status: d.publicado ? 'publicado' : 'rascunho',
           }
         }) as Record<string, unknown>[]
-      }
-
-      // ── 30. Custo Total por Obra (novo) ──────────────────────────────────────
-      else if (relatAtivo === 'custo-total-obra') {
-        const plQ = supabase.from('ponto_lancamentos')
-          .select('obra_id, snap_valor_horas, snap_valor_total, obras(nome)')
-          .eq('mes_referencia', mesRef)
-          .in('status', ['aprovado', 'liberado', 'pago'])
-        if (filtroObra !== 'todos') plQ.eq('obra_id', filtroObra)
-        const { data: lancamentos } = await plQ
-
-        const vtQ = supabase.from('vale_transportes')
-          .select('colaborador_id, valor, colaboradores(obra_id)')
-          .eq('competencia', mesRef)
-          .in('status', ['pago', 'pendente'])
-        const { data: vts } = await vtQ
-
-        const prQ = supabase.from('premios')
-          .select('colaborador_id, valor, obra_id, obras(nome)')
-          .eq('competencia', mesRef)
-          .in('status', ['aprovado', 'pago'])
-        if (filtroObra !== 'todos') prQ.eq('obra_id', filtroObra)
-        const { data: premios } = await prQ
-
-        const obrasMap: Record<string, { nome: string; maoObra: number; vt: number; premios: number }> = {}
-
-        ;(lancamentos ?? []).forEach((l: any) => {
-          const id = String(l.obra_id ?? 'sem-obra')
-          const nome = (l.obras as any)?.nome ?? 'Sem Obra'
-          if (!obrasMap[id]) obrasMap[id] = { nome, maoObra: 0, vt: 0, premios: 0 }
-          obrasMap[id].maoObra += Number(l.snap_valor_horas ?? l.snap_valor_total ?? 0)
-        })
-
-        ;(vts ?? []).forEach((v: any) => {
-          const id = String((v.colaboradores as any)?.obra_id ?? 'sem-obra')
-          if (obrasMap[id]) obrasMap[id].vt += Number(v.valor ?? 0)
-        })
-
-        ;(premios ?? []).forEach((p: any) => {
-          const id = String(p.obra_id ?? 'sem-obra')
-          if (obrasMap[id]) obrasMap[id].premios += Number(p.valor ?? 0)
-        })
-
-        resultado = Object.values(obrasMap).map(o => {
-          const encargos = o.maoObra * 0.28
-          const total = o.maoObra + encargos + o.vt + o.premios
-          return { obra: o.nome, mao_obra: o.maoObra, encargos, vale_transporte: o.vt, premios: o.premios, total }
-        }).sort((a, b) => (b.total as number) - (a.total as number))
-      }
-
-      // ── 31. Custos por Função (novo) ──────────────────────────────────────────
-      else if (relatAtivo === 'custos-por-funcao') {
-        const q = supabase.from('ponto_lancamentos')
-          .select('colaborador_id, snap_valor_total, obras(nome), colaboradores(funcoes(nome))')
-          .eq('mes_referencia', mesRef)
-          .in('status', ['aprovado', 'liberado', 'pago'])
-        if (filtroObra !== 'todos') q.eq('obra_id', filtroObra)
-        const { data: lancamentos } = await q
-
-        const funcoesMap: Record<string, { nome: string; colaboradores: Set<string>; custo: number }> = {}
-
-        ;(lancamentos ?? []).forEach((l: any) => {
-          const fn = (l.colaboradores as any)?.funcoes?.nome ?? 'Sem Função'
-          if (!funcoesMap[fn]) funcoesMap[fn] = { nome: fn, colaboradores: new Set(), custo: 0 }
-          funcoesMap[fn].colaboradores.add(String(l.colaborador_id))
-          funcoesMap[fn].custo += Number(l.snap_valor_total ?? 0)
-        })
-
-        resultado = Object.values(funcoesMap)
-          .sort((a, b) => b.custo - a.custo)
-          .map(f => ({ funcao: f.nome, qtd_colaboradores: f.colaboradores.size, custo_total: f.custo }))
-      }
-
-      // ── 32. Faltas por Obra (novo) ────────────────────────────────────────────
-      else if (relatAtivo === 'faltas-por-obra') {
-        const q = supabase.from('ponto_lancamentos')
-          .select('colaborador_id, snap_faltas, faltas, snap_valor_total, obras(nome), colaboradores(nome, funcoes(nome, valor_hora_clt))')
-          .eq('mes_referencia', mesRef)
-        if (filtroObra !== 'todos') q.eq('obra_id', filtroObra)
-        const { data: lancamentos } = await q
-
-        type FaltaItem = { nome: string; funcao: string; faltas: number; custo_estimado: number }
-        const colaboradoresFaltas: Record<string, FaltaItem> = {}
-        const funcoesFaltas: Record<string, { nome: string; faltas: number }> = {}
-
-        ;(lancamentos ?? []).forEach((l: any) => {
-          const numFaltas = Number(l.snap_faltas ?? l.faltas ?? 0)
-          if (numFaltas <= 0) return
-          const nome = (l.colaboradores as any)?.nome ?? '—'
-          const fn = (l.colaboradores as any)?.funcoes?.nome ?? 'Sem Função'
-          const vh = Number((l.colaboradores as any)?.funcoes?.valor_hora_clt ?? 0)
-          const custo = numFaltas * 8 * vh
-
-          const cid = String(l.colaborador_id)
-          if (!colaboradoresFaltas[cid]) colaboradoresFaltas[cid] = { nome, funcao: fn, faltas: 0, custo_estimado: 0 }
-          colaboradoresFaltas[cid].faltas += numFaltas
-          colaboradoresFaltas[cid].custo_estimado += custo
-
-          if (!funcoesFaltas[fn]) funcoesFaltas[fn] = { nome: fn, faltas: 0 }
-          funcoesFaltas[fn].faltas += numFaltas
-        })
-
-        // Resultado: todas as linhas por colaborador ordenadas por faltas (desc), com linha separadora por função
-        resultado = Object.values(colaboradoresFaltas)
-          .sort((a, b) => b.faltas - a.faltas)
-          .map((c, i) => ({ posicao: i + 1, colaborador: c.nome, funcao: c.funcao, faltas: c.faltas, dias_perdidos: c.faltas, custo_estimado: c.custo_estimado }))
       }
 
       setDados(resultado)
@@ -3395,157 +3281,6 @@ ${blocos}
                       ))}
                     </tbody>
                   </table>
-                </div>
-              )}
-
-              {/* ── Tabela: Custo Total por Obra (novo) ── */}
-              {relatAtivo === 'custo-total-obra' && (
-                <div>
-                  <div className="flex gap-3 px-4 py-3 border-b border-slate-100 flex-wrap">
-                    <div className="flex-1 min-w-[110px] text-center p-3 bg-blue-50 rounded-lg">
-                      <div className="text-2xl font-black text-blue-700">{dados.length}</div>
-                      <div className="text-[10px] text-slate-500 mt-1 uppercase tracking-wide">Obras</div>
-                    </div>
-                    <div className="flex-1 min-w-[110px] text-center p-3 bg-green-50 rounded-lg">
-                      <div className="text-lg font-black text-green-700">{fmtCur(dados.reduce((s, r) => s + (r.mao_obra as number), 0))}</div>
-                      <div className="text-[10px] text-slate-500 mt-1 uppercase tracking-wide">Mão de Obra</div>
-                    </div>
-                    <div className="flex-1 min-w-[110px] text-center p-3 bg-amber-50 rounded-lg">
-                      <div className="text-lg font-black text-amber-700">{fmtCur(dados.reduce((s, r) => s + (r.encargos as number), 0))}</div>
-                      <div className="text-[10px] text-slate-500 mt-1 uppercase tracking-wide">Encargos 28%</div>
-                    </div>
-                    <div className="flex-1 min-w-[110px] text-center p-3 bg-[#f0fdf4] rounded-lg">
-                      <div className="text-lg font-black text-[#1e3a5f]">{fmtCur(dados.reduce((s, r) => s + (r.total as number), 0))}</div>
-                      <div className="text-[10px] text-slate-500 mt-1 uppercase tracking-wide">Total Geral</div>
-                    </div>
-                  </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead><tr className="bg-[#1e3a5f] text-white text-xs">
-                        <th className="px-4 py-3 text-left">Obra</th>
-                        <th className="px-4 py-3 text-right">Mão de Obra</th>
-                        <th className="px-4 py-3 text-right">Encargos (28%)</th>
-                        <th className="px-4 py-3 text-right">Vale Transporte</th>
-                        <th className="px-4 py-3 text-right">Prêmios</th>
-                        <th className="px-4 py-3 text-right font-bold">TOTAL GERAL</th>
-                      </tr></thead>
-                      <tbody>
-                        {dados.map((r, i) => (
-                          <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
-                            <td className="px-4 py-2.5 font-semibold text-[#1e3a5f]">{String(r.obra)}</td>
-                            <td className="px-4 py-2.5 text-right">{fmtCur(r.mao_obra as number)}</td>
-                            <td className="px-4 py-2.5 text-right text-amber-700">{fmtCur(r.encargos as number)}</td>
-                            <td className="px-4 py-2.5 text-right">{fmtCur(r.vale_transporte as number)}</td>
-                            <td className="px-4 py-2.5 text-right">{fmtCur(r.premios as number)}</td>
-                            <td className="px-4 py-2.5 text-right font-bold text-[#1e3a5f]">{fmtCur(r.total as number)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                      <tfoot>
-                        <tr className="bg-[#e8f0fe] font-bold text-[#1e3a5f] text-xs">
-                          <td className="px-4 py-2.5">TOTAL CONSOLIDADO</td>
-                          <td className="px-4 py-2.5 text-right">{fmtCur(dados.reduce((s, r) => s + (r.mao_obra as number), 0))}</td>
-                          <td className="px-4 py-2.5 text-right text-amber-700">{fmtCur(dados.reduce((s, r) => s + (r.encargos as number), 0))}</td>
-                          <td className="px-4 py-2.5 text-right">{fmtCur(dados.reduce((s, r) => s + (r.vale_transporte as number), 0))}</td>
-                          <td className="px-4 py-2.5 text-right">{fmtCur(dados.reduce((s, r) => s + (r.premios as number), 0))}</td>
-                          <td className="px-4 py-2.5 text-right">{fmtCur(dados.reduce((s, r) => s + (r.total as number), 0))}</td>
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
-                </div>
-              )}
-
-              {/* ── Tabela: Custos por Função (novo) ── */}
-              {relatAtivo === 'custos-por-funcao' && (
-                <div>
-                  <div className="flex gap-3 px-4 py-3 border-b border-slate-100 flex-wrap">
-                    <div className="flex-1 min-w-[110px] text-center p-3 bg-purple-50 rounded-lg">
-                      <div className="text-2xl font-black text-purple-700">{dados.length}</div>
-                      <div className="text-[10px] text-slate-500 mt-1 uppercase tracking-wide">Funções</div>
-                    </div>
-                    <div className="flex-1 min-w-[110px] text-center p-3 bg-green-50 rounded-lg">
-                      <div className="text-lg font-black text-green-700">{fmtCur(dados.reduce((s, r) => s + (r.custo_total as number), 0))}</div>
-                      <div className="text-[10px] text-slate-500 mt-1 uppercase tracking-wide">Custo Total</div>
-                    </div>
-                    <div className="flex-1 min-w-[110px] text-center p-3 bg-blue-50 rounded-lg">
-                      <div className="text-2xl font-black text-blue-700">{dados.reduce((s, r) => s + (r.qtd_colaboradores as number), 0)}</div>
-                      <div className="text-[10px] text-slate-500 mt-1 uppercase tracking-wide">Colaboradores</div>
-                    </div>
-                  </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead><tr className="bg-[#1e3a5f] text-white text-xs">
-                        <th className="px-4 py-3 text-left">Função</th>
-                        <th className="px-4 py-3 text-center">Qtd Colaboradores</th>
-                        <th className="px-4 py-3 text-right font-bold">Custo Total</th>
-                      </tr></thead>
-                      <tbody>
-                        {dados.map((r, i) => (
-                          <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
-                            <td className="px-4 py-2.5 font-semibold uppercase text-slate-700">{String(r.funcao)}</td>
-                            <td className="px-4 py-2.5 text-center">
-                              <span className="bg-purple-100 text-purple-700 text-xs px-2 py-0.5 rounded-full font-semibold">{String(r.qtd_colaboradores)}</span>
-                            </td>
-                            <td className="px-4 py-2.5 text-right font-bold text-[#1e3a5f]">{fmtCur(r.custo_total as number)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                      <tfoot>
-                        <tr className="bg-[#e8f0fe] font-bold text-[#1e3a5f] text-xs">
-                          <td className="px-4 py-2.5">TOTAL</td>
-                          <td className="px-4 py-2.5 text-center">{dados.reduce((s, r) => s + (r.qtd_colaboradores as number), 0)}</td>
-                          <td className="px-4 py-2.5 text-right">{fmtCur(dados.reduce((s, r) => s + (r.custo_total as number), 0))}</td>
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
-                </div>
-              )}
-
-              {/* ── Tabela: Faltas por Obra (novo) ── */}
-              {relatAtivo === 'faltas-por-obra' && (
-                <div>
-                  <div className="flex gap-3 px-4 py-3 border-b border-slate-100 flex-wrap">
-                    <div className="flex-1 min-w-[110px] text-center p-3 bg-red-50 rounded-lg">
-                      <div className="text-2xl font-black text-red-600">{dados.reduce((s, r) => s + (r.faltas as number), 0)}</div>
-                      <div className="text-[10px] text-slate-500 mt-1 uppercase tracking-wide">Total Faltas</div>
-                    </div>
-                    <div className="flex-1 min-w-[110px] text-center p-3 bg-orange-50 rounded-lg">
-                      <div className="text-lg font-black text-orange-700">{fmtCur(dados.reduce((s, r) => s + (r.custo_estimado as number), 0))}</div>
-                      <div className="text-[10px] text-slate-500 mt-1 uppercase tracking-wide">Custo Estimado</div>
-                    </div>
-                    <div className="flex-1 min-w-[110px] text-center p-3 bg-slate-50 rounded-lg">
-                      <div className="text-2xl font-black text-slate-700">{dados.length}</div>
-                      <div className="text-[10px] text-slate-500 mt-1 uppercase tracking-wide">Colaboradores c/ Faltas</div>
-                    </div>
-                  </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead><tr className="bg-[#1e3a5f] text-white text-xs">
-                        <th className="px-4 py-3 text-center w-12">Pos.</th>
-                        <th className="px-4 py-3 text-left">Colaborador</th>
-                        <th className="px-4 py-3 text-left">Função</th>
-                        <th className="px-4 py-3 text-center">Nº Faltas</th>
-                        <th className="px-4 py-3 text-center">Dias Perdidos</th>
-                        <th className="px-4 py-3 text-right">Custo Estimado</th>
-                      </tr></thead>
-                      <tbody>
-                        {dados.map((r, i) => (
-                          <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
-                            <td className="px-4 py-2.5 text-center font-bold text-slate-400">{String(r.posicao)}º</td>
-                            <td className="px-4 py-2.5 font-semibold text-slate-800">{String(r.colaborador)}</td>
-                            <td className="px-4 py-2.5 text-slate-600 text-xs uppercase">{String(r.funcao)}</td>
-                            <td className="px-4 py-2.5 text-center">
-                              <span className="bg-red-100 text-red-700 font-bold text-xs px-2 py-0.5 rounded-full">{String(r.faltas)}</span>
-                            </td>
-                            <td className="px-4 py-2.5 text-center text-slate-600">{String(r.dias_perdidos)}</td>
-                            <td className="px-4 py-2.5 text-right font-semibold text-orange-700">{fmtCur(r.custo_estimado as number)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
                 </div>
               )}
 

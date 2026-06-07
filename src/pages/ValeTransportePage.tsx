@@ -586,7 +586,6 @@ export default function ValeTransportePage() {
       descontar_6pct: form.descontar_6pct,
       observacoes: form.observacoes || null,
     }
-    // VT permite múltiplos lançamentos por competência (ex: pagamento parcial 50%+50%)
     const { error } = editando
       ? await supabase.from('vale_transporte').update(payload).eq('id', editando.id)
       : await supabase.from('vale_transporte').insert(payload)

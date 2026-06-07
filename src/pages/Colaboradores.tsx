@@ -1437,7 +1437,7 @@ ${crachaCardHTML(c, empNome, logoUrl)}
     setLoading(true)
     const [{ data: cols }, { data: fns }, { data: obs }, { data: pontos }] = await Promise.all([
       supabase.from('colaboradores')
-        .select('*, obras(id,nome,codigo)')
+        .select('*, funcoes(id,nome,sigla,valor_hora_clt,valor_hora_autonomo,contratos_valores), obras(id,nome,codigo)')
         .order('nome'),
       supabase.from('funcoes').select('*').eq('ativo', true).order('nome'),
       supabase.from('obras').select('*').order('nome'),
@@ -2136,7 +2136,7 @@ ${crachaCardHTML(c, empNome, logoUrl)}
     if (savedId) {
       const { data: updated } = await supabase
         .from('colaboradores')
-        .select('*, obras(id,nome,codigo)')
+        .select('*, funcoes(id,nome,sigla,valor_hora_clt,valor_hora_autonomo,contratos_valores), obras(id,nome,codigo)')
         .eq('id', savedId)
         .single()
       if (updated) setColabFicha(updated as any)
@@ -2351,7 +2351,7 @@ ${crachaCardHTML(c, empNome, logoUrl)}
     setHistModal(true)
     const { data } = await supabase
       .from('historico_chapa')
-      .select('*')
+      .select('*, funcoes(nome, sigla)')
       .eq('colaborador_id', colaboradorId)
       .order('data_inicio', { ascending: false })
     if (data) setHistRows(data as HistoricoChapa[])

@@ -78,7 +78,7 @@ export default function CestaBasica() {
     // 1. Busca colaboradores ativos com obra e função
     let qColab = supabase
       .from('colaboradores')
-      .select('id,nome,chapa,funcao_id,obra_id,status,tipo_contrato,obras(nome,codigo)')
+      .select('id,nome,chapa,funcao_id,obra_id,status,tipo_contrato,funcoes(nome),obras(nome,codigo)')
       .in('status', ['ativo'])
       .order('nome')
     if (obraFiltro) qColab = qColab.eq('obra_id', obraFiltro)

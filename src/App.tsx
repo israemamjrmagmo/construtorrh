@@ -6,7 +6,6 @@ import { Toaster } from 'sonner'
 import { useAuth } from '@/hooks/useAuth'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { Layout } from '@/components/Layout'
-import SaasRoute from '@/components/SaasRoute'
 
 // ─── Lazy pages ──────────────────────────────────────────────────────────────
 const Login          = React.lazy(() => import('@/pages/Login'))
@@ -60,14 +59,6 @@ const AcessoColaboradores = React.lazy(() => import('@/pages/AcessoColaboradores
 const PortalContracheque    = React.lazy(() => import('@/pages/portal/PortalContracheque'))
 const PortalValeTransporte = React.lazy(() => import('@/pages/portal/PortalValeTransporte'))
 const Perfil             = React.lazy(() => import('@/pages/Perfil'))
-const CentralAprovacoes  = React.lazy(() => import('@/pages/CentralAprovacoes'))
-const DossieColaborador  = React.lazy(() => import('@/pages/DossieColaborador'))
-const MigracaoV2         = React.lazy(() => import('@/pages/MigracaoV2'))
-const GestaoEmpresas     = React.lazy(() => import('@/pages/GestaoEmpresas'))
-const SaasPainel         = React.lazy(() => import('@/pages/SaasPainel'))
-const SaasLogin          = React.lazy(() => import('@/pages/SaasLogin'))
-const EmpresaLogin        = React.lazy(() => import('@/pages/EmpresaLogin'))
-const EmpresaTrocarSenha  = React.lazy(() => import('@/pages/EmpresaTrocarSenha'))
 
 // Portal do Gestor
 const GestorDashboard    = React.lazy(() => import('@/pages/gestor/GestorDashboard'))
@@ -151,10 +142,6 @@ export default function App() {
             <Routes>
               {/* Public */}
               <Route path="/login" element={<Login />} />
-
-              <Route path="/saas-login"          element={<SaasLogin />} />
-              <Route path="/empresa-login"       element={<EmpresaLogin />} />
-              <Route path="/empresa-trocar-senha" element={<EmpresaTrocarSenha />} />
 
               {/* ── Portal Externo (público, sem Layout) ── */}
               <Route path="/portal"            element={<PortalLogin />} />
@@ -490,54 +477,6 @@ export default function App() {
                       <AcessoColaboradores />
                     </Layout>
                   </PrivateRoute>
-                }
-              />
-              <Route
-                path="/central-aprovacoes"
-                element={
-                  <PrivateRoute>
-                    <Layout>
-                      <CentralAprovacoes />
-                    </Layout>
-                  </PrivateRoute>
-                }
-              />
-              <Route
-                path="/dossie-colaborador"
-                element={
-                  <PrivateRoute>
-                    <Layout>
-                      <DossieColaborador />
-                    </Layout>
-                  </PrivateRoute>
-                }
-              />
-              <Route
-                path="/migracao-v2"
-                element={
-                  <MasterRoute>
-                    <Layout>
-                      <MigracaoV2 />
-                    </Layout>
-                  </MasterRoute>
-                }
-              />
-              <Route
-                path="/saas-admin"
-                element={
-                  <SaasRoute>
-                    <SaasPainel />
-                  </SaasRoute>
-                }
-              />
-              <Route
-                path="/gestao-empresas"
-                element={
-                  <MasterRoute>
-                    <Layout>
-                      <GestaoEmpresas />
-                    </Layout>
-                  </MasterRoute>
                 }
               />
 

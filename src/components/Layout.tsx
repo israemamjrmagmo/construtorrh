@@ -6,7 +6,6 @@ import { useAuth } from '@/hooks/useAuth'
 import { useProfile, ROLE_PERMISSIONS } from '@/hooks/useProfile'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { supabase } from '@/lib/supabase'
-
 import {
   LayoutDashboard, Users, Building2, Shield,
   AlertTriangle, FileText, Clock, DollarSign, Award,
@@ -17,7 +16,7 @@ import {
   Search, Bell, ChevronDown,
   LayoutGrid, FolderKanban, HeartPulse, Banknote, Gavel, Cog,
   BookOpen, CreditCard, Layers, ClipboardCheck, ShoppingBasket, FolderOpen, ScrollText, Receipt, KeyRound, Umbrella,
-  RefreshCw, Trophy, History, Database, Globe,
+  RefreshCw, Trophy,
 } from 'lucide-react'
 import { useAutoRefresh } from '@/hooks/useAutoRefresh'
 
@@ -48,12 +47,7 @@ const PAGE_TITLES: Record<string, { label: string; icon: React.ElementType; colo
   '/provisoes':         { label: 'Provisões Rescisão',  icon: Calculator,      color: '#ec4899' },
   '/juridico':          { label: 'Jurídico',            icon: Scale,           color: '#64748b' },
   '/contratos':         { label: 'Contratos',           icon: ScrollText,      color: '#34d399' },
-  '/relatorios':        { label: 'Relatórios',             icon: BarChart3,      color: '#6366f1' },
-  '/central-aprovacoes':{ label: 'Central de Aprovações',  icon: ClipboardCheck, color: '#f59e0b' },
-  '/dossie-colaborador':{ label: 'Dossiê do Colaborador',  icon: History,        color: '#0ea5e9' },
-  '/migracao-v2':       { label: 'Migração V2',            icon: Database,       color: '#7c3aed' },
-  '/gestao-empresas':   { label: 'Gestão de Empresas',     icon: Building2,      color: '#0ea5e9' },
-  '/saas-admin':        { label: 'Painel SaaS',            icon: Globe,          color: '#6366f1' },
+  '/relatorios':        { label: 'Relatórios',          icon: BarChart3,       color: '#6366f1' },
   '/usuarios':          { label: 'Usuários',            icon: UserCog,         color: '#0ea5e9' },
   '/portal-admin':      { label: 'Portal da Obra',      icon: Smartphone,      color: '#10b981' },
   '/configuracoes':     { label: 'Configurações',       icon: Settings,        color: '#64748b' },
@@ -158,17 +152,7 @@ const NAV_GROUPS = [
     short: 'Relat.',
     icon:  BarChart3,
     items: [
-      { to: '/relatorios',         label: 'Relatórios',          icon: BarChart3,      color: '#818cf8' },
-      { to: '/dossie-colaborador', label: 'Dossiê Colaborador',  icon: History,        color: '#0ea5e9' },
-    ],
-  },
-  {
-    id:    'aprovacoes',
-    label: 'Aprovações',
-    short: 'Aprov.',
-    icon:  ClipboardCheck,
-    items: [
-      { to: '/central-aprovacoes', label: 'Central de Aprovações', icon: ClipboardCheck, color: '#f59e0b' },
+      { to: '/relatorios', label: 'Relatórios', icon: BarChart3, color: '#818cf8' },
     ],
   },
   {
@@ -182,7 +166,7 @@ const NAV_GROUPS = [
       { to: '/gestor-admin',  label: 'Gestores',              icon: BarChart3, color: '#f59e0b', adminOnly: true },
       { to: '/gestor',        label: 'Portal do Gestor',      icon: BarChart3, color: '#f59e0b' },
       { to: '/configuracoes', label: 'Configurações',         icon: Settings,  color: '#94a3b8' },
-      { to: '/acesso-colaboradores', label: 'Acesso Colaboradores', icon: KeyRound, color: '#f59e0b', adminOnly: true },
+      { to: '/acesso-colaboradores', label: 'Acesso Colaboradores',  icon: KeyRound,  color: '#f59e0b', adminOnly: true },
     ],
   },
 ]
@@ -251,7 +235,7 @@ export function Layout({ children }: LayoutProps) {
   const notifRef    = useRef<HTMLDivElement>(null)
 
   const { user, signOut } = useAuth()
-  const { profile} = useProfile()
+  const { profile }       = useProfile()
   const navigate          = useNavigate()
   const location          = useLocation()
 
@@ -405,7 +389,7 @@ export function Layout({ children }: LayoutProps) {
             const groupBadge = getGroupBadge(group.id)
 
             const visibleItems = group.items.filter((item: any) => {
-              if (item.adminOnly && role !== 'admin') return false
+              if (item.adminOnly && user?.email !== 'magmodrive@gmail.com') return false
               const isFinanceiro = ['/ponto','/vt','/adiantamentos','/premios','/fechamento-ponto','/pagamentos','/encargos','/provisoes'].includes(item.to)
               if (isFinanceiro && !roleMeta.canViewFinanceiro) return false
               return true

@@ -253,107 +253,6 @@ function CategoriaBadge({ categoria }: { categoria: string | null | undefined })
   )
 }
 
-// ─── Função: gerar HTML do Termo de Entrega de EPI ────────────────────────────
-
-function gerarTermoEntregaEpiHtml(
-  colaborador: { nome: string; cpf: string | null },
-  obra: string,
-  epis: Array<{ nome: string; numero_ca: string | null; quantidade: number; tamanho?: string | null; numero?: string | null }>,
-  data: string,
-): string {
-  const fmtCPF = (cpf: string | null) => {
-    if (!cpf) return '—'
-    const c = cpf.replace(/\D/g, '')
-    return c.length === 11 ? c.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4') : cpf
-  }
-  const fmtData = (d: string) => {
-    const [y, m, day] = d.split('-')
-    return `${day}/${m}/${y}`
-  }
-  const episRows = epis.map((e, i) => `
-    <tr>
-      <td style="padding:6px 8px;border:1px solid #e2e8f0;text-align:center">${i + 1}</td>
-      <td style="padding:6px 8px;border:1px solid #e2e8f0">${e.nome}</td>
-      <td style="padding:6px 8px;border:1px solid #e2e8f0;text-align:center">${e.numero_ca || '—'}</td>
-      <td style="padding:6px 8px;border:1px solid #e2e8f0;text-align:center">${e.quantidade}</td>
-      <td style="padding:6px 8px;border:1px solid #e2e8f0;text-align:center">${e.tamanho || e.numero || '—'}</td>
-    </tr>`).join('')
-
-  return `<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-<meta charset="UTF-8">
-<title>Termo de Entrega de EPI – ${colaborador.nome}</title>
-<style>
-  * { box-sizing: border-box; margin: 0; padding: 0 }
-  body { font-family: Arial, sans-serif; font-size: 12px; color: #1e293b; padding: 32px; max-width: 800px; margin: 0 auto }
-  h1 { font-size: 18px; font-weight: 800; color: #1e3a5f; text-align: center; margin-bottom: 4px }
-  .subtitle { text-align: center; color: #64748b; font-size: 11px; margin-bottom: 24px }
-  .section { margin-bottom: 20px }
-  .section-title { font-size: 13px; font-weight: 700; color: #1e3a5f; border-bottom: 2px solid #1e3a5f; padding-bottom: 4px; margin-bottom: 12px; text-transform: uppercase }
-  .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px }
-  .info-item label { font-size: 10px; color: #64748b; text-transform: uppercase; font-weight: 600; display: block; margin-bottom: 2px }
-  .info-item span { font-size: 12px; font-weight: 600; color: #1e293b }
-  table { width: 100%; border-collapse: collapse; margin-bottom: 16px }
-  th { background: #1e3a5f; color: #fff; padding: 8px; font-size: 11px; text-align: left; border: 1px solid #1e3a5f }
-  .text-center { text-align: center }
-  .aviso { background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px; padding: 10px 14px; margin-bottom: 20px; font-size: 11px; color: #b45309 }
-  .assinaturas { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; margin-top: 48px }
-  .ass-linha { border-top: 2px solid #1e293b; padding-top: 8px; text-align: center }
-  .ass-linha p { font-size: 11px; color: #64748b }
-  @media print { body { padding: 16px } }
-</style>
-</head>
-<body>
-  <h1>TERMO DE ENTREGA DE EPI</h1>
-  <p class="subtitle">Equipamento de Proteção Individual – Comprovante de Entrega e Recebimento</p>
-
-  <div class="section">
-    <div class="section-title">Dados do Colaborador</div>
-    <div class="info-grid">
-      <div class="info-item"><label>Nome Completo</label><span>${colaborador.nome}</span></div>
-      <div class="info-item"><label>CPF</label><span>${fmtCPF(colaborador.cpf)}</span></div>
-      <div class="info-item"><label>Obra / Local de Trabalho</label><span>${obra || '—'}</span></div>
-      <div class="info-item"><label>Data de Entrega</label><span>${fmtData(data)}</span></div>
-    </div>
-  </div>
-
-  <div class="section">
-    <div class="section-title">EPIs Entregues</div>
-    <table>
-      <thead>
-        <tr>
-          <th style="width:40px" class="text-center">Nº</th>
-          <th>Descrição do EPI</th>
-          <th style="width:80px" class="text-center">Nº CA</th>
-          <th style="width:70px" class="text-center">Qtd</th>
-          <th style="width:80px" class="text-center">Tam/Nº</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${episRows}
-      </tbody>
-    </table>
-  </div>
-
-  <div class="aviso">
-    <strong>⚠️ DECLARAÇÃO:</strong> Declaro ter recebido os EPIs listados acima em perfeito estado de conservação, me comprometendo a utilizá-los durante a execução das atividades de risco, conservá-los e devolvê-los quando solicitado ou no desligamento. Estou ciente de que o não uso dos EPIs pode implicar em penalidades disciplinares.
-  </div>
-
-  <div class="assinaturas">
-    <div class="ass-linha">
-      <p><strong>${colaborador.nome}</strong></p>
-      <p>Colaborador – Assinatura e Data</p>
-    </div>
-    <div class="ass-linha">
-      <p><strong>Responsável pela Entrega</strong></p>
-      <p>Nome / Assinatura e Data</p>
-    </div>
-  </div>
-</body>
-</html>`
-}
-
 // ─── componente principal ─────────────────────────────────────────────────────
 
 export default function Epis() {
@@ -1028,36 +927,6 @@ export default function Epis() {
     }
   }
 
-  // ── gerar Termo de Entrega de EPI (HTML) ────────────────────────────────────
-  const gerarTermoEntrega = () => {
-    if (itensEpi.length === 0) { toast.error('Gere a solicitação primeiro'); return }
-    if (modoSolicitacao !== 'colaborador' || !colaboradorSelecionado) {
-      toast.error('Selecione um colaborador para gerar o Termo de Entrega'); return
-    }
-    const colaborador = colaboradores.find(c => c.id === colaboradorSelecionado)
-    if (!colaborador) { toast.error('Colaborador não encontrado'); return }
-    const obra = obras.find(o => o.id === colaborador.obra_id) ?? obras.find(o => o.id === obraSelecionada)
-    const episParaTermo = resumoEpi.map(e => ({
-      nome: e.epi_nome,
-      numero_ca: null as string | null,
-      quantidade: e.quantidade,
-      tamanho: e.tamanho,
-      numero: e.numero,
-    }))
-    const html = gerarTermoEntregaEpiHtml(
-      { nome: colaborador.nome, cpf: null },
-      obra?.nome ?? obraNome ?? '',
-      episParaTermo,
-      new Date().toISOString().slice(0, 10),
-    )
-    const janela = window.open('', '_blank', 'width=900,height=700')
-    if (!janela) { toast.error('Permita pop-ups para gerar o termo'); return }
-    janela.document.write(html)
-    janela.document.close()
-    setTimeout(() => { janela.focus(); janela.print() }, 600)
-    toast.success('✅ Termo de Entrega de EPI gerado!')
-  }
-
   // ─── render ────────────────────────────────────────────────────────────────
   return (
     <div className="page-root">
@@ -1091,14 +960,6 @@ export default function Epis() {
               >
                 <FileText size={16} /> Recibo de Entrega
               </Button>
-              {modoSolicitacao === 'colaborador' && (
-                <Button
-                  onClick={gerarTermoEntrega}
-                  style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'linear-gradient(135deg,#1e3a5f,#2563eb)', color: '#fff' }}
-                >
-                  <FileText size={16} /> Termo de Entrega de EPI
-                </Button>
-              )}
             </div>
           ) : null
         }

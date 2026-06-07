@@ -3,3 +3,4 @@
 [2026-06-06 15:03] fix: rota saas-admin corrigida (sem element)
 [2026-06-06 15:39] SaasLogin com PIN implementado
 [2026-06-06 15:51] SaasPainel topbar proprio sem Layout
+[2026-06-06 22:34] Ponto.tsx slice null fix done; iniciando FechamentoPonto nested join fix
