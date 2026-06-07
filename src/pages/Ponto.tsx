@@ -871,15 +871,29 @@ export default function Ponto() {
     diasAtestado:Set<string>,diasSuspensao:Set<string>,
     diasUsados:Map<string,string>   // data → nomeObra
   ):Promise<DiaRegistro[]>=>{
-    const{data:pontosRaw}=await supabase.from('registro_ponto').select('*')
-      .eq('lancamento_id',lanc.id)
-    const mapaP:Record<string,any>={}
-    ;(pontosRaw??[]).forEach((r:any)=>{mapaP[r.data]=r})
-    const horObra=horMapa[lanc.obra_id]??{}
-
     // V2 não tem data_inicio/data_fim → derivar do mes_referencia
     const dInicio = lanc.data_inicio || `${lanc.mes_referencia}-01`
     const dFim    = lanc.data_fim    || `${lanc.mes_referencia}-${getUltimoDia(lanc.mes_referencia)}`
+
+    // Busca por lancamento_id primeiro; se retornar vazio, fallback por colaborador+obra+período
+    let pontosRaw: any[] | null = null
+    const { data: byLanc } = await supabase.from('registro_ponto').select('*')
+      .eq('lancamento_id', lanc.id)
+    if (byLanc && byLanc.length > 0) {
+      pontosRaw = byLanc
+    } else {
+      // Fallback: busca direta por colaborador_id + obra_id + intervalo de datas
+      const { data: byColab } = await supabase.from('registro_ponto').select('*')
+        .eq('colaborador_id', colab.id)
+        .eq('obra_id', lanc.obra_id)
+        .gte('data', dInicio)
+        .lte('data', dFim)
+      pontosRaw = byColab
+    }
+
+    const mapaP:Record<string,any>={}
+    ;(pontosRaw??[]).forEach((r:any)=>{mapaP[r.data]=r})
+    const horObra=horMapa[lanc.obra_id]??{}
 
     return expandRange(dInicio, dFim).map(d=>{
       const r=mapaP[d]
