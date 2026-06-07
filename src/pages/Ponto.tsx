@@ -1420,6 +1420,8 @@ export default function Ponto() {
       empresa_id: empresaId,
       colaborador_id:colabSel.id, vinculo_id:colabSel.id,
       obra_id:novoLancObraId, mes_referencia:mesRef,
+      data_inicio: novoLancInicioFinal || null,
+      data_fim:    novoLancFimFinal    || null,
       status:'rascunho',
     }).select('id').single()
     setSavingLanc(false)
