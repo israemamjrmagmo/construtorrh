@@ -6,6 +6,7 @@ import { Toaster } from 'sonner'
 import { useAuth } from '@/hooks/useAuth'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { Layout } from '@/components/Layout'
+import { FolhaProvider } from '@/contexts/FolhaContext'
 
 // ─── Lazy pages ──────────────────────────────────────────────────────────────
 const Login          = React.lazy(() => import('@/pages/Login'))
@@ -137,6 +138,7 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <HashRouter>
+          <FolhaProvider>
           <ErrorBoundary>
           <Suspense fallback={<FullPageSpinner />}>
             <Routes>
@@ -494,6 +496,7 @@ export default function App() {
             </Routes>
           </Suspense>
           </ErrorBoundary>
+          </FolhaProvider>
         </HashRouter>
 
         {/* Sonner toast notifications */}

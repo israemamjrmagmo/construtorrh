@@ -1,7 +1,5 @@
-import React, { useState, useCallback, useEffect } from 'react'
-import { supabase } from '@/lib/supabase'
+import React, { useState, useCallback } from 'react'
 import { formatCurrency } from '@/lib/utils'
-import { calcINSS, calcIR, fetchTabelasEncargos } from '@/lib/encargos'
 import { PageHeader, LoadingSkeleton, EmptyState, SummaryCard } from '@/components/Shared'
 import { Button } from '@/components/ui/button'
 import {
@@ -10,40 +8,8 @@ import {
 import {
   Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
-import { traduzirErro } from '@/lib/erros'
 import { Briefcase, Download, Printer } from 'lucide-react'
-import { toast } from 'sonner'
-import { getUltimoDia } from '@/lib/dateUtils'
-
-
-
-// ─── Tipos ────────────────────────────────────────────────────────────────────
-
-interface LinhaEncargo {
-  colaborador_id: string
-  nome:           string
-  chapa:          string | null
-  funcao_nome:    string
-  obra_nome:      string
-  // remuneração
-  valorHoras:     number   // horas normais + extras
-  valorDSR:       number
-  valorProducao:  number
-  valorPremio:    number
-  salarioBruto:   number   // total bruto
-  // descontos do funcionário
-  descontoVT:     number
-  descontoAD:     number
-  inss:           number
-  ir:             number
-  liquido:        number
-  // encargos da empresa
-  fgts:           number
-  inssPatronal:   number
-  rat:            number
-  terceiros:      number
-  totalEmpresa:   number
-}
+import { useFolhaContext } from '@/contexts/FolhaContext'
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
@@ -53,242 +19,23 @@ const MESES = [
 ]
 const ANOS = [2024, 2025, 2026, 2027]
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function expandRange(inicio: string, fim: string): string[] {
-  const dias: string[] = []
-  const d   = new Date(inicio + 'T12:00:00')
-  const end = new Date(fim   + 'T12:00:00')
-  while (d <= end) {
-    dias.push(d.toISOString().slice(0, 10))
-    d.setDate(d.getDate() + 1)
-  }
-  return dias
-}
-
-function diasUteisPeriodo(inicio: string, fim: string, feriados: Set<string>): number {
-  return expandRange(inicio, fim).filter(d => {
-    const dow = new Date(d + 'T12:00:00').getDay()
-    return dow >= 1 && dow <= 6 && !feriados.has(d)
-  }).length
-}
-
-function domingosFeriadosPeriodo(inicio: string, fim: string, feriados: Set<string>): number {
-  const dias = expandRange(inicio, fim)
-  const domingos = dias.filter(d => new Date(d + 'T12:00:00').getDay() === 0).length
-  const feriadosUteis = dias.filter(d => {
-    if (!feriados.has(d)) return false
-    const dow = new Date(d + 'T12:00:00').getDay()
-    return dow >= 1 && dow <= 5
-  }).length
-  return domingos + feriadosUteis
-}
-
 // ─── Componente ───────────────────────────────────────────────────────────────
 
 export default function EncargosPage() {
-  const hoje = new Date()
-  const [mes,      setMes]      = useState<number>(hoje.getMonth() + 1)
-  const [ano,      setAno]      = useState<number>(hoje.getFullYear())
-  const [linhas,   setLinhas]   = useState<LinhaEncargo[]>([])
-  const [loading,  setLoading]  = useState(false)
-  const [calculado, setCalculado] = useState(false)
-  const [busca,    setBusca]    = useState('')
-  // alíquotas da empresa lidas do banco
-  const [fgtsAliq,        setFgtsAliq]        = useState(0.08)
-  const [inssPatronalAliq, setInssPatronalAliq] = useState(0.20)
-  const [ratAliq,         setRatAliq]         = useState(0.035)
-  const [terceirosAliq,   setTerceirosAliq]   = useState(0)
-  // coeficientes de HE lidos do banco
-  const [heCoef50,  setHeCoef50]  = useState(1.6)   // HE dia útil (padrão CLT = 60%)
-  const [heCoef100, setHeCoef100] = useState(2.0)   // Dom/Feriado (padrão = 100%)
+  const { mes, ano, setMes, setAno, folha } = useFolhaContext()
 
-  // Carrega alíquotas e coeficientes configurados no banco
-  useEffect(() => {
-    supabase.from('configuracoes').select('chave, valor')
-      .in('chave', ['fgts_aliquota', 'inss_patronal_aliquota', 'rat_aliquota', 'terceiros_aliquota', 'he_percentual_60', 'he_percentual_100'])
-      .then(({ data }) => {
-        const m: Record<string,string> = {}
-        ;(data ?? []).forEach((r: any) => { m[r.chave] = r.valor })
-        if (m['fgts_aliquota'])          setFgtsAliq(parseFloat(m['fgts_aliquota']) / 100 || 0.08)
-        if (m['inss_patronal_aliquota']) setInssPatronalAliq(parseFloat(m['inss_patronal_aliquota']) / 100 || 0.20)
-        if (m['rat_aliquota'])           setRatAliq(parseFloat(m['rat_aliquota']) / 100 || 0.035)
-        if (m['terceiros_aliquota'])      setTerceirosAliq(parseFloat(m['terceiros_aliquota']) / 100 || 0)
-        if (m['he_percentual_60'])  setHeCoef50 (1 + (parseFloat(m['he_percentual_60'])  || 60)  / 100)
-        if (m['he_percentual_100']) setHeCoef100(1 + (parseFloat(m['he_percentual_100']) || 100) / 100)
-      })
-  }, [])
+  const {
+    linhas,
+    loading,
+    calculado,
+    refetch,
+    fgtsAliq,
+    inssPatronalAliq,
+    ratAliq,
+    terceirosAliq,
+  } = folha
 
-  // ── Calcular — agora automático ao mudar mês/ano ─────────────────────────
-  const calcular = useCallback(async () => {
-    setLoading(true)
-    try {
-      const mesRef    = `${ano}-${String(mes).padStart(2, '0')}`
-      const mesRefIni = `${mesRef}-01`
-      const mesRefFim = `${getUltimoDia(mesRef)}`
-
-      // 1. Todos os lançamentos do mês (qualquer status válido)
-      const { data: lancsRaw, error: errL } = await supabase
-        .from('ponto_lancamentos')
-        .select(`
-          id, colaborador_id, data_inicio, data_fim, mes_referencia, status,
-          snap_valor_horas, snap_valor_dsr, snap_valor_producao, snap_valor_premio,
-          snap_valor_total, snap_inss, snap_ir, snap_desconto_vt, snap_desconto_adiant,
-          snap_liquido, snap_valor_hora,
-          colaboradores(nome, chapa, tipo_contrato, funcao_id, funcoes(nome)),
-          obras(nome)
-        `)
-        .in('status', ['aprovado', 'em_fechamento', 'liberado', 'pago'])
-        .eq('mes_referencia', mesRef)
-
-      if (errL) throw new Error(traduzirErro(errL?.message ?? String(errL)))
-      if (!lancsRaw || lancsRaw.length === 0) {
-        setLinhas([]); return
-      }
-
-      // 2. Somente CLT — autônomos/PJ sem tipo_contrato definido são excluídos
-      const lancsCLT = (lancsRaw as any[]).filter(
-        l => l.colaboradores?.tipo_contrato === 'clt'
-      )
-      if (lancsCLT.length === 0) {
-        setLinhas([]); return
-      }
-
-      // ── Dados complementares para lançamentos SEM snap (em aberto) ──────────
-      const semSnap = lancsCLT.filter(l => l.snap_valor_total == null)
-
-      let pontosMap:    Record<string, { normais: number; extras: number }> = {}
-      let valorHoraMap: Record<string, number> = {}
-      let feriadosSet = new Set<string>()
-
-      if (semSnap.length > 0) {
-        const semSnapIds  = semSnap.map((l: any) => l.id)
-        const funcaoIds   = [...new Set(semSnap.map((l: any) => l.colaboradores?.funcao_id).filter(Boolean) as string[])]
-
-        const [{ data: pontosRaw }, { data: fvRaw }, { data: feriadosRaw }] = await Promise.all([
-          supabase.from('registro_ponto')
-            .select('lancamento_id, horas_trabalhadas, horas_extras')
-            .in('lancamento_id', semSnapIds),
-          supabase.from('funcao_valores')
-            .select('funcao_id, tipo_contrato, valor_hora')
-            .in('funcao_id', funcaoIds),
-          supabase.from('feriados')
-            .select('data')
-            .gte('data', mesRefIni)
-            .lte('data', mesRefFim),
-        ])
-
-        ;(feriadosRaw ?? []).forEach((f: any) => feriadosSet.add(f.data))
-
-        ;(pontosRaw ?? []).forEach((p: any) => {
-          if (!pontosMap[p.lancamento_id]) pontosMap[p.lancamento_id] = { normais: 0, extras: 0 }
-          pontosMap[p.lancamento_id].normais += p.horas_trabalhadas ?? 0
-          pontosMap[p.lancamento_id].extras  += p.horas_extras      ?? 0
-        })
-
-        ;(fvRaw ?? []).forEach((fv: any) => {
-          if (fv.tipo_contrato === 'clt' || !valorHoraMap[fv.funcao_id]) {
-            valorHoraMap[fv.funcao_id] = fv.valor_hora ?? 0
-          }
-        })
-      }
-
-      // 3. Busca tabelas INSS/IR salvas no banco
-      const { tabelaInss, tabelaIR } = await fetchTabelasEncargos(supabase)
-
-      // 4. Processar cada lançamento individualmente (1 linha por lançamento)
-      const resultado: LinhaEncargo[] = []
-
-      for (const l of lancsCLT) {
-        const colab = l.colaboradores as any
-
-        // ── Caso A: snap disponível (lançamento fechado/liberado/pago) ─────────
-        // REGRA DE OURO: lançamentos fechados usam SEMPRE o snapshot gravado
-        let valorHoras   = 0
-        let valorDSR     = 0
-        let valorProducao = 0
-        let valorPremio  = 0
-        let salarioBruto = 0
-        let descontoVT   = 0
-        let descontoAD   = 0
-        let inss         = 0
-        let ir           = 0
-        let liquido      = 0
-
-        if (l.snap_valor_total != null) {
-          // Snapshot: valores fixos do momento do fechamento — não recalcula
-          valorHoras    = l.snap_valor_horas    ?? 0
-          valorDSR      = l.snap_valor_dsr      ?? 0
-          valorProducao = l.snap_valor_producao  ?? 0
-          valorPremio   = l.snap_valor_premio    ?? 0
-          // Base de encargos = horas + DSR apenas (prêmio/bônus é isento de encargos trabalhistas)
-          salarioBruto  = valorHoras + valorDSR
-          descontoVT    = l.snap_desconto_vt     ?? 0
-          descontoAD    = l.snap_desconto_adiant ?? 0
-          inss          = l.snap_inss            ?? 0
-          ir            = l.snap_ir              ?? 0
-          liquido       = l.snap_liquido         ?? (salarioBruto - descontoVT - descontoAD - inss - ir)
-        } else {
-          // ── Caso B: lançamento ainda em aberto — recalcula com tabelas atuais
-          const funcaoId  = colab?.funcao_id ?? null
-          const vh        = funcaoId ? (valorHoraMap[funcaoId] ?? 0) : (l.snap_valor_hora ?? 0)
-          const pt        = pontosMap[l.id] ?? { normais: 0, extras: 0 }
-          const duDias    = diasUteisPeriodo(l.data_inicio, l.data_fim, feriadosSet)
-          const domFer    = domingosFeriadosPeriodo(l.data_inicio, l.data_fim, feriadosSet)
-
-          valorHoras    = pt.normais * vh + pt.extras * vh * heCoef50
-          valorDSR      = duDias > 0 ? (valorHoras / duDias) * domFer : 0
-          // Base encargos = horas + DSR (prêmio isento)
-          salarioBruto  = valorHoras + valorDSR
-          // Usa tabelas salvas no banco (não defaults hardcoded)
-          inss          = calcINSS(salarioBruto, tabelaInss)
-          ir            = calcIR(salarioBruto, inss, tabelaIR)
-          liquido       = salarioBruto - inss - ir
-        }
-
-        // Encargos da empresa — usa alíquotas do banco (via estado)
-        const fgts         = salarioBruto * fgtsAliq
-        const inssPatronal = salarioBruto * inssPatronalAliq
-        const rat          = salarioBruto * ratAliq
-        const terceiros    = salarioBruto * terceirosAliq
-        const totalEmpresa = fgts + inssPatronal + rat + terceiros
-
-        resultado.push({
-          colaborador_id: l.colaborador_id,
-          nome:         colab?.nome       ?? '—',
-          chapa:        colab?.chapa      ?? null,
-          funcao_nome:  colab?.funcoes?.nome ?? 'Sem função',
-          obra_nome:    (l.obras as any)?.nome ?? '—',
-          valorHoras,
-          valorDSR,
-          valorProducao,
-          valorPremio,
-          salarioBruto,
-          descontoVT,
-          descontoAD,
-          inss,
-          ir,
-          liquido,
-          fgts,
-          inssPatronal,
-          rat,
-          terceiros,
-          totalEmpresa,
-        })
-      }
-
-      resultado.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
-      setLinhas(resultado)
-    } catch (err: any) {
-      toast.error(err?.message ?? 'Erro ao carregar encargos')
-    } finally {
-      setLoading(false)
-      setCalculado(true)
-    }
-  }, [mes, ano, fgtsAliq, inssPatronalAliq, ratAliq, terceirosAliq, heCoef50, heCoef100])
-
-  // Carrega automaticamente quando muda o período
-  useEffect(() => { calcular() }, [calcular])
+  const [busca, setBusca] = useState('')
 
   // ── Exportar CSV ────────────────────────────────────────────────────────────
   const exportarCSV = useCallback(() => {
@@ -318,6 +65,38 @@ export default function EncargosPage() {
     a.click()
     URL.revokeObjectURL(url)
   }, [linhas, mes, ano])
+
+  // ── Filtro por busca ────────────────────────────────────────────────────────
+  const linhasFiltradas = React.useMemo(() => {
+    if (!busca.trim()) return linhas
+    const q = busca.toLowerCase()
+    return linhas.filter(l =>
+      l.nome.toLowerCase().includes(q) ||
+      (l.chapa ?? '').toLowerCase().includes(q) ||
+      l.obra_nome.toLowerCase().includes(q) ||
+      l.funcao_nome.toLowerCase().includes(q)
+    )
+  }, [linhas, busca])
+
+  // ── Totalizadores ───────────────────────────────────────────────────────────
+  const totais = React.useMemo(() => ({
+    qtd:           linhasFiltradas.length,
+    salarioBruto:  linhasFiltradas.reduce((s, l) => s + l.salarioBruto,  0),
+    valorHoras:    linhasFiltradas.reduce((s, l) => s + l.valorHoras,    0),
+    valorDSR:      linhasFiltradas.reduce((s, l) => s + l.valorDSR,      0),
+    valorProducao: linhasFiltradas.reduce((s, l) => s + l.valorProducao, 0),
+    valorPremio:   linhasFiltradas.reduce((s, l) => s + l.valorPremio,   0),
+    descontoVT:    linhasFiltradas.reduce((s, l) => s + l.descontoVT,    0),
+    descontoAD:    linhasFiltradas.reduce((s, l) => s + l.descontoAD,    0),
+    inss:          linhasFiltradas.reduce((s, l) => s + l.inss,          0),
+    ir:            linhasFiltradas.reduce((s, l) => s + l.ir,            0),
+    liquido:       linhasFiltradas.reduce((s, l) => s + l.liquido,       0),
+    fgts:          linhasFiltradas.reduce((s, l) => s + l.fgts,          0),
+    inssPatronal:  linhasFiltradas.reduce((s, l) => s + l.inssPatronal,  0),
+    rat:           linhasFiltradas.reduce((s, l) => s + l.rat,           0),
+    terceiros:     linhasFiltradas.reduce((s, l) => s + l.terceiros,     0),
+    totalEmpresa:  linhasFiltradas.reduce((s, l) => s + l.totalEmpresa,  0),
+  }), [linhasFiltradas])
 
   function gerarPdfEncargos() {
     if (!linhasFiltradas.length) return
@@ -380,38 +159,6 @@ tfoot td:first-child{text-align:left}
     const w = window.open('', '_blank')
     if (w) { w.document.write(html); w.document.close() }
   }
-
-  // ── Filtro por busca ────────────────────────────────────────────────────────
-  const linhasFiltradas = React.useMemo(() => {
-    if (!busca.trim()) return linhas
-    const q = busca.toLowerCase()
-    return linhas.filter(l =>
-      l.nome.toLowerCase().includes(q) ||
-      (l.chapa ?? '').toLowerCase().includes(q) ||
-      l.obra_nome.toLowerCase().includes(q) ||
-      l.funcao_nome.toLowerCase().includes(q)
-    )
-  }, [linhas, busca])
-
-  // ── Totalizadores ───────────────────────────────────────────────────────────
-  const totais = React.useMemo(() => ({
-    qtd:           linhasFiltradas.length,
-    salarioBruto:  linhasFiltradas.reduce((s, l) => s + l.salarioBruto,  0),
-    valorHoras:    linhasFiltradas.reduce((s, l) => s + l.valorHoras,    0),
-    valorDSR:      linhasFiltradas.reduce((s, l) => s + l.valorDSR,      0),
-    valorProducao: linhasFiltradas.reduce((s, l) => s + l.valorProducao, 0),
-    valorPremio:   linhasFiltradas.reduce((s, l) => s + l.valorPremio,   0),
-    descontoVT:    linhasFiltradas.reduce((s, l) => s + l.descontoVT,    0),
-    descontoAD:    linhasFiltradas.reduce((s, l) => s + l.descontoAD,    0),
-    inss:          linhasFiltradas.reduce((s, l) => s + l.inss,          0),
-    ir:            linhasFiltradas.reduce((s, l) => s + l.ir,            0),
-    liquido:       linhasFiltradas.reduce((s, l) => s + l.liquido,       0),
-    fgts:          linhasFiltradas.reduce((s, l) => s + l.fgts,          0),
-    inssPatronal:  linhasFiltradas.reduce((s, l) => s + l.inssPatronal,  0),
-    rat:           linhasFiltradas.reduce((s, l) => s + l.rat,           0),
-    terceiros:     linhasFiltradas.reduce((s, l) => s + l.terceiros,     0),
-    totalEmpresa:  linhasFiltradas.reduce((s, l) => s + l.totalEmpresa,  0),
-  }), [linhasFiltradas])
 
   // ─── Render ─────────────────────────────────────────────────────────────────
   return (
@@ -577,7 +324,7 @@ tfoot td:first-child{text-align:left}
 
                 <TableBody>
                   {linhasFiltradas.map((l, idx) => (
-                    <TableRow key={`${l.colaborador_id}-${idx}`} style={{ background: idx % 2 === 0 ? 'var(--card)' : 'var(--muted)' }}>
+                    <TableRow key={`${l.lancamento_id}-${idx}`} style={{ background: idx % 2 === 0 ? 'var(--card)' : 'var(--muted)' }}>
                       <TableCell style={{ whiteSpace: 'nowrap', padding: '7px 10px' }}>
                         <div style={{ fontWeight: 700, fontSize: 12 }}>{l.nome}</div>
                         <div style={{ fontSize: 11, color: 'var(--muted-foreground)' }}>{l.funcao_nome} · {l.obra_nome}</div>
