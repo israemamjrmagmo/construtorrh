@@ -740,11 +740,12 @@ export default function Ponto() {
 
   // ── Carregar colaboradores + obras ──────────────────────────────────────
   useEffect(()=>{
+    if(!empresaId) return
     const load=async()=>{
       const [{data:colsRaw, error:colsErr},{data:obsRaw},{data:fnsRaw}]=await Promise.all([
-        supabase.from('colaboradores').select('id,nome,chapa,funcao_id,obra_id,tipo_contrato,data_admissao,status').order('nome'),
-        supabase.from('obras').select('id,nome').order('nome'),
-        supabase.from('funcoes').select('id,nome').eq('ativo',true),
+        supabase.from('colaboradores').select('id,nome,chapa,funcao_id,obra_id,tipo_contrato,data_admissao,status').eq('empresa_id',empresaId).order('nome'),
+        supabase.from('obras').select('id,nome').eq('empresa_id',empresaId).order('nome'),
+        supabase.from('funcoes').select('id,nome').eq('empresa_id',empresaId).eq('ativo',true),
       ])
       if(colsErr) { console.error('PONTO colaboradores error:', colsErr); toast.error('Erro ao carregar colaboradores: '+colsErr.message) }
       // Mapa funcao_id → nome
@@ -820,6 +821,7 @@ export default function Ponto() {
     const{data}=await supabase.from('ponto_lancamentos')
       .select('*,obras(nome)')
       .eq('colaborador_id',colabId).eq('mes_referencia',mr)
+      .eq('empresa_id',empresaId??'')
       .order('mes_referencia')
     const list:Lancamento[]=(data??[]).map((l:any)=>({
       id:l.id,obra_id:l.obra_id,obra_nome:l.obras?.nome??'Obra',
